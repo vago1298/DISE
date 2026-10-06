@@ -15888,7 +15888,7 @@ def v30_armado_por_tipo() -> None:
           'new Transaction(doc, "Cortes de CadLink")' in arm
           and "Despiece.Crear(doc, cortes, r, nombres, false)" in arm and "&& enHoja" in des)
     check("el corte sale acotado: la base arriba y el peralte a la derecha",
-          "doc.Create.NewDimension(vista, Line.CreateBound(" in des
+          "doc.Create.NewDimension(vista, linea, refs)" in des
           and "FamilyInstanceReferenceType.Left, FamilyInstanceReferenceType.Right" in des
           and "(h / 2) + 0.06," in pld and "(b / 2) + 0.06);" in pld)
     check("el nombre de la vista nunca choca con uno que ya existe",
@@ -15902,6 +15902,24 @@ def v30_armado_por_tipo() -> None:
     check("el corte deja al dia las propiedades de tipo, con el estribo",
           "Despiece.Propiedades(doc, pieza.GetTypeId(), a, r);" in arm
           and "public static string EstriboComoAutoCad(ArmadoJson a)" in pld)
+
+    # Se pidio: la nota clave de la contratrabe dice CONTRATRABE, y las secciones de CadLink que
+    # Revit no tiene -una trabe de 50x90- se crean como tipo.
+    cdt = leer(ruta("client/src/CadLink.Revit/CreadorDeTipos.cs"))
+    tnu = leer(ruta("client/src/CadLink.Revit.Nucleo/TiposNuevos.cs"))
+    check("la contratrabe lleva CONTRATRABE en la nota clave",
+          'a.Tipo == "Contratrabe" ? "CONTRATRABE" : "CONCRETO",' in pld)
+    check("se crean los tipos de las secciones que Revit no tiene, duplicando uno de concreto",
+          "public static List<TipoPorCrear> Faltantes(" in tnu and "plantilla.Duplicate(nombre)" in cdt
+          and "LectorDeCatalogo.NombresDeAncho" in cdt and "CrearLasQueFaltan(doc, archivo);" in cpt
+          and "TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No" in cpt
+          and "CadLink.Revit\\CreadorDeTipos.cs" in leer(ruta("tools/prueba-revit-compila/Prueba.csproj")))
+    check("las cotas van a las CARAS de la pieza, y si Revit las da por malas se deshacen",
+          "new Options { ComputeReferences = true" in des and "gi.GetSymbolGeometry()" in des
+          and "new SubTransaction(doc)" in des and "sub.RollBack();" in des)
+    check("lo que dice Revit lleva el Id del elemento, para encontrarlo",
+          "m.GetFailingElementIds()?.Select(e => e.Value)" in leer(ruta("client/src/CadLink.Revit/SinCuadros.cs")))
+    check("y tiene pruebas", "TiposNuevos.Faltantes(" in leer(ruta("tools/prueba-revit/Program.cs")))
 
     # CS0104 en la maquina del usuario: WPF y la Revit API comparten nombres de tipo. Con los
     # dos usings, el de WPF tiene que ir con alias o no compila.

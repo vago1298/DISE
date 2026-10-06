@@ -33,10 +33,10 @@ internal static class LectorDeCatalogo
     /// nombres que usan las plantillas de Autodesk y el contenido estructural: "b" en
     /// hormigon, "bf" en perfiles de acero.
     /// </remarks>
-    private static readonly string[] NombresDeAncho =
+    internal static readonly string[] NombresDeAncho =
         { "b", "bf", "Width", "Ancho", "Anchura", "Base" };
 
-    private static readonly string[] NombresDePeralte =
+    internal static readonly string[] NombresDePeralte =
         { "h", "d", "Height", "Depth", "Peralte", "Canto", "Altura" };
 
     public static CatalogoRevit Leer(Document doc)

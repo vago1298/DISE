@@ -37,6 +37,11 @@ public sealed class Transform
     public XYZ BasisY { get; set; } = new(0, 1, 0);
 
     public XYZ BasisZ { get; set; } = new(0, 0, 1);
+
+    /// <summary>Revit API: Transform.OfVector y OfPoint.</summary>
+    public XYZ OfVector(XYZ v) => v;
+
+    public XYZ OfPoint(XYZ p) => p;
 }
 
 public sealed class ViewSection : View
@@ -97,4 +102,78 @@ public sealed class ReferenceArray
     public void Append(Reference r) { }
 }
 
-public sealed class Dimension : Element { }
+/// <summary>Revit API: Dimension.Value es double? -null en las de varios tramos-.</summary>
+public sealed class Dimension : Element
+{
+    public double? Value => 0;
+}
+
+/// <summary>Revit API: SubTransaction(Document), Start, Commit, RollBack. Dentro de una Transaction.</summary>
+public sealed class SubTransaction : IDisposable
+{
+    public SubTransaction(Document doc) { }
+
+    public void Start() { }
+
+    public void Commit() { }
+
+    public void RollBack() { }
+
+    public void Dispose() { }
+}
+
+/// <summary>Revit API: Options.ComputeReferences, DetailLevel, View.</summary>
+public sealed class Options
+{
+    public bool ComputeReferences { get; set; }
+
+    public ViewDetailLevel DetailLevel { get; set; }
+
+    public View? View { get; set; }
+}
+
+public abstract class GeometryObject { }
+
+/// <summary>Revit API: GeometryElement es IEnumerable&lt;GeometryObject&gt;.</summary>
+public sealed class GeometryElement : GeometryObject, IEnumerable<GeometryObject>
+{
+    public IEnumerator<GeometryObject> GetEnumerator() => new List<GeometryObject>().GetEnumerator();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+/// <summary>Revit API: GeometryInstance.GetSymbolGeometry() y Transform.</summary>
+public sealed class GeometryInstance : GeometryObject
+{
+    public Transform Transform => Transform.Identity;
+
+    public GeometryElement GetSymbolGeometry() => new();
+}
+
+public abstract class Face
+{
+    public Reference? Reference => null;
+}
+
+/// <summary>Revit API: PlanarFace.FaceNormal y Origin.</summary>
+public sealed class PlanarFace : Face
+{
+    public XYZ FaceNormal => new(0, 0, 1);
+
+    public XYZ Origin => new(0, 0, 0);
+}
+
+/// <summary>Revit API: FaceArray.Size y se recorre con foreach.</summary>
+public sealed class FaceArray : IEnumerable<Face>
+{
+    public int Size => 0;
+
+    public IEnumerator<Face> GetEnumerator() => new List<Face>().GetEnumerator();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+public sealed class Solid : GeometryObject
+{
+    public FaceArray Faces => new();
+}

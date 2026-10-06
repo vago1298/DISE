@@ -184,15 +184,18 @@ internal static class Despiece
     }
 
     /// <summary>
-    /// Las dos cotas del corte: la base encima de la seccion y el peralte a su derecha. Se acotan
-    /// los planos de referencia de la familia -izquierda y derecha, arriba y abajo-, asi que la
-    /// cota se mueve con la pieza si cambia de tipo.
+    /// Las dos cotas del corte: la base encima de la seccion y el peralte a su derecha.
     /// </summary>
+    /// <remarks>
+    /// Se acotan las CARAS de la pieza que se ven en el corte: las dos verticales para la base y
+    /// la de arriba y la de abajo para el peralte. Los planos de referencia de la familia
+    /// -Left/Right, Top/Bottom- fallaron en la familia del usuario («la familia no tiene planos
+    /// de referencia» y «hay referencias de cota que no son validas»): no todas los tienen y no
+    /// todos se ven en un corte. Quedan solo como respaldo.
+    /// </remarks>
     private static void Cotas(
         Document doc, View vista, FamilyInstance pieza, CorteDeSeccion plan, ArmadoJson a, ResultadoArmado r)
     {
-        // En la trabe la base va entre Left y Right y el peralte entre Top y Bottom; en la
-        // columna, que se corta en planta, el peralte va entre Front y Back.
         var (y1, y2) = a.EsHorizontal
             ? (FamilyInstanceReferenceType.Bottom, FamilyInstanceReferenceType.Top)
             : (FamilyInstanceReferenceType.Front, FamilyInstanceReferenceType.Back);
@@ -200,45 +203,157 @@ internal static class Despiece
         var b = a.BaseCm / 100;
         var h = a.AlturaCm / 100;
 
-        var arriba = Cota(doc, vista, pieza,
+        var arriba = Cota(doc, vista, pieza, plan.EjeX,
             FamilyInstanceReferenceType.Left, FamilyInstanceReferenceType.Right,
             plan.Origen + (plan.EjeY * plan.YCotaBase) - (plan.EjeX * (b / 2)),
             plan.Origen + (plan.EjeY * plan.YCotaBase) + (plan.EjeX * (b / 2)));
 
-        var lado = Cota(doc, vista, pieza, y1, y2,
+        var lado = Cota(doc, vista, pieza, plan.EjeY, y1, y2,
             plan.Origen + (plan.EjeX * plan.XCotaAltura) - (plan.EjeY * (h / 2)),
             plan.Origen + (plan.EjeX * plan.XCotaAltura) + (plan.EjeY * (h / 2)));
 
         if (!arriba || !lado)
         {
-            r.Avisos.Add($"«sin cotas»: {plan.Nombre}. La familia no tiene planos de referencia "
-                         + "izquierda/derecha y arriba/abajo con los que acotar; acótala a mano");
+            r.Avisos.Add($"«sin cotas»: {plan.Nombre}. Revit no dejó acotar "
+                         + (!arriba && !lado ? "la base ni el peralte" : !arriba ? "la base" : "el peralte")
+                         + "; acótalo a mano");
         }
     }
 
+    /// <summary>Una cota: primero entre las caras de la pieza, y si no, entre sus planos de referencia.</summary>
     private static bool Cota(
-        Document doc, View vista, FamilyInstance pieza,
+        Document doc, View vista, FamilyInstance pieza, V3 eje,
         FamilyInstanceReferenceType de, FamilyInstanceReferenceType a, V3 p1, V3 p2)
     {
+        var linea = Line.CreateBound(Punto(p1), Punto(p2));
+
+        if (Caras(pieza, eje) is { } caras && Acotar(doc, vista, linea, caras.Min, caras.Max))
+        {
+            return true;
+        }
+
         try
         {
             var r1 = pieza.GetReferences(de).FirstOrDefault();
             var r2 = pieza.GetReferences(a).FirstOrDefault();
 
-            if (r1 is null || r2 is null)
-            {
-                return false;
-            }
-
-            var refs = new ReferenceArray();
-            refs.Append(r1);
-            refs.Append(r2);
-
-            return doc.Create.NewDimension(vista, Line.CreateBound(Punto(p1), Punto(p2)), refs) is not null;
+            return r1 is not null && r2 is not null && Acotar(doc, vista, linea, r1, r2);
         }
         catch (Exception)
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// La cota entre dos referencias. Se crea en una SUBTRANSACCION: si Revit la da por mala
+    /// -«hay una o varias referencias de cota que no son validas»-, se deshace sin dejar el
+    /// aviso en el informe y se prueba la otra forma.
+    /// </summary>
+    private static bool Acotar(Document doc, View vista, Line linea, Reference r1, Reference r2)
+    {
+        using var sub = new SubTransaction(doc);
+        sub.Start();
+
+        try
+        {
+            var refs = new ReferenceArray();
+            refs.Append(r1);
+            refs.Append(r2);
+
+            var cota = doc.Create.NewDimension(vista, linea, refs);
+            doc.Regenerate();
+
+            if (cota is not null && cota.IsValidObject && (cota.Value ?? 0) > 1e-6)
+            {
+                sub.Commit();
+                return true;
+            }
+        }
+        catch (Exception)
+        {
+            // Se deshace abajo.
+        }
+
+        sub.RollBack();
+        return false;
+    }
+
+    /// <summary>
+    /// Las dos caras planas de la pieza perpendiculares a <paramref name="eje"/> que estan mas
+    /// lejos una de otra: los dos lados de la seccion. Con <c>ComputeReferences</c> para que se
+    /// puedan acotar.
+    /// </summary>
+    private static (Reference Min, Reference Max)? Caras(FamilyInstance pieza, V3 eje)
+    {
+        try
+        {
+            var dir = Vector(eje);
+            // Sin la vista en las opciones: el corte acaba de crearse y su geometria aun no se ha
+            // generado. Las referencias de la pieza sirven igual en cualquier vista.
+            var opciones = new Options { ComputeReferences = true, DetailLevel = ViewDetailLevel.Fine };
+            var geo = pieza.get_Geometry(opciones);
+
+            if (geo is null)
+            {
+                return null;
+            }
+
+            var caras = new List<(Reference Ref, double Pos)>();
+
+            void DeSolidos(IEnumerable<GeometryObject> objetos, Transform t)
+            {
+                foreach (var o in objetos)
+                {
+                    if (o is not Solid solido || solido.Faces.Size == 0)
+                    {
+                        continue;
+                    }
+
+                    foreach (var f in solido.Faces)
+                    {
+                        if (f is not PlanarFace pf || pf.Reference is null)
+                        {
+                            continue;
+                        }
+
+                        var normal = t.OfVector(pf.FaceNormal);
+
+                        if (Math.Abs(Math.Abs(normal.DotProduct(dir)) - 1) < 1e-6)
+                        {
+                            caras.Add((pf.Reference, t.OfPoint(pf.Origin).DotProduct(dir)));
+                        }
+                    }
+                }
+            }
+
+            foreach (var o in geo)
+            {
+                if (o is GeometryInstance gi)
+                {
+                    // Las caras del SIMBOLO: sus referencias son las que Revit deja acotar en la
+                    // pieza. Las de GetInstanceGeometry suelen salir sin referencia.
+                    DeSolidos(gi.GetSymbolGeometry(), gi.Transform);
+                }
+                else
+                {
+                    DeSolidos(new[] { o }, Transform.Identity);
+                }
+            }
+
+            if (caras.Count < 2)
+            {
+                return null;
+            }
+
+            var min = caras.MinBy(c => c.Pos);
+            var max = caras.MaxBy(c => c.Pos);
+
+            return max.Pos - min.Pos > 1e-6 ? (min.Ref, max.Ref) : null;
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 

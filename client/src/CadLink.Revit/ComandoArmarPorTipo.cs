@@ -78,7 +78,10 @@ public sealed class ComandoArmarPorTipo : IExternalCommand
             return Result.Cancelled;
         }
 
-        // ---- 2. Los tipos del proyecto ----
+        // ---- 2. Las secciones de CadLink que Revit no tiene: se ofrecen crear ----
+        CrearLasQueFaltan(doc, archivo);
+
+        // ---- 3. Los tipos del proyecto ----
         var tipos = Armador.TiposArmables(doc, out var piezas);
 
         if (tipos.Count == 0)
@@ -89,7 +92,7 @@ public sealed class ComandoArmarPorTipo : IExternalCommand
             return Result.Cancelled;
         }
 
-        // ---- 3. El cuadro ----
+        // ---- 4. El cuadro ----
         // Los tipos de armadura del proyecto: la tabla de abajo pregunta cual va en cada uso,
         // porque una oficina maneja varios por diametro (TRABES, COLUMNAS, BASTON, ESTRIBOS...).
         var vista = new VistaArmadoPorTipo(
@@ -115,7 +118,7 @@ public sealed class ComandoArmarPorTipo : IExternalCommand
             return Result.Cancelled;
         }
 
-        // ---- 4. Armar ----
+        // ---- 5. Armar ----
         var trabajo = vista.AArmar
             .Select(f => new Armador.TrabajoPorTipo(
                 f.Tipo.Nombre, piezas[f.Tipo.Id], f.Armado!))
@@ -130,5 +133,65 @@ public sealed class ComandoArmarPorTipo : IExternalCommand
         TaskDialog.Show("CadLink", ComandoArmar.Informe(r, total));
 
         return Result.Succeeded;
+    }
+
+    /// <summary>
+    /// Si CadLink tiene secciones -una trabe de 50x90, por ejemplo- que no existen como tipo en
+    /// Revit, pregunta si se crean. Se crean duplicando un tipo de la familia de concreto.
+    /// </summary>
+    private static void CrearLasQueFaltan(Document doc, ArchivoArmadoJson archivo)
+    {
+        List<TipoPorCrear> faltan;
+
+        try
+        {
+            faltan = TiposNuevos.Faltantes(archivo.Armados, CreadorDeTipos.Existentes(doc));
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        if (faltan.Count == 0)
+        {
+            return;
+        }
+
+        var lista = string.Join("\n", faltan.Take(15).Select(f => "  • " + f.Texto))
+                    + (faltan.Count > 15 ? $"\n  … y {faltan.Count - 15} más" : string.Empty);
+
+        var pregunta = new TaskDialog("CadLink")
+        {
+            MainInstruction = $"{faltan.Count} sección(es) de CadLink no tienen tipo en Revit",
+            MainContent = lista + "\n\n¿Las creo? Se duplica un tipo de tu familia de concreto con la base y el "
+                          + "peralte de cada una, y se le escriben sus propiedades de tipo.",
+            CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
+            DefaultButton = TaskDialogResult.Yes
+        };
+
+        if (pregunta.Show() != TaskDialogResult.Yes)
+        {
+            return;
+        }
+
+        var r = new ResultadoArmado();
+        var creados = CreadorDeTipos.Crear(doc, faltan, r);
+
+        var texto = $"Tipos creados: {creados.Count}\n" + string.Join("\n", creados.Select(c => "  • " + c));
+
+        if (r.Errores.Count > 0)
+        {
+            texto += "\n\n" + Agrupador.Texto(r.Errores);
+        }
+
+        if (r.Avisos.Count > 0)
+        {
+            texto += "\n\n" + Agrupador.Texto(r.Avisos, 6, "Hay algo que decir de");
+        }
+
+        texto += "\n\nYa están en el proyecto para dibujar con ellos. Los que no tienen piezas no salen "
+                 + "en la tabla de armado hasta que dibujes alguna.";
+
+        TaskDialog.Show("CadLink", texto);
     }
 }

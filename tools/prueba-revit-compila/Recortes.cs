@@ -166,6 +166,11 @@ public abstract class Element
 
     public void ChangeTypeId(ElementId tipo) { }
 
+    /// <summary>Revit API: Element.IsValidObject y get_Geometry(Options).</summary>
+    public bool IsValidObject => true;
+
+    public GeometryElement? get_Geometry(Options o) => new();
+
 }
 
 /// <summary>Una vista. El complemento la usa para encender las burbujas de los ejes.</summary>
@@ -192,6 +197,9 @@ public class View : Element
 public abstract class ElementType : Element
 {
     public string? FamilyName => null;
+
+    /// <summary>Revit API: ElementType.Duplicate(string) devuelve el ElementType nuevo.</summary>
+    public ElementType Duplicate(string nombre) => new FamilySymbol();
 }
 
 public sealed class Level : Element

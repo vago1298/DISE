@@ -2278,6 +2278,38 @@ internal static partial class Programa
         Check("lo que la persona eligio a mano no se pisa", b.Seccion == "T-04");
         Check("los ajustes del despiece vienen encendidos", v.EscribirPropiedades && v.CrearDespiece);
 
+        // ---------- La contratrabe dice CONTRATRABE en la nota clave ----------
+        Igual("nota clave de una contratrabe = CONTRATRABE",
+            PlanDespiece.Propiedades(new ArmadoJson { Id = "CT-01", Tipo = "Contratrabe", BaseCm = 30, AlturaCm = 80 }).NotaClave,
+            "CONTRATRABE");
+        Igual("y la trabe sigue diciendo CONCRETO", PlanDespiece.Propiedades(t04).NotaClave, "CONCRETO");
+
+        // ---------- Las secciones de CadLink que Revit no tiene ----------
+        var t50 = new ArmadoJson { Id = "T-10", Tipo = "Trabe", BaseCm = 50, AlturaCm = 90 };
+        var t50b = new ArmadoJson { Id = "T-11", Tipo = "Trabe", BaseCm = 50, AlturaCm = 90 };
+        var c3050 = new ArmadoJson { Id = "C-02", Tipo = "Columna", BaseCm = 30, AlturaCm = 50 };
+        var ct = new ArmadoJson { Id = "CT-01", Tipo = "Contratrabe", BaseCm = 30, AlturaCm = 80 };
+        var losa = new ArmadoJson { Id = "L-1", Tipo = "Losa", BaseCm = 100, AlturaCm = 12 };
+        var hay = new List<TipoExistente>
+        {
+            new(ClasePieza.Trabe, "Viga", "V 15x30", 0.15, 0.30),
+            new(ClasePieza.Columna, "Col", "C 50x30", 0.50, 0.30),
+            new(ClasePieza.Trabe, "Viga", "Lo que sea", 0.25, 0.25, "CT-01")
+        };
+        var faltan = TiposNuevos.Faltantes(new List<ArmadoJson> { t04, t50, t50b, c3050, ct, losa }, hay);
+        Igual("falta solo la trabe de 50x90", faltan.Count, 1);
+        Igual("se llama por su elemento y sus medidas", faltan[0].Nombre, "TRABE 50x90");
+        Check("y junta las dos secciones de esa medida, sin elegir una",
+            faltan[0].Secciones.Count == 2 && faltan[0].Unica is null && faltan[0].Clase == ClasePieza.Trabe);
+        Check("la 15x30 ya existe, la columna sirve girada y la CT-01 la reconoce su Descripcion",
+            faltan.All(f => f.Secciones.All(s => s.Id is "T-10" or "T-11")));
+        var solaFalta = TiposNuevos.Faltantes(new List<ArmadoJson> { ct }, new List<TipoExistente>());
+        Check("con una sola seccion, el tipo nuevo ya sabe cual lo arma",
+            solaFalta.Single().Unica == ct && solaFalta.Single().Nombre == "CONTRATRABE 30x80");
+        Igual("una columna que no existe ni girada se crea en pilar",
+            TiposNuevos.Faltantes(new List<ArmadoJson> { new() { Id = "C-9", Tipo = "Dado", BaseCm = 60, AlturaCm = 60 } }, hay)
+                .Single().Clase, ClasePieza.Columna);
+
         // ---------- Corte de seccion: el estribo, las cotas y el nombre ----------
         Igual("comentarios de tipo = la linea del estribo", p.ComentariosDeTipo, "Estr. #3C @15 cm");
         Igual("sin rotulo ni estribo no se inventa", PlanDespiece.Propiedades(t04).ComentariosDeTipo, "");

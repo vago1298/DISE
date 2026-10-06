@@ -15,7 +15,7 @@ namespace CadLink.Revit.Nucleo;
 
 /// <summary>Lo que se escribe en las propiedades de tipo de Revit.</summary>
 /// <param name="CodigoDeMontaje">Las varillas, como en el rotulo de AutoCAD: <c>4 vars. #3C</c>.</param>
-/// <param name="NotaClave">Siempre <c>CONCRETO</c>.</param>
+/// <param name="NotaClave"><c>CONCRETO</c>; en la contratrabe, <c>CONTRATRABE</c>.</param>
 /// <param name="Modelo">Las medidas: <c>15 X 30 CM</c>.</param>
 /// <param name="Descripcion">El ID de la seccion en CadLink: <c>T-04</c>.</param>
 /// <param name="MarcaDeTipo">El elemento: <c>TRABE</c>, <c>CASTILLO</c>, <c>COLUMNA</c>…</param>
@@ -75,7 +75,8 @@ public static class PlanDespiece
 
         return new PropiedadesDeTipo(
             string.Join(" + ", varillas),
-            "CONCRETO",
+            // La contratrabe se distingue en la nota clave: asi se pidio.
+            a.Tipo == "Contratrabe" ? "CONTRATRABE" : "CONCRETO",
             $"{Cm(a.BaseCm)} X {Cm(a.AlturaCm)} CM",
             a.Id.Trim(),
             elemento,

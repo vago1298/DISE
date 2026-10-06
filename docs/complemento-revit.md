@@ -416,7 +416,7 @@ Abajo del cuadro hay dos casillas, las dos encendidas:
   | Propiedad de tipo | Qué lleva | Ejemplo |
   |---|---|---|
   | Código de montaje | Las varillas, como en el rótulo de AutoCAD | `4 vars. #3C` |
-  | Nota clave | Siempre | `CONCRETO` |
+  | Nota clave | `CONTRATRABE` en las contratrabes; en lo demás, `CONCRETO` | `CONCRETO` |
   | Modelo | Sus medidas | `15 X 30 CM` |
   | Descripción | El ID de CadLink | `T-04` |
   | Marca de tipo | El elemento | `TRABE`, `CASTILLO`, `COLUMNA`… |
@@ -430,7 +430,8 @@ Abajo del cuadro hay dos casillas, las dos encendidas:
   SECCIONES - CadLink"**. Si no caben, se crea otra hoja. La etiqueta es la de la categoría que
   tenga cargada el proyecto (armazón o pilar estructural); si no hay, el informe lo dice.
   Cada corte lleva sus **cotas**: la base arriba y el peralte a la derecha (a la izquierda van
-  las llamadas), amarradas a los planos de referencia de la familia.
+  las llamadas), amarradas a las caras de la pieza; si no se puede, a los planos de referencia
+  de la familia. Si Revit da una cota por mala, se deshace y el informe pide acotarla a mano.
 
 **La misma sección para todas las de su medida**: al elegir a mano la sección de un tipo, los
 demás tipos de la misma clase y las mismas medidas (todas las 15x30, por ejemplo) toman la misma.
@@ -442,6 +443,19 @@ Cada pieza se arma con **su longitud real**: los estribos por zonas y los baston
 Revit con las mismas reglas del alzado de AutoCAD. El reparto de estribos es el **mismo archivo**
 (`Estribos.cs`) compilado en el núcleo; los tramos de bastón siguen la regla de
 `Bastones.Tramos`, comprobada igual en 16 000 casos.
+
+### Las secciones que Revit no tiene
+
+Al abrir el archivo, *Armar por tipo* compara las secciones de CadLink con los tipos de columna
+y de trabe del proyecto (por su Descripción o por sus medidas; la columna vale también girada).
+Si falta alguna —una trabe de 50x90, por ejemplo—, pregunta si se crea. El tipo nuevo se
+llama `TRABE 50x90` y se hace duplicando un tipo de la familia de concreto que más se usa en el
+proyecto, cambiándole `b` y `h`. Si solo una sección mide eso, se le escriben sus propiedades
+de tipo y queda emparejada sola. Los tipos sin piezas no salen en la tabla hasta que dibujes
+alguna con ellos.
+
+Lo que dice Revit en el informe lleva el **Id** de los elementos que lo causaron: búscalos con
+*Gestionar › Consultas › Seleccionar por ID*.
 
 ### Corte de sección: un corte nuevo, con su nombre
 

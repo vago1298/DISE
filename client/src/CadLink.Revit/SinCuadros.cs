@@ -32,8 +32,17 @@ internal sealed class SinCuadros : IFailuresPreprocessor
     /// <summary>Cuantos elementos se borraron por dar un error que no se puede ignorar.</summary>
     public int ElementosBorrados { get; private set; }
 
-    /// <summary>Los textos distintos que dijo Revit, para poder ensenarlos.</summary>
-    public List<string> Motivos { get; } = new();
+    /// <summary>
+    /// Los textos distintos que dijo Revit, con los Id de los elementos que lo causaron -para
+    /// buscarlos en Revit con «Seleccionar por Id»-.
+    /// </summary>
+    public List<string> Motivos => _motivos
+        .Select(m => m.Ids.Count == 0
+            ? m.Texto
+            : $"{m.Texto} (Id: {string.Join(", ", m.Ids.Take(5))}{(m.Ids.Count > 5 ? "…" : "")})")
+        .ToList();
+
+    private readonly List<(string Texto, List<long> Ids)> _motivos = new();
 
     public FailureProcessingResult PreprocessFailures(FailuresAccessor acceso)
     {
@@ -85,28 +94,34 @@ internal sealed class SinCuadros : IFailuresPreprocessor
     private void Apuntar(FailureMessageAccessor m)
     {
         // Se guardan los textos DISTINTOS, no uno por pieza: cuarenta y seis avisos iguales
-        // llenarian el informe sin decir nada nuevo.
-        if (Motivos.Count >= 8)
-        {
-            return;
-        }
-
+        // llenarian el informe sin decir nada nuevo. Los Id si se juntan.
         string texto;
+        List<long> ids;
 
         try
         {
-            texto = m.GetDescriptionText() ?? string.Empty;
+            texto = (m.GetDescriptionText() ?? string.Empty).Trim();
+            ids = m.GetFailingElementIds()?.Select(e => e.Value).ToList() ?? new List<long>();
         }
         catch (Exception)
         {
             return;
         }
 
-        texto = texto.Trim();
-
-        if (texto.Length > 0 && !Motivos.Contains(texto, StringComparer.OrdinalIgnoreCase))
+        if (texto.Length == 0)
         {
-            Motivos.Add(texto);
+            return;
+        }
+
+        var donde = _motivos.FindIndex(x => string.Equals(x.Texto, texto, StringComparison.OrdinalIgnoreCase));
+
+        if (donde >= 0)
+        {
+            _motivos[donde].Ids.AddRange(ids.Where(id => !_motivos[donde].Ids.Contains(id)));
+        }
+        else if (_motivos.Count < 8)
+        {
+            _motivos.Add((texto, ids));
         }
     }
 }
