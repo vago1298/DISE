@@ -118,6 +118,56 @@ public static class ArchivoArmado
     }
 }
 
+/// <summary>Lo elegido en la tabla de armaduras, recordado para la proxima vez.</summary>
+public static class ArchivoVarillas
+{
+    /// <summary>En la carpeta del usuario: vale para todos sus proyectos.</summary>
+    public static string Ruta => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "CadLink", "armaduras-revit.json");
+
+    public static Dictionary<string, string> Leer(string? ruta = null)
+    {
+        try
+        {
+            var r = ruta ?? Ruta;
+            return File.Exists(r)
+                ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(r)) ?? new()
+                : new();
+        }
+        catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return new();
+        }
+    }
+
+    /// <summary>Junta lo nuevo con lo que ya habia. Si no se puede guardar, no pasa nada.</summary>
+    public static void Guardar(IReadOnlyDictionary<string, string> elecciones, string? ruta = null)
+    {
+        try
+        {
+            var r = ruta ?? Ruta;
+            var todo = Leer(r);
+
+            foreach (var (k, v) in elecciones)
+            {
+                todo[k] = v;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(r)!);
+            File.WriteAllText(r, JsonSerializer.Serialize(todo, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            }));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Es una comodidad: armar ya se hizo.
+        }
+    }
+}
+
 /// <summary>Un tipo de Revit con sus piezas, como lo cuenta el complemento.</summary>
 public sealed class TipoArmable
 {
@@ -304,11 +354,205 @@ public sealed class FilaArmadoTipo : Avisador
     }
 }
 
+/// <summary>Un tipo de armadura -<c>RebarBarType</c>- del proyecto de Revit.</summary>
+public sealed class TipoDeVarillaRevit
+{
+    public long Id { get; set; }
+
+    public string Nombre { get; set; } = string.Empty;
+
+    /// <summary>Diametro nominal, en m.</summary>
+    public double DiamM { get; set; }
+}
+
+/// <summary>
+/// Una fila de la tabla de armaduras: con que tipo de armadura de Revit se pone la varilla
+/// <see cref="Clave"/> cuando es <see cref="Uso"/> de una <see cref="Pieza"/>.
+/// </summary>
+/// <remarks>
+/// En una oficina el mismo #4 tiene varios tipos de armadura -«VAR #4C TRABES», «VAR #4C
+/// COLUMNAS/CASTILLOS», «VAR #4C BASTON»…- para que cada uso salga en su capa y su tabla de
+/// cuantificacion. Por eso se elige por pieza y uso, no solo por diametro.
+/// </remarks>
+public sealed class FilaVarilla : Avisador
+{
+    /// <summary>La opcion de que el complemento elija por diametro, o cree el tipo.</summary>
+    public const string Automatico = "(automático: por diámetro)";
+
+    private readonly IReadOnlyList<TipoDeVarillaRevit> _tipos;
+    private string _elegido = Automatico;
+
+    internal FilaVarilla(string pieza, string uso, string clave, double diamCm,
+        IReadOnlyList<TipoDeVarillaRevit> tipos)
+    {
+        Pieza = pieza;
+        Uso = uso;
+        Clave = clave;
+        DiamCm = diamCm;
+        _tipos = tipos;
+        Opciones = new ObservableCollection<string>(new[] { Automatico }.Concat(tipos.Select(t => t.Nombre)));
+    }
+
+    /// <summary><c>Trabe</c> o <c>Columna</c>.</summary>
+    public string Pieza { get; }
+
+    /// <summary><c>Corrida</c>, <c>Baston</c> o <c>Estribo</c>.</summary>
+    public string Uso { get; }
+
+    public string Clave { get; }
+
+    public double DiamCm { get; }
+
+    public string Descripcion => Uso switch
+    {
+        "Estribo" => $"Estribos {Clave} de {(Pieza == "Trabe" ? "trabes" : "columnas")}",
+        "Baston" => $"Bastones {Clave} de trabes",
+        _ => $"Corridas y laterales {Clave} de {(Pieza == "Trabe" ? "trabes" : "columnas")}"
+    };
+
+    /// <summary>La llave con la que se recuerda la eleccion.</summary>
+    public string Llave => $"{Pieza}|{Uso}|{Clave}";
+
+    public ObservableCollection<string> Opciones { get; }
+
+    /// <summary>Si la puso el complemento -por nombre, o la de la vez pasada- y no la persona.</summary>
+    public string Origen { get; private set; } = string.Empty;
+
+    public string Elegido
+    {
+        get => _elegido;
+        set
+        {
+            var v = Opciones.Contains(value) ? value : Automatico;
+
+            if (v == _elegido)
+            {
+                return;
+            }
+
+            _elegido = v;
+            Origen = string.Empty;
+            Aviso();
+            Aviso(nameof(Origen));
+        }
+    }
+
+    /// <summary>El Id del tipo de armadura elegido, o null para el automatico.</summary>
+    public long? IdElegido => _tipos.FirstOrDefault(t => t.Nombre == _elegido)?.Id;
+
+    internal void Poner(string? nombre, string origen)
+    {
+        if (nombre is null || !Opciones.Contains(nombre))
+        {
+            return;
+        }
+
+        Elegido = nombre;
+        Origen = origen;
+        Aviso(nameof(Origen));
+    }
+}
+
+/// <summary>
+/// El tipo de armadura de Revit que mejor le va a una varilla, por su NOMBRE: el numero de la
+/// varilla exacto (#2 no es #2.5) y las palabras de su uso y de su pieza.
+/// </summary>
+public static class SugerirVarilla
+{
+    public static TipoDeVarillaRevit? Mejor(
+        string clave, double diamCm, string pieza, string uso, IReadOnlyList<TipoDeVarillaRevit> tipos)
+    {
+        var numero = Numero(clave);
+
+        var candidatos = tipos.Where(t => numero is not null && Numero(t.Nombre) == numero).ToList();
+
+        if (candidatos.Count == 0 && diamCm > 0)
+        {
+            // Sin el numero en el nombre, los que tengan su diametro.
+            candidatos = tipos.Where(t => Math.Abs((t.DiamM * 100) - diamCm) <= 0.05).ToList();
+        }
+
+        return candidatos
+            .Select(t => (t, p: Puntos(Sin(t.Nombre), pieza, uso)))
+            .OrderByDescending(x => x.p)
+            .ThenBy(x => x.t.Nombre.Length)
+            .Select(x => x.t)
+            .FirstOrDefault();
+    }
+
+    private static int Puntos(string n, string pieza, string uso)
+    {
+        var p = 0;
+        var estribo = n.Contains("ESTRIB");
+        var baston = n.Contains("BASTON");
+
+        p += uso switch
+        {
+            "Estribo" => estribo ? 10 : -10,
+            "Baston" => baston ? 10 : estribo ? -10 : -4,
+            _ => estribo || baston || n.Contains("GRAPA") ? -10 : 0
+        };
+
+        // Lo que es de otros elementos.
+        foreach (var otro in new[] { "LOSA", "MURO", "ZAPATA", "GRAPA" })
+        {
+            if (n.Contains(otro) && !(uso == "Corrida" && otro == "GRAPA"))
+            {
+                p -= 6;
+            }
+        }
+
+        var deTrabe = n.Contains("TRABE") || n.Contains("CADENA") || n.Contains("VIGA");
+        var deColumna = n.Contains("COLUMNA") || n.Contains("CASTILLO");
+
+        if (pieza == "Trabe")
+        {
+            p += deTrabe ? 5 : deColumna ? -3 : 0;
+        }
+        else
+        {
+            p += deColumna ? 5 : deTrabe ? -3 : 0;
+        }
+
+        return p;
+    }
+
+    /// <summary>El numero de la varilla en un texto: «VAR #2.5C» da 2.5; «#4» da 4.</summary>
+    private static string? Numero(string? texto)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(texto ?? string.Empty, @"#\s*(\d+(?:[.,]\d+)?)");
+        return m.Success ? m.Groups[1].Value.Replace(',', '.') : null;
+    }
+
+    /// <summary>A mayusculas y sin acentos.</summary>
+    private static string Sin(string s) =>
+        new string(s.Normalize(System.Text.NormalizationForm.FormD)
+            .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+                        != System.Globalization.UnicodeCategory.NonSpacingMark)
+            .ToArray()).ToUpperInvariant();
+}
+
 /// <summary>El cuadro «Armar por tipo»: todos los tipos de columna y trabe del proyecto.</summary>
 public sealed class VistaArmadoPorTipo : Avisador
 {
+    private readonly IReadOnlyList<TipoDeVarillaRevit> _tiposDeVarilla;
+    private readonly IReadOnlyDictionary<string, string> _recordadas;
+    private readonly Dictionary<string, FilaVarilla> _todasLasVarillas = new();
+
     public VistaArmadoPorTipo(IEnumerable<TipoArmable> tipos, IReadOnlyList<ArmadoJson> armados)
+        : this(tipos, armados, Array.Empty<TipoDeVarillaRevit>(), null)
     {
+    }
+
+    /// <param name="tiposDeVarilla">Los tipos de armadura del proyecto.</param>
+    /// <param name="recordadas">Lo que se eligio la vez pasada, por <see cref="FilaVarilla.Llave"/>.</param>
+    public VistaArmadoPorTipo(
+        IEnumerable<TipoArmable> tipos, IReadOnlyList<ArmadoJson> armados,
+        IReadOnlyList<TipoDeVarillaRevit> tiposDeVarilla, IReadOnlyDictionary<string, string>? recordadas)
+    {
+        _tiposDeVarilla = tiposDeVarilla.OrderBy(t => t.Nombre, StringComparer.CurrentCultureIgnoreCase).ToList();
+        _recordadas = recordadas ?? new Dictionary<string, string>();
+
         // Solo las secciones que se pueden armar: rectangulares, con receta y con varillas.
         Armados = armados.Where(a => a.TieneReceta && a.BaseCm > 0 && a.AlturaCm > 0).ToList();
 
@@ -325,8 +569,114 @@ public sealed class VistaArmadoPorTipo : Avisador
             f.Sugerir(EmparejarArmado.Buscar(
                 t.Tipo, t.Clase, t.AnchoM ?? 0, t.PeralteM ?? 0, compatibles));
 
-            f.PropertyChanged += (_, _) => Aviso(nameof(Resumen));
+            f.PropertyChanged += (_, _) =>
+            {
+                ActualizarVarillas();
+                Aviso(nameof(Resumen));
+            };
             Filas.Add(f);
+        }
+
+        ActualizarVarillas();
+    }
+
+    /// <summary>
+    /// Las varillas que llevan las secciones marcadas, una fila por pieza, uso y clave: lo que
+    /// hay que decidir con que tipo de armadura de Revit va.
+    /// </summary>
+    public ObservableCollection<FilaVarilla> Varillas { get; } = new();
+
+    /// <summary>Lo elegido en la tabla de armaduras, para recordarlo la proxima vez.</summary>
+    public Dictionary<string, string> Elecciones() =>
+        _todasLasVarillas.Values
+            .Where(v => v.Elegido != FilaVarilla.Automatico)
+            .ToDictionary(v => v.Llave, v => v.Elegido);
+
+    /// <summary>
+    /// El tipo de armadura elegido para esta varilla de esta seccion, o null para que el
+    /// complemento lo busque por diametro.
+    /// </summary>
+    public long? IdDeVarilla(ArmadoJson a, VarillaArmada v)
+    {
+        var uso = v.Que switch { "estribo" => "Estribo", "baston" => "Baston", _ => "Corrida" };
+        var pieza = a.EsHorizontal ? "Trabe" : "Columna";
+
+        return _todasLasVarillas.TryGetValue($"{pieza}|{uso}|{v.Clave}", out var f) ? f.IdElegido : null;
+    }
+
+    private void ActualizarVarillas()
+    {
+        var hacen = new Dictionary<string, (string Pieza, string Uso, string Clave, double Diam)>();
+
+        void Agregar(string pieza, string uso, string clave, double diam)
+        {
+            if (clave.Length > 0)
+            {
+                hacen.TryAdd($"{pieza}|{uso}|{clave}", (pieza, uso, clave, diam));
+            }
+        }
+
+        foreach (var a in AArmar.Select(f => f.Armado!).Distinct())
+        {
+            var pieza = a.EsHorizontal ? "Trabe" : "Columna";
+
+            foreach (var v in a.Varillas)
+            {
+                Agregar(pieza, "Corrida", v.Clave, v.DiamCm);
+            }
+
+            foreach (var b in a.Bastones)
+            {
+                Agregar(pieza, "Baston", b.Clave, b.DiamCm);
+            }
+
+            Agregar(pieza, "Estribo", a.ClaveEstribo, a.DiamEstriboCm);
+        }
+
+        var orden = hacen.Values
+            .OrderBy(x => x.Pieza == "Trabe" ? 0 : 1)
+            .ThenBy(x => x.Uso == "Corrida" ? 0 : x.Uso == "Baston" ? 1 : 2)
+            .ThenBy(x => x.Diam)
+            .ToList();
+
+        var nuevas = new List<FilaVarilla>();
+
+        foreach (var x in orden)
+        {
+            var llave = $"{x.Pieza}|{x.Uso}|{x.Clave}";
+
+            if (!_todasLasVarillas.TryGetValue(llave, out var f))
+            {
+                // Se crea una vez y se guarda: si la seccion se desmarca y se vuelve a marcar,
+                // la eleccion de la persona sigue ahi.
+                f = new FilaVarilla(x.Pieza, x.Uso, x.Clave, x.Diam, _tiposDeVarilla);
+
+                if (_recordadas.TryGetValue(llave, out var antes) && f.Opciones.Contains(antes))
+                {
+                    f.Poner(antes, "la de la vez pasada");
+                }
+                else
+                {
+                    f.Poner(SugerirVarilla.Mejor(x.Clave, x.Diam, x.Pieza, x.Uso, _tiposDeVarilla)?.Nombre,
+                        "sugerida por su nombre");
+                }
+
+                _todasLasVarillas[llave] = f;
+            }
+
+            nuevas.Add(f);
+        }
+
+        if (nuevas.SequenceEqual(Varillas))
+        {
+            return;
+        }
+
+        Varillas.Clear();
+
+        foreach (var f in nuevas)
+        {
+            Varillas.Add(f);
         }
     }
 

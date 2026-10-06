@@ -273,7 +273,13 @@ internal static class Armador
     /// Arma todas las piezas de cada tipo con su seccion, en una sola transaccion: un Ctrl+Z
     /// lo deshace todo. Estribos y bastones se calculan con la longitud de CADA pieza.
     /// </summary>
-    public static ResultadoArmado EjecutarPorTipo(Document doc, IEnumerable<TrabajoPorTipo> trabajo)
+    /// <param name="tipoDeVarilla">
+    /// El tipo de armadura elegido en la tabla para cada varilla, o null -o un null- para que se
+    /// busque por diametro como siempre.
+    /// </param>
+    public static ResultadoArmado EjecutarPorTipo(
+        Document doc, IEnumerable<TrabajoPorTipo> trabajo,
+        Func<ArmadoJson, VarillaArmada, long?>? tipoDeVarilla = null)
     {
         var r = new ResultadoArmado();
 
@@ -299,7 +305,8 @@ internal static class Armador
                     var etiqueta = $"«{w.Tipo} #{inst.Id.Value}» ({w.Armado.Id})";
 
                     ArmarEn(doc, inst, LlaveDe(inst), etiqueta, w.Armado,
-                        largo => RecetaArmado.ParaLargo(w.Armado, largo), tipos, viejo, r);
+                        largo => RecetaArmado.ParaLargo(w.Armado, largo), tipos, viejo, r,
+                        tipoDeVarilla is null ? null : v => tipoDeVarilla(w.Armado, v));
                 }
             }
 
@@ -325,6 +332,20 @@ internal static class Armador
         return r;
     }
 
+    /// <summary>Los tipos de armadura del proyecto, para la tabla de armaduras.</summary>
+    public static List<TipoDeVarillaRevit> TiposDeVarilla(Document doc) =>
+        new FilteredElementCollector(doc)
+            .OfClass(typeof(RebarBarType))
+            .OfType<RebarBarType>()
+            .Select(b => new TipoDeVarillaRevit
+            {
+                Id = b.Id.Value,
+                Nombre = b.Name ?? string.Empty,
+                DiamM = Unidades.AMetros(b.BarNominalDiameter)
+            })
+            .Where(t => t.Nombre.Length > 0)
+            .ToList();
+
     /// <summary>
     /// La llave con la que se marca el armado de una pieza: la de CadLink si la modelo CadLink,
     /// y si no, la de su Id de Revit. Con ella, volver a armar REHACE en vez de duplicar.
@@ -343,7 +364,8 @@ internal static class Armador
     private static bool ArmarEn(
         Document doc, FamilyInstance inst, string llave, string etiqueta, ArmadoJson armado,
         Func<double, ArmadoBarraJson> porLargo,
-        TiposDeArmado tipos, Dictionary<string, List<ElementId>> viejo, ResultadoArmado r)
+        TiposDeArmado tipos, Dictionary<string, List<ElementId>> viejo, ResultadoArmado r,
+        Func<VarillaArmada, long?>? elegido = null)
     {
         var datosHost = RebarHostData.GetRebarHostData(inst);
 
@@ -375,7 +397,7 @@ internal static class Armador
         {
             try
             {
-                if (Crear(doc, inst, v, llave, tipos) is not null)
+                if (Crear(doc, inst, v, llave, tipos, elegido?.Invoke(v)) is not null)
                 {
                     hechas++;
                 }
@@ -451,9 +473,11 @@ internal static class Armador
 
     /// <summary>Crea una varilla, o un juego de estribos, en la pieza.</summary>
     private static Rebar? Crear(
-        Document doc, FamilyInstance host, VarillaArmada v, string llave, TiposDeArmado tipos)
+        Document doc, FamilyInstance host, VarillaArmada v, string llave, TiposDeArmado tipos,
+        long? idTipo = null)
     {
-        var tipo = tipos.Barra(v.Clave, v.DiamM);
+        // El tipo de armadura que se eligio en la tabla; si no, el de su clave o su diametro.
+        var tipo = (idTipo is long id ? tipos.PorId(id) : null) ?? tipos.Barra(v.Clave, v.DiamM);
 
         var curvas = new List<Curve>();
 
@@ -526,6 +550,9 @@ internal static class Armador
                 .OfType<RebarBarType>()
                 .ToList();
         }
+
+        /// <summary>Un tipo de armadura del proyecto por su Id, o null si ya no esta.</summary>
+        public RebarBarType? PorId(long id) => _barras.FirstOrDefault(b => b.Id.Value == id);
 
         /// <summary>
         /// El tipo de varilla: el que se llame como la clave (<c>#4</c>), o el que tenga ese

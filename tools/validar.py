@@ -15821,6 +15821,24 @@ def v30_armado_por_tipo() -> None:
           and os.path.exists(ruta("client/src/CadLink.Revit/VentanaArmadoPorTipo.xaml")))
     check("tiene pruebas", "ArmadoPorTipo();" in leer(ruta("tools/prueba-revit/Program.cs")))
 
+    # Se pidio: la oficina maneja VARIOS tipos de armadura por diametro (TRABES, COLUMNAS,
+    # BASTON, ESTRIBOS...), asi que se pregunta cual va en cada uso.
+    ven = leer(ruta("client/src/CadLink.Revit/VentanaArmadoPorTipo.xaml"))
+    check("pregunta el tipo de armadura de cada varilla, por pieza y uso",
+          "public sealed class FilaVarilla" in nuc and "public static class SugerirVarilla" in nuc
+          and 'x:Name="RejaVarillas"' in ven and "public static List<TipoDeVarillaRevit> TiposDeVarilla(" in arm)
+    check("y el armador usa el elegido, o el de siempre en automatico",
+          "(idTipo is long id ? tipos.PorId(id) : null) ?? tipos.Barra(v.Clave, v.DiamM)" in arm
+          and "Armador.EjecutarPorTipo(doc, trabajo, vista.IdDeVarilla)" in cmd)
+    check("lo elegido se recuerda para la proxima",
+          "ArchivoVarillas.Guardar(vista.Elecciones());" in cmd and "ArchivoVarillas.Leer()" in cmd)
+    csr = leer(ruta("client/src/CadLink.Revit/CadLink.Revit.csproj"))
+    check("los botones de armar llevan su icono de armadura",
+          'Imagen("CadLink.Revit.armar-32.png")' in apl and "<LogicalName>CadLink.Revit.armar-32.png</LogicalName>" in csr
+          and "<LogicalName>CadLink.Revit.armar-16.png</LogicalName>" in csr
+          and os.path.exists(ruta("client/src/CadLink.Revit/Assets/armar-32.png"))
+          and os.path.exists(ruta("client/src/CadLink.Revit/Assets/armar-16.png")))
+
 def v26_plugin_revit() -> None:
     print("\n[26] Complemento de Revit")
 
@@ -15959,9 +15977,13 @@ def v26_plugin_revit() -> None:
     pedidos = set(re.findall(r'Imagen\("([^"]+)"\)', arranque))
     declarados = set(re.findall(r"<LogicalName>([^<]+)</LogicalName>", addin))
 
-    check("el boton pide sus dos iconos", len(pedidos) == 2, str(sorted(pedidos)))
+    # Dos iconos: el de importar y el de ARMAR -la seccion armada-, cada uno en sus dos medidas.
+    check("los botones piden sus iconos, en sus dos medidas",
+          pedidos == {"CadLink.Revit.importar-32.png", "CadLink.Revit.importar-16.png",
+                      "CadLink.Revit.armar-32.png", "CadLink.Revit.armar-16.png"},
+          str(sorted(pedidos)))
 
-    check("el .csproj declara los dos como recurso embebido", len(declarados) == 2,
+    check("el .csproj los declara como recurso embebido", len(declarados) == 4,
           str(sorted(declarados)))
 
     sin_declarar = sorted(pedidos - declarados)
@@ -15987,7 +16009,8 @@ def v26_plugin_revit() -> None:
           "catch (Exception)" in arranque)
 
     # Los PNG, de verdad: que existan, que sean PNG y que midan lo que dicen.
-    for nombre, medida in (("importar-32.png", 32), ("importar-16.png", 16)):
+    for nombre, medida in (("importar-32.png", 32), ("importar-16.png", 16),
+                           ("armar-32.png", 32), ("armar-16.png", 16)):
         p = ruta("client/src/CadLink.Revit/Assets", nombre)
 
         if not os.path.exists(p):

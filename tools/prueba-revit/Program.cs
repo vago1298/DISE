@@ -2265,6 +2265,61 @@ internal static partial class Programa
         Igual("desmarcar todas", vista.PiezasAArmar, 0);
         vista.MarcarTodas(true);
         Igual("y volver a marcar solo las que tienen seccion y son de concreto", vista.PiezasAArmar, 32);
+        // ---------- Los tipos de armadura: los de la oficina ----------
+        var nombres = new[]
+        {
+            "VAR #2 ESTRIBOS COLUMNAS/CASTILLOS", "VAR #2 ESTRIBOS TRABES/CADENAS",
+            "VAR #2.5C ESTRIBOS COLUMNAS/CASTILLOS", "VAR #2.5C ESTRIBOS TRABES/CADENAS",
+            "VAR #3C BASTON", "VAR #3C COLUMNAS/CASTILLOS", "VAR #3C ESTRIBOS COLUMNAS/CASTILLOS",
+            "VAR #3C ESTRIBOS TRABES/CADENAS", "VAR #3C GRAPAS", "VAR #3C LOSAS", "VAR #3C MUROS CONC/MAMP",
+            "VAR #3C TRABES", "VAR #3C ZAPATA CORRIDA/AISLADA", "VAR #4C BASTON", "VAR #4C COLUMNAS/CASTILLOS",
+            "VAR #4C ESTRIBOS COLUMNAS/CASTILLOS", "VAR #4C ESTRIBOS TRABES", "VAR #4C MUROS CONC/MAMP",
+            "VAR #4C TRABES", "VAR #4C ZAPATAS CORRIDA/AISLADA", "VAR #5C BASTON", "VAR #5C COLUMNAS/CASTILLOS",
+            "VAR #5C MUROS DE CONCRETO", "VAR #5C TRABES", "VAR #6C BASTON", "VAR #6C COLUMNAS",
+            "VAR #6C TRABES", "VAR #8C COLUMNAS", "VAR #8C TRABES"
+        };
+        var deRevit = nombres.Select((n, i) => new TipoDeVarillaRevit { Id = 100 + i, Nombre = n }).ToList();
+
+        string? Mejor(string clave, string pieza, string uso) =>
+            SugerirVarilla.Mejor(clave, 0, pieza, uso, deRevit)?.Nombre;
+
+        Igual("corrida #4 de trabe", Mejor("#4", "Trabe", "Corrida"), "VAR #4C TRABES");
+        Igual("corrida #4 de columna", Mejor("#4", "Columna", "Corrida"), "VAR #4C COLUMNAS/CASTILLOS");
+        Igual("baston #5", Mejor("#5", "Trabe", "Baston"), "VAR #5C BASTON");
+        Igual("estribo #3 de trabe", Mejor("#3", "Trabe", "Estribo"), "VAR #3C ESTRIBOS TRABES/CADENAS");
+        Igual("estribo #3 de columna", Mejor("#3", "Columna", "Estribo"), "VAR #3C ESTRIBOS COLUMNAS/CASTILLOS");
+        Igual("el #2.5 no es el #2", Mejor("#2.5", "Trabe", "Estribo"), "VAR #2.5C ESTRIBOS TRABES/CADENAS");
+        Igual("y el #2 no es el #2.5", Mejor("#2", "Columna", "Estribo"), "VAR #2 ESTRIBOS COLUMNAS/CASTILLOS");
+        Igual("corrida #6 de columna", Mejor("#6", "Columna", "Corrida"), "VAR #6C COLUMNAS");
+        Igual("sin tipo de ese numero, nada", Mejor("#10", "Trabe", "Corrida"), null);
+
+        var conVarillas = new VistaArmadoPorTipo(tipos, new List<ArmadoJson> { t01, t02, c01 }, deRevit,
+            new Dictionary<string, string> { ["Trabe|Corrida|#5"] = "VAR #5C MUROS DE CONCRETO" });
+        var claves = conVarillas.Varillas.Select(v => v.Llave).ToList();
+        Check("la tabla de armaduras sale de las secciones marcadas",
+            claves.Contains("Trabe|Corrida|#5") && claves.Contains("Trabe|Baston|#5")
+            && claves.Contains("Trabe|Estribo|#3") && claves.Contains("Columna|Estribo|#3"));
+        var corrida5 = conVarillas.Varillas.Single(v => v.Llave == "Trabe|Corrida|#5");
+        Check("y respeta lo que se eligio la vez pasada", corrida5.Elegido == "VAR #5C MUROS DE CONCRETO"
+            && corrida5.Origen.Contains("vez pasada"));
+        Check("lo demas sale sugerido por su nombre",
+            conVarillas.Varillas.Single(v => v.Llave == "Trabe|Baston|#5").Elegido == "VAR #5C BASTON");
+
+        var est = new VarillaArmada("#3", 0.0095, EstiloVarilla.Estribo, new List<V3>(),
+            GanchoVarilla.De135, GanchoVarilla.De135, LadoGancho.Izquierda, LadoGancho.Izquierda,
+            new V3(1, 0, 0), 1, 0, "estribo");
+        Igual("el armador recibe el tipo elegido para el estribo de la trabe",
+            conVarillas.IdDeVarilla(t01, est), deRevit.Single(t => t.Nombre == "VAR #3C ESTRIBOS TRABES/CADENAS").Id);
+
+        corrida5.Elegido = FilaVarilla.Automatico;
+        Check("en automatico no se fuerza ningun tipo",
+            conVarillas.IdDeVarilla(t01, est with { Que = "corrida", Clave = "#5" }) is null);
+        Check("y lo automatico no se recuerda", !conVarillas.Elecciones().ContainsKey("Trabe|Corrida|#5")
+            && conVarillas.Elecciones().ContainsKey("Trabe|Baston|#5"));
+
+        conVarillas.Filas.Single(f => f.Tipo.Id == 3).Seccion = FilaArmadoTipo.SinArmar;
+        Check("al desmarcar la columna se van sus varillas de la tabla",
+            !conVarillas.Varillas.Any(v => v.Pieza == "Columna"));
     }
 
     private static void Armado()

@@ -87,7 +87,10 @@ public sealed class ComandoArmarPorTipo : IExternalCommand
         }
 
         // ---- 3. El cuadro ----
-        var vista = new VistaArmadoPorTipo(tipos, archivo.Armados);
+        // Los tipos de armadura del proyecto: la tabla de abajo pregunta cual va en cada uso,
+        // porque una oficina maneja varios por diametro (TRABES, COLUMNAS, BASTON, ESTRIBOS...).
+        var vista = new VistaArmadoPorTipo(
+            tipos, archivo.Armados, Armador.TiposDeVarilla(doc), ArchivoVarillas.Leer());
         var ventana = new VentanaArmadoPorTipo(vista);
 
         try
@@ -116,7 +119,9 @@ public sealed class ComandoArmarPorTipo : IExternalCommand
             .ToList();
 
         var total = trabajo.Sum(w => w.Piezas.Count);
-        var r = Armador.EjecutarPorTipo(doc, trabajo);
+        ArchivoVarillas.Guardar(vista.Elecciones());
+
+        var r = Armador.EjecutarPorTipo(doc, trabajo, vista.IdDeVarilla);
 
         TaskDialog.Show("CadLink", ComandoArmar.Informe(r, total));
 

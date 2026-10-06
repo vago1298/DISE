@@ -389,6 +389,24 @@ elegirla cien veces. El botón **CadLink → Armar por tipo** lo hace **una vez 
    las trabes y columnas o dados para las columnas.
 5. Marca los tipos que quieras (**Marcar todas** / **Desmarcar todas**) y pulsa **Armar**.
 
+### Qué tipo de armadura de Revit lleva cada varilla
+
+Abajo del cuadro hay una segunda tabla, **"Tipo de armadura de Revit con que se pone cada
+varilla"**. Sale sola de las secciones marcadas: un renglón por pieza, uso y diámetro —*Corridas y
+laterales #4 de trabes*, *Bastones #5 de trabes*, *Estribos #3 de columnas*…— y en cada uno eliges
+el tipo de armadura del proyecto (`VAR #4C TRABES`, `VAR #4C COLUMNAS/CASTILLOS`, `VAR #5C BASTON`,
+`VAR #3C ESTRIBOS TRABES/CADENAS`…).
+
+- Ya viene **sugerido** el que mejor se llama: el número de la varilla exacto (el #2 no es el
+  #2.5), la palabra de su uso (ESTRIBO, BASTON) y la de su pieza (TRABE/CADENA o
+  COLUMNA/CASTILLO). Los de losas, muros, zapatas y grapas quedan al final.
+- Lo que elijas **se recuerda** para la próxima vez, en `%LOCALAPPDATA%\CadLink\armaduras-revit.json`.
+- *(automático: por diámetro)* hace lo de siempre: el tipo que se llame como la varilla (`#4`) o
+  tenga su diámetro, y si no hay, lo crea.
+
+Los botones **Armar** y **Armar por tipo** llevan su propio icono: la sección de una trabe con su
+estribo y sus cuatro varillas.
+
 Cada pieza se arma con **su longitud real**: los estribos por zonas y los bastones se calculan en
 Revit con las mismas reglas del alzado de AutoCAD. El reparto de estribos es el **mismo archivo**
 (`Estribos.cs`) compilado en el núcleo; los tramos de bastón siguen la regla de

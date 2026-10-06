@@ -81,8 +81,7 @@ public sealed class Aplicacion : IExternalApplication
         // ---- El armado ----
         //
         // Un boton aparte para poder REHACER el armado -despues de cambiar una seccion en
-        // CadLink- sin volver a pasar por el cuadro de mapeo. Lleva por ahora el icono del de
-        // importar.
+        // CadLink- sin volver a pasar por el cuadro de mapeo.
         var armar = new PushButtonData(
             "CadLinkArmar",
             "Armar",
@@ -100,8 +99,9 @@ public sealed class Aplicacion : IExternalApplication
                 + "Volver a armar rehace el armado de CadLink; el puesto a mano no se toca."
         };
 
-        armar.LargeImage = Imagen("CadLink.Revit.importar-32.png");
-        armar.Image = Imagen("CadLink.Revit.importar-16.png");
+        // Su propio icono: la seccion de una trabe con su estribo y sus varillas.
+        armar.LargeImage = Imagen("CadLink.Revit.armar-32.png");
+        armar.Image = Imagen("CadLink.Revit.armar-16.png");
 
         panel.AddItem(armar);
 
@@ -128,8 +128,8 @@ public sealed class Aplicacion : IExternalApplication
                 + "Volver a armar rehace el armado de CadLink; el puesto a mano no se toca."
         };
 
-        porTipo.LargeImage = Imagen("CadLink.Revit.importar-32.png");
-        porTipo.Image = Imagen("CadLink.Revit.importar-16.png");
+        porTipo.LargeImage = Imagen("CadLink.Revit.armar-32.png");
+        porTipo.Image = Imagen("CadLink.Revit.armar-16.png");
 
         panel.AddItem(porTipo);
     }

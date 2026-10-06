@@ -82,6 +82,15 @@
     <EmbeddedResource Include="Assets\importar-16.png">
       <LogicalName>CadLink.Revit.importar-16.png</LogicalName>
     </EmbeddedResource>
+
+    <!-- El de los botones de ARMAR: la seccion de una trabe con su estribo y sus varillas. -->
+    <EmbeddedResource Include="Assets\armar-32.png">
+      <LogicalName>CadLink.Revit.armar-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\armar-16.png">
+      <LogicalName>CadLink.Revit.armar-16.png</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <PropertyGroup>

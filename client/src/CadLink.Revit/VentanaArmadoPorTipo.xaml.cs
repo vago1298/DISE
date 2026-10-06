@@ -18,6 +18,7 @@ public partial class VentanaArmadoPorTipo : Window
         InitializeComponent();
 
         Reja.ItemsSource = _vista.Filas;
+        RejaVarillas.ItemsSource = _vista.Varillas;
         _vista.PropertyChanged += OnCambio;
 
         Refrescar();
