@@ -420,7 +420,7 @@ Abajo del cuadro hay dos casillas, las dos encendidas:
   | Modelo | Sus medidas | `15 X 30 CM` |
   | Descripción | El ID de CadLink | `T-04` |
   | Marca de tipo | El elemento | `TRABE`, `CASTILLO`, `COLUMNA`… |
-  | Comentarios de tipo | El estribo | `Estr. #3C @15 cm` |
+  | Comentarios de tipo | El estribo, como AutoCAD | `Estr. #3C @15 cm` o `Estr. #3C @10-20-10 cm` |
 
   Las **etiquetas** leen esas propiedades: para cambiar lo que dice el plano se editan las
   propiedades de tipo. Los textos son los mismos del rótulo de AutoCAD (`LineasDeRotulo`).
@@ -455,7 +455,8 @@ El botón **Corte de sección** crea solo la vista —no rearma nada— de la se
    existe se le añade `(2)`, `(3)`…
 
 La sección de cada tipo sale de su **Descripción** (la escribe *Armar por tipo*) o, si no, de
-su nombre o medidas. Usa el último `.cadlink-armado.json` abierto; solo lo pide si no hay
+su nombre o medidas. Al crear el corte también deja al día las propiedades de tipo, con el
+estribo en *Comentarios de tipo*. Usa el último `.cadlink-armado.json` abierto; solo lo pide si no hay
 ninguno.
 
 ### Lo que avisa el cuadro (columna Notas)

@@ -2280,7 +2280,11 @@ internal static partial class Programa
 
         // ---------- Corte de seccion: el estribo, las cotas y el nombre ----------
         Igual("comentarios de tipo = la linea del estribo", p.ComentariosDeTipo, "Estr. #3C @15 cm");
-        Igual("sin rotulo no se inventa estribo", PlanDespiece.Propiedades(t04).ComentariosDeTipo, "");
+        Igual("sin rotulo ni estribo no se inventa", PlanDespiece.Propiedades(t04).ComentariosDeTipo, "");
+        var sinRotulo = new ArmadoJson { Id = "T-05", Tipo = "Trabe", ClaveEstribo = "#3", SeparacionesCm = new() { 15, 15, 15 } };
+        Igual("sin rotulo se escribe como AutoCAD", PlanDespiece.Propiedades(sinRotulo).ComentariosDeTipo, "Estr. #3C @15 cm");
+        sinRotulo.SeparacionesCm = new() { 10, 20, 10 };
+        Igual("y con zonas distintas, las tres", PlanDespiece.Propiedades(sinRotulo).ComentariosDeTipo, "Estr. #3C @10-20-10 cm");
         Casi("la cota de la base va encima de la seccion", c.YCotaBase, 0.15 + 0.06);
         Casi("y la del peralte a la derecha", c.XCotaAltura, 0.075 + 0.06);
         Check("las dos caben dentro de la caja del corte",

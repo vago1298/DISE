@@ -71,7 +71,7 @@ public static class PlanDespiece
 
         var estribo = a.Rotulo.FirstOrDefault(l =>
             l.StartsWith("Estr.", StringComparison.Ordinal) || l.StartsWith("Zuncho", StringComparison.Ordinal))
-            ?? string.Empty;
+            ?? EstriboComoAutoCad(a);
 
         return new PropiedadesDeTipo(
             string.Join(" + ", varillas),
@@ -194,6 +194,26 @@ public static class PlanDespiece
         }
 
         return res;
+    }
+
+    /// <summary>
+    /// El renglon del estribo como lo rotula AutoCAD -«Estr. #3C @15 cm», o «@10-15-10 cm» si
+    /// las zonas van distintas-, para archivos cuyo rotulo no lo trae.
+    /// </summary>
+    public static string EstriboComoAutoCad(ArmadoJson a)
+    {
+        var clave = a.ClaveEstribo.Trim();
+
+        if (clave.Length == 0 || a.SeparacionesCm is not { Count: > 0 } sep)
+        {
+            return string.Empty;
+        }
+
+        var texto = sep.Distinct().Count() == 1
+            ? Cm(sep[0])
+            : string.Join("-", sep.Select(Cm));
+
+        return $"Estr. {clave}C @{texto} cm";
     }
 
     private static string Cm(double v) =>

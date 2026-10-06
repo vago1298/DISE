@@ -15899,6 +15899,24 @@ def v30_armado_por_tipo() -> None:
           "public static class UltimoArchivoArmado" in nuc and "UltimoArchivoArmado.Guardar(abrir.FileName);" in cpt
           and "UltimoArchivoArmado.Leer()" in cor)
     check("tiene pruebas", "VistaCortes.SeccionDe(" in leer(ruta("tools/prueba-revit/Program.cs")))
+    check("el corte deja al dia las propiedades de tipo, con el estribo",
+          "Despiece.Propiedades(doc, pieza.GetTypeId(), a, r);" in arm
+          and "public static string EstriboComoAutoCad(ArmadoJson a)" in pld)
+
+    # CS0104 en la maquina del usuario: WPF y la Revit API comparten nombres de tipo. Con los
+    # dos usings, el de WPF tiene que ir con alias o no compila.
+    ambiguos = []
+    for p in archivos(".cs"):
+        if os.sep + "CadLink.Revit" + os.sep not in p:
+            continue
+        txt = leer(p)
+        for tipo, revit, wpf in (("Binding", "using Autodesk.Revit.DB;", "using System.Windows.Data;"),
+                                 ("TextBox", "using Autodesk.Revit.UI;", "using System.Windows.Controls;"),
+                                 ("ComboBox", "using Autodesk.Revit.UI;", "using System.Windows.Controls;")):
+            if (revit in txt and wpf in txt and re.search(r"\b" + tipo + r"\b(?!\s*=)", txt)
+                    and f"using {tipo} = " not in txt):
+                ambiguos.append(f"{rel(p)}: {tipo}")
+    check("ningun nombre ambiguo entre WPF y la Revit API (CS0104)", not ambiguos, "; ".join(ambiguos))
 
 def v26_plugin_revit() -> None:
     print("\n[26] Complemento de Revit")

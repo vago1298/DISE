@@ -371,9 +371,17 @@ internal static class Armador
         {
             var cortes = new List<(ArmadoJson, FamilyInstance, MarcoPieza)>();
             var nombres = new List<string>();
+            var tiposEscritos = new HashSet<long>();
 
             foreach (var (a, pieza, nombre) in pedidos)
             {
+                // Las propiedades de tipo al dia -con el estribo en Comentarios de tipo-, para
+                // que la etiqueta del corte salga completa sin volver a armar.
+                if (tiposEscritos.Add(pieza.GetTypeId().Value))
+                {
+                    Despiece.Propiedades(doc, pieza.GetTypeId(), a, r);
+                }
+
                 if (Marco(pieza, a, $"«{nombre}»", r) is { } m)
                 {
                     cortes.Add((a, pieza, m));

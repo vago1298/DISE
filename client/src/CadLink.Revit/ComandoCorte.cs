@@ -9,6 +9,11 @@ using Autodesk.Revit.UI;
 using CadLink.Revit.Nucleo;
 using Microsoft.Win32;
 
+// WPF y la Revit API tienen tipos con el MISMO nombre: Autodesk.Revit.DB.Binding y
+// Autodesk.Revit.UI.TextBox (el de la cinta). Aqui se usan los de WPF.
+using Binding = System.Windows.Data.Binding;
+using TextBox = System.Windows.Controls.TextBox;
+
 namespace CadLink.Revit;
 
 /// <summary>
