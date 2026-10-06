@@ -15829,9 +15829,35 @@ def v30_armado_por_tipo() -> None:
           and 'x:Name="RejaVarillas"' in ven and "public static List<TipoDeVarillaRevit> TiposDeVarilla(" in arm)
     check("y el armador usa el elegido, o el de siempre en automatico",
           "(idTipo is long id ? tipos.PorId(id) : null) ?? tipos.Barra(v.Clave, v.DiamM)" in arm
-          and "Armador.EjecutarPorTipo(doc, trabajo, vista.IdDeVarilla)" in cmd)
+          and "doc, trabajo, vista.IdDeVarilla, vista.EscribirPropiedades, vista.CrearDespiece)" in cmd)
     check("lo elegido se recuerda para la proxima",
           "ArchivoVarillas.Guardar(vista.Elecciones());" in cmd and "ArchivoVarillas.Leer()" in cmd)
+    # EL DESPIECE EN REVIT. Las propiedades de tipo que lee la etiqueta -se pidieron una por
+    # una- y un corte por seccion en una hoja.
+    des = leer(ruta("client/src/CadLink.Revit/Despiece.cs"))
+    pld = leer(ruta("client/src/CadLink.Revit.Nucleo/PlanDespiece.cs"))
+    sec = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+    check("las propiedades de tipo son las que se pidieron",
+          all(x in des for x in ("BuiltInParameter.UNIFORMAT_CODE", "BuiltInParameter.KEYNOTE_PARAM",
+                                 "BuiltInParameter.ALL_MODEL_MODEL", "BuiltInParameter.ALL_MODEL_DESCRIPTION",
+                                 "BuiltInParameter.ALL_MODEL_TYPE_MARK"))
+          and '"CONCRETO",' in pld and '$"{Cm(a.BaseCm)} X {Cm(a.AlturaCm)} CM"' in pld)
+    check("y el codigo de montaje dice las varillas como el rotulo de AutoCAD",
+          "public static List<string> LineasDeRotulo(SeccionCad s)" in sec
+          and "var lineas = LineasDeRotulo(s);" in sec
+          and "a.Rotulo = SeccionDrawer.LineasDeRotulo(AFormatoCad(s));" in app)
+    check("un corte por seccion, con sus llamadas y su etiqueta, en hojas",
+          "ViewSection.CreateSection(doc, tipo.Id, caja)" in des and "TextNote.Create(" in des
+          and "IndependentTag.Create(" in des and "ViewSheet.Create(doc, cajetin)" in des
+          and "Viewport.Create(" in des and "public static List<(int Hoja, double X, double Y)> Acomodo(" in pld)
+    check("el despiece va en la misma transaccion que el armado",
+          "Despiece.Crear(doc, cortes, r);" in arm and arm.index("Despiece.Crear(doc, cortes, r);") < arm.index("t.Commit();", arm.index("Armado por tipo de CadLink")))
+    check("la misma seccion para todas las de su medida",
+          "private void AlasDeSuMedida(FilaArmadoTipo elegida)" in nuc and "public bool MismaMedida(" in nuc)
+    check("el arnes compila el despiece",
+          "CadLink.Revit\\Despiece.cs" in leer(ruta("tools/prueba-revit-compila/Prueba.csproj")))
+    check("y tiene pruebas", "DespieceEnRevit();" in leer(ruta("tools/prueba-revit/Program.cs")))
+
     csr = leer(ruta("client/src/CadLink.Revit/CadLink.Revit.csproj"))
     check("los botones de armar llevan su icono de armadura",
           'Imagen("CadLink.Revit.armar-32.png")' in apl and "<LogicalName>CadLink.Revit.armar-32.png</LogicalName>" in csr

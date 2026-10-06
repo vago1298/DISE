@@ -189,7 +189,7 @@ internal static class Armador
     {
         var etiqueta = $"«{barra.Etiqueta}» ({armado.Id})";
 
-        var hecha = ArmarEn(doc, inst, llave, etiqueta, armado, _ => barra.Armado!, tipos, viejo, r);
+        var hecha = ArmarEn(doc, inst, llave, etiqueta, armado, _ => barra.Armado!, tipos, viejo, r) is not null;
 
         if (hecha && barra.Armado!.Por == "medidas")
         {
@@ -277,9 +277,12 @@ internal static class Armador
     /// El tipo de armadura elegido en la tabla para cada varilla, o null -o un null- para que se
     /// busque por diametro como siempre.
     /// </param>
+    /// <param name="propiedades">Escribir en cada tipo las propiedades que lee su etiqueta.</param>
+    /// <param name="despiece">Crear un corte por seccion, con sus llamadas, en una hoja.</param>
     public static ResultadoArmado EjecutarPorTipo(
         Document doc, IEnumerable<TrabajoPorTipo> trabajo,
-        Func<ArmadoJson, VarillaArmada, long?>? tipoDeVarilla = null)
+        Func<ArmadoJson, VarillaArmada, long?>? tipoDeVarilla = null,
+        bool propiedades = false, bool despiece = false)
     {
         var r = new ResultadoArmado();
 
@@ -298,16 +301,35 @@ internal static class Armador
             var tipos = new TiposDeArmado(doc, r);
             var viejo = ArmadoViejo(doc);
 
+            // Una pieza de cada SECCION para su corte: la primera que quedo armada.
+            var cortes = new List<(ArmadoJson, FamilyInstance, MarcoPieza)>();
+            var conCorte = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var w in trabajo)
             {
                 foreach (var inst in w.Piezas)
                 {
                     var etiqueta = $"«{w.Tipo} #{inst.Id.Value}» ({w.Armado.Id})";
 
-                    ArmarEn(doc, inst, LlaveDe(inst), etiqueta, w.Armado,
+                    var marco = ArmarEn(doc, inst, LlaveDe(inst), etiqueta, w.Armado,
                         largo => RecetaArmado.ParaLargo(w.Armado, largo), tipos, viejo, r,
                         tipoDeVarilla is null ? null : v => tipoDeVarilla(w.Armado, v));
+
+                    if (marco is not null && conCorte.Add(w.Armado.Id))
+                    {
+                        cortes.Add((w.Armado, inst, marco));
+                    }
                 }
+
+                if (propiedades && w.Piezas.Count > 0)
+                {
+                    Despiece.Propiedades(doc, w.Piezas[0].GetTypeId(), w.Armado, r);
+                }
+            }
+
+            if (despiece)
+            {
+                Despiece.Crear(doc, cortes, r);
             }
 
             t.Commit();
@@ -361,7 +383,7 @@ internal static class Armador
     /// Arma UNA pieza. Lo de lo largo -estribos, bastones- lo da <paramref name="porLargo"/> con
     /// la longitud real de la pieza: del archivo en el modelo de ETABS, de la receta por tipo.
     /// </summary>
-    private static bool ArmarEn(
+    private static MarcoPieza? ArmarEn(
         Document doc, FamilyInstance inst, string llave, string etiqueta, ArmadoJson armado,
         Func<double, ArmadoBarraJson> porLargo,
         TiposDeArmado tipos, Dictionary<string, List<ElementId>> viejo, ResultadoArmado r,
@@ -373,14 +395,14 @@ internal static class Armador
         {
             r.Errores.Add($"«no admite armado»: {etiqueta}. Revit solo arma piezas de concreto: "
                           + "revisa el material estructural de su familia");
-            return false;
+            return null;
         }
 
         var marco = Marco(inst, armado, etiqueta, r);
 
         if (marco is null)
         {
-            return false;
+            return null;
         }
 
         // Lo de la vez anterior, fuera: volver a armar REHACE, no duplica.
@@ -416,7 +438,7 @@ internal static class Armador
             r.Varillas += hechas;
         }
 
-        return hechas > 0;
+        return hechas > 0 ? marco : null;
     }
 
     /// <summary>

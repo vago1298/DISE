@@ -84,6 +84,8 @@ public static class ArchivoArmado
         {
             x.Varillas ??= new List<VarillaJson>();
             x.Bastones ??= new List<BastonRecetaJson>();
+            x.Rotulo ??= new List<string>();
+            x.Elemento ??= string.Empty;
         }
 
         return a;
@@ -206,6 +208,13 @@ public sealed class FilaArmadoTipo : Avisador
     private readonly IReadOnlyDictionary<string, ArmadoJson> _armados;
     private string _seccion = SinArmar;
     private bool _armar;
+    private bool _sinAvisar;
+
+    /// <summary>Cuando la persona elige la seccion a mano: la vista la pasa a las de su misma medida.</summary>
+    internal event Action<FilaArmadoTipo>? ElegidaAMano;
+
+    /// <summary>Si la seccion la eligio la persona, y no el complemento.</summary>
+    public bool AMano { get; private set; }
 
     internal FilaArmadoTipo(TipoArmable tipo, IReadOnlyList<ArmadoJson> compatibles)
     {
@@ -256,12 +265,50 @@ public sealed class FilaArmadoTipo : Avisador
             _seccion = v;
             Sugerencia = string.Empty;
             _armar = v != SinArmar && DeConcreto > 0;
+
+            if (!_sinAvisar)
+            {
+                AMano = true;
+            }
+
             Aviso();
             Aviso(nameof(Armar));
             Aviso(nameof(Sugerencia));
             Aviso(nameof(Diagnostico));
             Aviso(nameof(Coherente));
+
+            if (!_sinAvisar)
+            {
+                ElegidaAMano?.Invoke(this);
+            }
         }
+    }
+
+    /// <summary>Si mide lo mismo que <paramref name="otra"/>: la misma seccion, como todas las 15x30.</summary>
+    public bool MismaMedida(FilaArmadoTipo otra) =>
+        otra.Tipo.Clase == Tipo.Clase
+        && Tipo.AnchoM is double b1 && Tipo.PeralteM is double h1
+        && otra.Tipo.AnchoM is double b2 && otra.Tipo.PeralteM is double h2
+        && ((Math.Abs(b1 - b2) <= 0.005 && Math.Abs(h1 - h2) <= 0.005)
+            || (Tipo.Clase == ClasePieza.Columna && Math.Abs(b1 - h2) <= 0.005 && Math.Abs(h1 - b2) <= 0.005));
+
+    /// <summary>La pone el complemento, sin contar como eleccion de la persona.</summary>
+    internal void PonerSinAvisar(string seccion, string sugerencia)
+    {
+        _sinAvisar = true;
+
+        try
+        {
+            Seccion = seccion;
+        }
+        finally
+        {
+            _sinAvisar = false;
+        }
+
+        Sugerencia = sugerencia;
+        Aviso(nameof(Sugerencia));
+        Aviso(nameof(Diagnostico));
     }
 
     /// <summary>Si se arma al aceptar. Solo se puede con una seccion elegida.</summary>
@@ -347,10 +394,7 @@ public sealed class FilaArmadoTipo : Avisador
             return;
         }
 
-        Seccion = r.Armado.Id;
-        Sugerencia = r.Por == "nombre" ? "sugerida por su nombre" : "sugerida por sus medidas";
-        Aviso(nameof(Sugerencia));
-        Aviso(nameof(Diagnostico));
+        PonerSinAvisar(r.Armado.Id, r.Por == "nombre" ? "sugerida por su nombre" : "sugerida por sus medidas");
     }
 }
 
@@ -574,6 +618,7 @@ public sealed class VistaArmadoPorTipo : Avisador
                 ActualizarVarillas();
                 Aviso(nameof(Resumen));
             };
+            f.ElegidaAMano += AlasDeSuMedida;
             Filas.Add(f);
         }
 
@@ -697,6 +742,32 @@ public sealed class VistaArmadoPorTipo : Avisador
             return tipos == 0
                 ? "Elige la seccion de CadLink de cada tipo que quieras armar."
                 : $"Se van a armar {PiezasAArmar} pieza(s) de {tipos} tipo(s).";
+        }
+    }
+
+    /// <summary>Escribir en el tipo de Revit las propiedades que lee su etiqueta.</summary>
+    public bool EscribirPropiedades { get; set; } = true;
+
+    /// <summary>Crear el despiece: un corte por seccion, con sus llamadas, en una hoja.</summary>
+    public bool CrearDespiece { get; set; } = true;
+
+    /// <summary>
+    /// LA MISMA SECCION PARA TODAS LAS DE SU MEDIDA. Al elegir a mano la seccion de un tipo, los
+    /// demas tipos de la misma clase y las mismas medidas -todas las 15x30, por ejemplo- toman la
+    /// misma, salvo los que la persona ya eligio a mano.
+    /// </summary>
+    private void AlasDeSuMedida(FilaArmadoTipo elegida)
+    {
+        foreach (var f in Filas)
+        {
+            if (f == elegida || f.AMano || !f.MismaMedida(elegida) || !f.Secciones.Contains(elegida.Seccion))
+            {
+                continue;
+            }
+
+            f.PonerSinAvisar(elegida.Seccion, elegida.Seccion == FilaArmadoTipo.SinArmar
+                ? string.Empty
+                : $"misma sección que «{elegida.NombreTipo}»");
         }
     }
 

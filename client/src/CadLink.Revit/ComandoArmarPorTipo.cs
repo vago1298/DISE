@@ -121,7 +121,8 @@ public sealed class ComandoArmarPorTipo : IExternalCommand
         var total = trabajo.Sum(w => w.Piezas.Count);
         ArchivoVarillas.Guardar(vista.Elecciones());
 
-        var r = Armador.EjecutarPorTipo(doc, trabajo, vista.IdDeVarilla);
+        var r = Armador.EjecutarPorTipo(
+            doc, trabajo, vista.IdDeVarilla, vista.EscribirPropiedades, vista.CrearDespiece);
 
         TaskDialog.Show("CadLink", ComandoArmar.Informe(r, total));
 

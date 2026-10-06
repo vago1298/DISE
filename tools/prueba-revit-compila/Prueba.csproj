@@ -55,6 +55,7 @@
     <Compile Include="..\..\client\src\CadLink.Revit\LectorDeCatalogo.cs" />
     <Compile Include="..\..\client\src\CadLink.Revit\Modelador.cs" />
     <Compile Include="..\..\client\src\CadLink.Revit\Armador.cs" />
+    <Compile Include="..\..\client\src\CadLink.Revit\Despiece.cs" />
   </ItemGroup>
 
 </Project>

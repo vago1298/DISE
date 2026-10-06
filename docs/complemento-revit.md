@@ -407,6 +407,34 @@ el tipo de armadura del proyecto (`VAR #4C TRABES`, `VAR #4C COLUMNAS/CASTILLOS`
 Los botones **Armar** y **Armar por tipo** llevan su propio icono: la sección de una trabe con su
 estribo y sus cuatro varillas.
 
+### El despiece en Revit
+
+Abajo del cuadro hay dos casillas, las dos encendidas:
+
+- **Escribir propiedades de tipo.** En el tipo de Revit de cada sección armada se escriben:
+
+  | Propiedad de tipo | Qué lleva | Ejemplo |
+  |---|---|---|
+  | Código de montaje | Las varillas, como en el rótulo de AutoCAD | `4 vars. #3C` |
+  | Nota clave | Siempre | `CONCRETO` |
+  | Modelo | Sus medidas | `15 X 30 CM` |
+  | Descripción | El ID de CadLink | `T-04` |
+  | Marca de tipo | El elemento | `TRABE`, `CASTILLO`, `COLUMNA`… |
+
+  Las **etiquetas** leen esas propiedades: para cambiar lo que dice el plano se editan las
+  propiedades de tipo. Los textos son los mismos del rótulo de AutoCAD (`LineasDeRotulo`).
+- **Crear el despiece.** Un **corte por sección** a escala 1:10 (a media longitud en la trabe,
+  a media altura en la columna), con las llamadas de sus lechos (`2 vars. #3C`) a la izquierda y
+  la **etiqueta** de la pieza debajo, acomodados en renglones en la hoja **"DESPIECE DE
+  SECCIONES - CadLink"**. Si no caben, se crea otra hoja. La etiqueta es la de la categoría que
+  tenga cargada el proyecto (armazón o pilar estructural); si no hay, el informe lo dice.
+
+**La misma sección para todas las de su medida**: al elegir a mano la sección de un tipo, los
+demás tipos de la misma clase y las mismas medidas (todas las 15x30, por ejemplo) toman la misma.
+Los que ya elegiste a mano no se tocan.
+
+Todo —armado, propiedades y despiece— va en la misma transacción: un Ctrl+Z.
+
 Cada pieza se arma con **su longitud real**: los estribos por zonas y los bastones se calculan en
 Revit con las mismas reglas del alzado de AutoCAD. El reparto de estribos es el **mismo archivo**
 (`Estribos.cs`) compilado en el núcleo; los tramos de bastón siguen la regla de

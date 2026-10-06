@@ -38,6 +38,9 @@ public partial class VentanaArmadoPorTipo : Window
 
     private void OnArmar(object sender, RoutedEventArgs e)
     {
+        _vista.EscribirPropiedades = PropiedadesChk.IsChecked == true;
+        _vista.CrearDespiece = DespieceChk.IsChecked == true;
+
         DialogResult = true;
         Close();
     }

@@ -1,0 +1,261 @@
+using Autodesk.Revit.DB;
+using CadLink.Revit.Nucleo;
+
+namespace CadLink.Revit;
+
+/// <summary>
+/// El <b>despiece en Revit</b>: las propiedades de tipo que lee la etiqueta, y un corte por
+/// seccion armada, con sus llamadas de lecho y su etiqueta, acomodados en una hoja.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>La etiqueta se edita desde las propiedades de tipo.</b> En el tipo se escriben: Codigo de
+/// montaje = las varillas («4 vars. #3C»), Nota clave = CONCRETO, Modelo = «15 X 30 CM»,
+/// Descripcion = el ID de CadLink y Marca de tipo = el elemento. La etiqueta de la familia los
+/// lee, asi que cambiar lo que dice el plano es cambiar el tipo.
+/// </para>
+/// <para>
+/// Lo que se decide -donde va el corte, que encuadra, donde caen las llamadas, como se acomodan
+/// en la hoja- vive en el nucleo, <see cref="PlanDespiece"/>, y tiene pruebas. Aqui solo se llama
+/// a la API, y TODAS las llamadas van con argumentos posicionales (validar.py §26).
+/// </para>
+/// </remarks>
+internal static class Despiece
+{
+    /// <summary>El nombre de la hoja del despiece.</summary>
+    public const string NombreHoja = "DESPIECE DE SECCIONES - CadLink";
+
+    /// <summary>Escribe las propiedades de tipo de la seccion. Lo que no se pudo, al informe.</summary>
+    public static void Propiedades(Document doc, ElementId tipo, ArmadoJson a, ResultadoArmado r)
+    {
+        if (doc.GetElement(tipo) is not ElementType t)
+        {
+            return;
+        }
+
+        var p = PlanDespiece.Propiedades(a);
+
+        Poner(t, BuiltInParameter.UNIFORMAT_CODE, p.CodigoDeMontaje, "Código de montaje", r);
+        Poner(t, BuiltInParameter.KEYNOTE_PARAM, p.NotaClave, "Nota clave", r);
+        Poner(t, BuiltInParameter.ALL_MODEL_MODEL, p.Modelo, "Modelo", r);
+        Poner(t, BuiltInParameter.ALL_MODEL_DESCRIPTION, p.Descripcion, "Descripción", r);
+        Poner(t, BuiltInParameter.ALL_MODEL_TYPE_MARK, p.MarcaDeTipo, "Marca de tipo", r);
+    }
+
+    private static void Poner(Element e, BuiltInParameter cual, string valor, string nombre, ResultadoArmado r)
+    {
+        try
+        {
+            var p = e.get_Parameter(cual);
+
+            if (p is null || p.IsReadOnly || !p.Set(valor))
+            {
+                r.Avisos.Add($"«propiedad de tipo»: {nombre} de «{e.Name}» no se pudo escribir");
+            }
+        }
+        catch (Exception ex)
+        {
+            r.Avisos.Add($"«propiedad de tipo»: {nombre} de «{e.Name}»: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Un corte por seccion, con sus llamadas y su etiqueta, todos en una hoja. Va dentro de la
+    /// MISMA transaccion del armado: un Ctrl+Z deshace todo.
+    /// </summary>
+    /// <param name="cortes">Cada seccion con la pieza que la representa.</param>
+    public static void Crear(
+        Document doc, IReadOnlyList<(ArmadoJson Armado, FamilyInstance Pieza, MarcoPieza Marco)> cortes,
+        ResultadoArmado r)
+    {
+        if (cortes.Count == 0)
+        {
+            return;
+        }
+
+        var tipoDeCorte = new FilteredElementCollector(doc)
+            .OfClass(typeof(ViewFamilyType))
+            .OfType<ViewFamilyType>()
+            .FirstOrDefault(v => v.ViewFamily == ViewFamily.Section);
+
+        if (tipoDeCorte is null)
+        {
+            r.Errores.Add("«despiece»: el proyecto no tiene ningún tipo de vista de sección");
+            return;
+        }
+
+        var tipoDeTexto = doc.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType);
+        var nombres = new HashSet<string>(
+            new FilteredElementCollector(doc).OfClass(typeof(View)).Select(v => v.Name ?? string.Empty),
+            StringComparer.OrdinalIgnoreCase);
+
+        // Revit necesita la geometria del armado ya calculada para dibujarlo en las vistas.
+        doc.Regenerate();
+
+        var hechas = new List<(View Vista, CorteDeSeccion Plan)>();
+
+        foreach (var (a, pieza, marco) in cortes)
+        {
+            var plan = PlanDespiece.Corte(a, marco);
+
+            try
+            {
+                var vista = Vista(doc, tipoDeCorte, plan, nombres);
+                Llamadas(doc, vista, plan, tipoDeTexto);
+                Etiqueta(doc, vista, pieza, plan, a, r);
+                hechas.Add((vista, plan));
+            }
+            catch (Exception ex)
+            {
+                r.Errores.Add($"«despiece»: {plan.Nombre}: {ex.Message}");
+            }
+        }
+
+        if (hechas.Count > 0)
+        {
+            Hoja(doc, hechas, r);
+            r.Avisos.Add($"«despiece»: {hechas.Count} corte(s) en la hoja «{NombreHoja}»");
+        }
+    }
+
+    private static ViewSection Vista(
+        Document doc, ViewFamilyType tipo, CorteDeSeccion plan, HashSet<string> nombres)
+    {
+        var t = Transform.Identity;
+        t.Origin = Punto(plan.Origen);
+        t.BasisX = Vector(plan.EjeX);
+        t.BasisY = Vector(plan.EjeY);
+        t.BasisZ = Vector(plan.EjeZ);
+
+        var caja = new BoundingBoxXYZ();
+        caja.Transform = t;
+        caja.Min = Punto(plan.Min);
+        caja.Max = Punto(plan.Max);
+
+        var vista = ViewSection.CreateSection(doc, tipo.Id, caja);
+
+        vista.Scale = PlanDespiece.Escala;
+        vista.DetailLevel = ViewDetailLevel.Fine;
+        vista.CropBoxActive = true;
+        vista.CropBoxVisible = false;
+
+        // El nombre tiene que ser unico en el proyecto: si ya hay uno, «(2)», «(3)»...
+        var nombre = plan.Nombre;
+
+        for (var i = 2; nombres.Contains(nombre); i++)
+        {
+            nombre = $"{plan.Nombre} ({i})";
+        }
+
+        vista.Name = nombre;
+        nombres.Add(nombre);
+
+        return vista;
+    }
+
+    /// <summary>Las llamadas de los lechos, «2 vars. #3C», como textos en el plano del corte.</summary>
+    private static void Llamadas(Document doc, View vista, CorteDeSeccion plan, ElementId tipoDeTexto)
+    {
+        foreach (var l in plan.Llamadas)
+        {
+            var enModelo = plan.Origen + (plan.EjeX * l.X) + (plan.EjeY * l.Y);
+            TextNote.Create(doc, vista.Id, Punto(enModelo), l.Texto, tipoDeTexto);
+        }
+    }
+
+    /// <summary>
+    /// La etiqueta de la pieza, debajo de la seccion. Es la etiqueta de la categoria cargada en
+    /// el proyecto: lee las propiedades de tipo, asi que se edita desde ahi.
+    /// </summary>
+    private static void Etiqueta(
+        Document doc, View vista, FamilyInstance pieza, CorteDeSeccion plan, ArmadoJson a, ResultadoArmado r)
+    {
+        var punto = plan.Origen + (plan.EjeX * plan.PuntoDeEtiqueta.X) + (plan.EjeY * plan.PuntoDeEtiqueta.Y);
+
+        try
+        {
+            IndependentTag.Create(
+                doc, vista.Id, new Reference(pieza), false,
+                TagMode.TM_ADDBY_CATEGORY, TagOrientation.Horizontal, Punto(punto));
+        }
+        catch (Exception)
+        {
+            r.Avisos.Add($"«sin etiqueta»: {a.Id}. Carga en el proyecto una etiqueta de "
+                         + (a.EsHorizontal ? "armazón estructural" : "pilar estructural")
+                         + " que lea la Marca de tipo, la Descripción y el Código de montaje");
+        }
+    }
+
+    /// <summary>
+    /// Las hojas con los cortes, en renglones, como la fila de secciones de AutoCAD. Cuando una
+    /// se llena, se crea la siguiente.
+    /// </summary>
+    private static void Hoja(Document doc, List<(View Vista, CorteDeSeccion Plan)> hechas, ResultadoArmado r)
+    {
+        var cajetin = new FilteredElementCollector(doc)
+            .OfCategory(BuiltInCategory.OST_TitleBlocks)
+            .WhereElementIsElementType()
+            .FirstElementId();
+
+        var hojas = new List<ViewSheet>();
+
+        ViewSheet Nueva()
+        {
+            var h = ViewSheet.Create(doc, cajetin);
+            h.Name = hojas.Count == 0 ? NombreHoja : $"{NombreHoja} ({hojas.Count + 1})";
+            hojas.Add(h);
+            return h;
+        }
+
+        var primera = Nueva();
+
+        // Lo que mide la hoja, de su cajetin; sin cajetin, un A1.
+        var ancho = 0.841;
+        var alto = 0.594;
+
+        try
+        {
+            var o = primera.Outline;
+            var w = Unidades.AMetros(o.Max.U - o.Min.U);
+            var h = Unidades.AMetros(o.Max.V - o.Min.V);
+
+            if (w > 0.1 && h > 0.1)
+            {
+                ancho = w;
+                alto = h;
+            }
+        }
+        catch (Exception)
+        {
+            // Se queda el A1.
+        }
+
+        var lugares = PlanDespiece.Acomodo(hechas.Select(x => PlanDespiece.EnPapel(x.Plan)).ToList(), ancho, alto);
+
+        for (var i = 0; i < hechas.Count; i++)
+        {
+            var (n, x, y) = lugares[i];
+
+            while (hojas.Count <= n)
+            {
+                Nueva();
+            }
+
+            var hoja = hojas[n];
+
+            if (!Viewport.CanAddViewToSheet(doc, hoja.Id, hechas[i].Vista.Id))
+            {
+                r.Avisos.Add($"«despiece»: {hechas[i].Plan.Nombre} no se pudo poner en la hoja");
+                continue;
+            }
+
+            Viewport.Create(doc, hoja.Id, hechas[i].Vista.Id,
+                new XYZ(Unidades.AInternas(x), Unidades.AInternas(y), 0));
+        }
+    }
+
+    private static XYZ Punto(V3 p) =>
+        new(Unidades.AInternas(p.X), Unidades.AInternas(p.Y), Unidades.AInternas(p.Z));
+
+    private static XYZ Vector(V3 v) => new(v.X, v.Y, v.Z);
+}

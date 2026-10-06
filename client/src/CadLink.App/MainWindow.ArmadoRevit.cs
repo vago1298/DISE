@@ -214,6 +214,11 @@ public partial class MainWindow
 
         a.SeparacionesCm = Separaciones(s.SeparacionCm).Take(3).ToList();
 
+        // El rotulo, con la MISMA funcion que el plano de AutoCAD: de ahi salen las propiedades
+        // de tipo que lee la etiqueta en Revit.
+        a.Rotulo = SeccionDrawer.LineasDeRotulo(AFormatoCad(s));
+        a.Elemento = a.Rotulo.Count > 0 ? a.Rotulo[0] : string.Empty;
+
         var bastones = LlevaBastones(s)
             ? BastonesCad(s).Where(CadLink.Cad.Bastones.EsValido).ToList()
             : new List<BastonCad>();

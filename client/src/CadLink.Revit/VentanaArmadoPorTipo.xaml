@@ -162,6 +162,16 @@
             <Button DockPanel.Dock="Left" Content="Desmarcar todas" Padding="12,6"
                     Click="OnDesmarcarTodas" />
 
+            <CheckBox DockPanel.Dock="Left" x:Name="PropiedadesChk" IsChecked="True"
+                      VerticalAlignment="Center" Margin="18,0,0,0"
+                      Content="Escribir propiedades de tipo"
+                      ToolTip="En cada tipo armado: Código de montaje = sus varillas («4 vars. #3C»), Nota clave = CONCRETO,&#10;Modelo = «15 X 30 CM», Descripción = el ID de CadLink, Marca de tipo = el elemento (TRABE, CASTILLO...).&#10;La etiqueta los lee: para cambiar lo que dice el plano, edita las propiedades de tipo." />
+
+            <CheckBox DockPanel.Dock="Left" x:Name="DespieceChk" IsChecked="True"
+                      VerticalAlignment="Center" Margin="14,0,0,0"
+                      Content="Crear el despiece (cortes en una hoja)"
+                      ToolTip="Un corte por sección a escala 1:10, con las llamadas de sus lechos («2 vars. #3C») y su etiqueta,&#10;acomodados en la hoja «DESPIECE DE SECCIONES - CadLink»." />
+
             <Button DockPanel.Dock="Right" Content="Cancelar" Padding="16,6" IsCancel="True" />
             <Button DockPanel.Dock="Right" x:Name="ArmarButton" Content="Armar"
                     Padding="20,6" Margin="0,0,8,0" IsDefault="True" Click="OnArmar"

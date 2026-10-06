@@ -2728,7 +2728,15 @@ public sealed partial class SeccionDrawer
     // Rotulo
     // ==================================================================
 
-    private void Rotulo(SeccionCad s, double xCentro, double yBase)
+    /// <summary>
+    /// Los renglones del rótulo de una sección: elemento, «ID», varillas por diámetro, estribo,
+    /// diamante, grapas, recubrimiento, f'c y escala.
+    /// </summary>
+    /// <remarks>
+    /// Público y estático porque el complemento de Revit pone EXACTAMENTE estos renglones en las
+    /// propiedades de tipo: así el rótulo del plano de AutoCAD y la etiqueta de Revit dicen lo mismo.
+    /// </remarks>
+    public static List<string> LineasDeRotulo(SeccionCad s)
     {
         var lineas = new List<string>
         {
@@ -2807,6 +2815,13 @@ public sealed partial class SeccionDrawer
         {
             lineas.Add($"Escala 1:{s.Escala}");
         }
+
+        return lineas;
+    }
+
+    private void Rotulo(SeccionCad s, double xCentro, double yBase)
+    {
+        var lineas = LineasDeRotulo(s);
 
         var texto = string.Join("\\P", lineas);
 

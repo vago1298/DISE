@@ -85,6 +85,15 @@ public sealed class ArmadoJson
 
     public List<BastonRecetaJson> Bastones { get; set; } = new();
 
+    /// <summary>El elemento como se rotula: <c>TRABE</c>, <c>CASTILLO</c>, <c>COLUMNA</c>…</summary>
+    public string Elemento { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Los renglones del rotulo de la seccion, los MISMOS del plano de AutoCAD: elemento, «ID»,
+    /// varillas, estribo, recubrimiento, f'c y escala. De aqui salen las propiedades de tipo.
+    /// </summary>
+    public List<string> Rotulo { get; set; } = new();
+
     /// <summary>Si trae la receta, y por tanto se puede armar en una pieza de Revit.</summary>
     public bool TieneReceta => SeparacionesCm is { Count: 3 };
 }

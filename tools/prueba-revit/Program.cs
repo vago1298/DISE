@@ -219,6 +219,7 @@ internal static partial class Programa
         MallaDeEjes();
         Armado();
         ArmadoPorTipo();
+        DespieceEnRevit();
 
         Console.WriteLine();
         Console.WriteLine("============================================================");
@@ -2157,6 +2158,99 @@ internal static partial class Programa
     // ==================================================================
     //  [13] El armado: de la tabla de CadLink a varillas de Revit
     // ==================================================================
+    private static void DespieceEnRevit()
+    {
+        Console.WriteLine();
+        Console.WriteLine("[15] El despiece en Revit: propiedades de tipo, cortes y hoja");
+
+        var k01 = new ArmadoJson
+        {
+            Id = "K-01", Tipo = "Columna", Elemento = "CASTILLO", BaseCm = 15, AlturaCm = 15,
+            Rotulo = new List<string> { "CASTILLO", "\"K-01\"", "4 vars. #3C", "Estr. #3C @15 cm", "Rec. 2 cm" }
+        };
+        foreach (var (x, y) in new[] { (3.0, 3.0), (12.0, 3.0), (3.0, 12.0), (12.0, 12.0) })
+        {
+            k01.Varillas.Add(new VarillaJson { Clave = "#3", DiamCm = 0.95, XCm = x, YCm = y });
+        }
+
+        var p = PlanDespiece.Propiedades(k01);
+        Igual("codigo de montaje = las varillas del rotulo", p.CodigoDeMontaje, "4 vars. #3C");
+        Igual("nota clave = CONCRETO", p.NotaClave, "CONCRETO");
+        Igual("modelo = sus medidas en cm", p.Modelo, "15 X 15 CM");
+        Igual("descripcion = el ID de CadLink", p.Descripcion, "K-01");
+        Igual("marca de tipo = el elemento", p.MarcaDeTipo, "CASTILLO");
+
+        var t04 = new ArmadoJson { Id = "T-04", Tipo = "Trabe", BaseCm = 15, AlturaCm = 30 };
+        t04.Varillas.Add(new VarillaJson { Clave = "#4", DiamCm = 1.27, XCm = 3, YCm = 3 });
+        t04.Varillas.Add(new VarillaJson { Clave = "#4", DiamCm = 1.27, XCm = 12, YCm = 3 });
+        t04.Varillas.Add(new VarillaJson { Clave = "#3", DiamCm = 0.95, XCm = 3, YCm = 27 });
+        Igual("sin rotulo se cuentan las varillas, de la mas gruesa a la mas delgada",
+            PlanDespiece.Propiedades(t04).CodigoDeMontaje, "2 vars. #4C + 1 vars. #3C");
+        Igual("y sin elemento, el tipo", PlanDespiece.Propiedades(t04).MarcaDeTipo, "TRABE");
+
+        // ---------- El corte de una trabe ----------
+        var marco = MarcoPieza.DeTrabe(new V3(0, 0, 3), new V3(6, 0, 3), 2.7, 15);
+        var c = PlanDespiece.Corte(t04, marco);
+        Igual("el corte se llama como en el plano", c.Nombre, "Corte T-04 - 6.00m");
+        Casi("va a media longitud", c.Origen.X, 3.0);
+        Casi("y a media altura de la seccion", c.Origen.Z, 2.85);
+        Check("mira a lo largo de la trabe", Math.Abs(Math.Abs(c.EjeZ.X) - 1) < 1e-9);
+        Check("con la Y de la vista hacia arriba", Math.Abs(c.EjeY.Z - 1) < 1e-9);
+        Check("el sistema es de mano derecha: X por Y da Z",
+            (c.EjeX.Cruz(c.EjeY) - c.EjeZ).Largo < 1e-9);
+        Check("la caja deja aire a la izquierda para las llamadas y abajo para la etiqueta",
+            c.Min.X < -0.075 - 0.3 && c.Min.Y < -0.15 - 0.3 && c.Max.Z == 0 && c.Min.Z < 0);
+        Igual("una llamada por renglon y diametro", c.Llamadas.Count, 2);
+        Check("la de arriba primero, con su cantidad",
+            c.Llamadas[0].Texto == "1 vars. #3C" && c.Llamadas[1].Texto == "2 vars. #4C");
+        Check("a la izquierda de la seccion y a la altura de su renglon",
+            c.Llamadas.All(l => l.X < -0.075) && c.Llamadas[0].Y > 0 && c.Llamadas[1].Y < 0);
+        Check("la etiqueta, debajo de la seccion", c.PuntoDeEtiqueta.Y < -0.15);
+
+        var cc = PlanDespiece.Corte(k01,
+            MarcoPieza.DeColumna(new V3(1, 1, 0), new V3(1, 0, 0), new V3(0, 1, 0), 0, 3, 15, 15));
+        Igual("la columna se corta sin longitud en el nombre", cc.Nombre, "Corte K-01");
+        Check("y se mira desde arriba, como su seccion", Math.Abs(Math.Abs(cc.EjeZ.Z) - 1) < 1e-9);
+        Casi("a media altura", cc.Origen.Z, 1.5);
+
+        // ---------- La hoja ----------
+        var tam = PlanDespiece.EnPapel(c);
+        Casi("a 1:10 el corte mide en el papel la decima parte", tam.Ancho, (c.Max.X - c.Min.X) / 10);
+        var centros = PlanDespiece.Acomodo(Enumerable.Repeat((0.1, 0.12), 9).ToList(), 0.5, 0.4);
+        Check("los cortes van en renglones de izquierda a derecha", centros[1].X > centros[0].X && Math.Abs(centros[1].Y - centros[0].Y) < 1e-12);
+        Check("y al llenarse uno, bajan al siguiente", centros[4].Y < centros[0].Y && Math.Abs(centros[4].X - centros[0].X) < 1e-12);
+        Check("ninguno se sale de su hoja", centros.All(q => q.X + 0.05 <= 0.5 && q.X - 0.05 >= 0 && q.Y - 0.06 >= 0));
+        Check("caben ocho en la primera hoja y el noveno pasa a la segunda",
+            centros.Take(8).All(q => q.Hoja == 0) && centros[8].Hoja == 1);
+        Check("y en la segunda empieza arriba a la izquierda",
+            Math.Abs(centros[8].X - centros[0].X) < 1e-12 && Math.Abs(centros[8].Y - centros[0].Y) < 1e-12);
+
+        // ---------- La misma seccion para todas las de su medida ----------
+        var s1530 = new ArmadoJson { Id = "T-04", Tipo = "Trabe", BaseCm = 15, AlturaCm = 30, SeparacionesCm = new() { 15, 15, 15 } };
+        var otra = new ArmadoJson { Id = "T-09", Tipo = "Trabe", BaseCm = 15, AlturaCm = 30, SeparacionesCm = new() { 10, 20, 10 } };
+        var tipos = new List<TipoArmable>
+        {
+            new() { Id = 1, Clase = ClasePieza.Trabe, Familia = "Viga", Tipo = "V 15x30 A", Piezas = 5, DeConcreto = 5, AnchoM = 0.15, PeralteM = 0.30 },
+            new() { Id = 2, Clase = ClasePieza.Trabe, Familia = "Viga", Tipo = "V 15x30 B", Piezas = 7, DeConcreto = 7, AnchoM = 0.15, PeralteM = 0.30 },
+            new() { Id = 3, Clase = ClasePieza.Trabe, Familia = "Viga", Tipo = "V 20x40", Piezas = 2, DeConcreto = 2, AnchoM = 0.20, PeralteM = 0.40 },
+            new() { Id = 4, Clase = ClasePieza.Columna, Familia = "Col", Tipo = "C 15x30", Piezas = 2, DeConcreto = 2, AnchoM = 0.15, PeralteM = 0.30 }
+        };
+        var v = new VistaArmadoPorTipo(tipos, new List<ArmadoJson> { s1530, otra });
+        var a = v.Filas.Single(f => f.Tipo.Id == 1);
+        var b = v.Filas.Single(f => f.Tipo.Id == 2);
+        Check("dos filas de 15x30 sin nombre conocido no se sugieren: hay dos secciones con esa medida",
+            a.Seccion == FilaArmadoTipo.SinArmar && b.Seccion == FilaArmadoTipo.SinArmar);
+        a.Seccion = "T-09";
+        Check("al elegir la de un tipo, la toman todos los de la misma medida",
+            b.Seccion == "T-09" && b.Armar && b.Sugerencia.Contains("misma sección"));
+        Check("los de otra medida no", v.Filas.Single(f => f.Tipo.Id == 3).Seccion == FilaArmadoTipo.SinArmar);
+        Check("ni una columna de la misma medida", v.Filas.Single(f => f.Tipo.Id == 4).Seccion == FilaArmadoTipo.SinArmar);
+        b.Seccion = "T-04";
+        a.Seccion = FilaArmadoTipo.SinArmar;
+        Check("lo que la persona eligio a mano no se pisa", b.Seccion == "T-04");
+        Check("los ajustes del despiece vienen encendidos", v.EscribirPropiedades && v.CrearDespiece);
+    }
+
     private static void ArmadoPorTipo()
     {
         Console.WriteLine();

@@ -44,6 +44,8 @@ public sealed class ElementId
 {
     public ElementId(long id) => Value = id;
 
+    public static ElementId InvalidElementId => new(-1);
+
     public long Value { get; }
 
     public static bool operator ==(ElementId? a, ElementId? b) => Equals(a?.Value, b?.Value);
@@ -99,6 +101,8 @@ public sealed class Parameter
 {
     public StorageType StorageType => StorageType.Double;
 
+    public bool IsReadOnly => false;
+
     public double AsDouble() => 0;
 
     public string? AsString() => null;
@@ -135,6 +139,9 @@ public sealed class BoundingBoxXYZ
     public XYZ Min { get; set; } = new(0, 0, 0);
 
     public XYZ Max { get; set; } = new(0, 0, 0);
+
+    /// <summary>El sistema de la caja: con el se orienta la vista de corte.</summary>
+    public Transform Transform { get; set; } = Transform.Identity;
 }
 
 public abstract class Element
@@ -162,6 +169,18 @@ public abstract class Element
 public class View : Element
 {
     public bool IsTemplate => false;
+
+    // Lo que el despiece le pone a su corte. Sin comprobar contra la DLL.
+    public int Scale { get; set; }
+
+    public ViewDetailLevel DetailLevel { get; set; }
+
+    public bool CropBoxActive { get; set; }
+
+    public bool CropBoxVisible { get; set; }
+
+    /// <summary>El contorno de la hoja, en pies de papel.</summary>
+    public BoundingBoxUV Outline => new();
 }
 
 public abstract class ElementType : Element
@@ -254,6 +273,9 @@ public sealed class Document
 
     public void Regenerate() { }
 
+    /// <summary>Revit API: Document.GetDefaultElementTypeId(ElementTypeGroup). Para el tipo de texto.</summary>
+    public ElementId GetDefaultElementTypeId(ElementTypeGroup grupo) => new(0);
+
     /// <summary>Revit API 2025/2026: Document.Delete(ICollection&lt;ElementId&gt;).</summary>
     public ICollection<ElementId> Delete(ICollection<ElementId> ids) => ids;
 }
@@ -279,6 +301,10 @@ public sealed class FilteredElementCollector : IEnumerable<Element>
 
     public FilteredElementCollector WhereElementIsNotElementType() => this;
 
+    public FilteredElementCollector WhereElementIsElementType() => this;
+
+    public ElementId FirstElementId() => ElementId.InvalidElementId;
+
     public IEnumerator<Element> GetEnumerator() => new List<Element>().GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
@@ -289,7 +315,10 @@ public enum BuiltInCategory
     OST_StructuralColumns,
     OST_StructuralFraming,
     OST_Walls,
-    OST_Floors
+    OST_Floors,
+
+    // El cajetin de las hojas del despiece.
+    OST_TitleBlocks
 }
 
 public enum BuiltInParameter
@@ -315,7 +344,16 @@ public enum BuiltInParameter
     // El desfase de nivel de cada extremo de una viga. Confirmados en la misma lista de 2026:
     // STRUCTURAL_BEAM_END0_ELEVATION y STRUCTURAL_BEAM_END1_ELEVATION.
     STRUCTURAL_BEAM_END0_ELEVATION,
-    STRUCTURAL_BEAM_END1_ELEVATION
+    STRUCTURAL_BEAM_END1_ELEVATION,
+
+    // Las propiedades de TIPO que escribe el despiece: Codigo de montaje, Nota clave, Modelo,
+    // Descripcion y Marca de tipo. Sin comprobar contra la DLL; son los nombres de la lista de
+    // BuiltInParameter de la documentacion.
+    UNIFORMAT_CODE,
+    KEYNOTE_PARAM,
+    ALL_MODEL_MODEL,
+    ALL_MODEL_DESCRIPTION,
+    ALL_MODEL_TYPE_MARK
 }
 
 /// <summary>
