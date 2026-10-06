@@ -106,6 +106,34 @@ public sealed class ReferenceArray
 public sealed class Dimension : Element
 {
     public double? Value => 0;
+
+    /// <summary>Revit API: Dimension.TextPosition, de lectura y escritura en las de un tramo.</summary>
+    public XYZ TextPosition { get; set; } = new(0, 0, 0);
+}
+
+public sealed class DetailCurve : Element { }
+
+/// <summary>Revit API: FilledRegion.Create(Document, ElementId tipo, ElementId vista, IList&lt;CurveLoop&gt;).</summary>
+public sealed class FilledRegion : Element
+{
+    public static FilledRegion Create(Document doc, ElementId tipo, ElementId vista, IList<CurveLoop> contornos) => new();
+}
+
+/// <summary>Revit API: FilledRegionType.ForegroundPatternId (2019+).</summary>
+public sealed class FilledRegionType : ElementType
+{
+    public ElementId ForegroundPatternId { get; set; } = ElementId.InvalidElementId;
+}
+
+/// <summary>Revit API: FillPatternElement.GetFillPattern() y FillPattern.IsSolidFill.</summary>
+public sealed class FillPatternElement : Element
+{
+    public FillPattern GetFillPattern() => new();
+}
+
+public sealed class FillPattern
+{
+    public bool IsSolidFill => false;
 }
 
 /// <summary>Revit API: SubTransaction(Document), Start, Commit, RollBack. Dentro de una Transaction.</summary>

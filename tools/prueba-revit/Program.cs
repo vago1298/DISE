@@ -2207,6 +2207,47 @@ internal static partial class Programa
             c.Llamadas.All(l => l.X < -0.075) && c.Llamadas[0].Y > 0 && c.Llamadas[1].Y < 0);
         Check("la etiqueta, debajo de la seccion", c.PuntoDeEtiqueta.Y < -0.15);
 
+        // ---------- Las llamadas con flechas, como en AutoCAD ----------
+        // La T-01 del usuario: 15x30, 2 #4 arriba, 2 #3 laterales a media altura, 2 #4 abajo.
+        var t01 = new ArmadoJson { Id = "T-01", Tipo = "Trabe", BaseCm = 15, AlturaCm = 30 };
+        foreach (var (x, y, cl, d) in new[] { (3.5, 26.5, "#4", 1.27), (11.5, 26.5, "#4", 1.27), (3.5, 15.0, "#3", 0.95),
+                                              (11.5, 15.0, "#3", 0.95), (3.5, 3.5, "#4", 1.27), (11.5, 3.5, "#4", 1.27) })
+        {
+            t01.Varillas.Add(new VarillaJson { Clave = cl, DiamCm = d, XCm = x, YCm = y });
+        }
+        var ll = PlanDespiece.Llamadas(t01);
+        Check("tres llamadas, de arriba abajo, como en el plano",
+            ll.Select(l => l.Texto).SequenceEqual(new[] { "2 vars. #4C", "2 vars. #3C", "2 vars. #4C" }));
+        Check("la espina va 2.5 cm debajo de su renglon de varillas",
+            Math.Abs(ll[0].Y - (0.115 - 0.025)) < 1e-9 && Math.Abs(ll[2].Y - (-0.115 - 0.025)) < 1e-9);
+        Check("y arranca 2 cm a la izquierda del paño, donde acaba el texto",
+            ll.All(l => Math.Abs(l.X - (-0.075 - 0.02)) < 1e-9 && Math.Abs(l.Lineas[0].X1 - l.X) < 1e-9));
+        Check("la espina llega hasta la ultima varilla del grupo",
+            ll.All(l => Math.Abs(l.Lineas[0].X2 - 0.04) < 1e-9 && Math.Abs(l.Lineas[0].Y2 - l.Y) < 1e-9));
+        Check("una flecha por varilla, con la punta en el borde de abajo de la varilla",
+            ll.All(l => l.Flechas.Count == 2 && l.Flechas.All(f => f.DesdeAbajo))
+            && Math.Abs(ll[0].Flechas[0].Y - (0.115 - 0.00635)) < 1e-9 && Math.Abs(ll[0].Flechas[0].X - (-0.04)) < 1e-9);
+        var tri = ll[0].Flechas[0].Triangulo();
+        Check("la flecha es un triangulo de 1 cm que apunta a la varilla",
+            tri[0] == (ll[0].Flechas[0].X, ll[0].Flechas[0].Y) && tri[1].Y < tri[0].Y && Math.Abs(tri[1].X - tri[2].X - 0.01) < 1e-12);
+        Check("y la linea sube de la espina a la base de la flecha, sin taparla",
+            ll[0].Lineas.Skip(1).All(t => Math.Abs(t.Y1 - ll[0].Y) < 1e-9 && Math.Abs(t.Y2 - tri[1].Y) < 1e-9));
+
+        // Dos diametros en el lecho de arriba: el segundo sube y se corre, como en AutoCAD.
+        var dos = new ArmadoJson { Id = "T", Tipo = "Trabe", BaseCm = 20, AlturaCm = 40 };
+        foreach (var (x, cl, d) in new[] { (4.0, "#5", 1.59), (10.0, "#3", 0.95), (16.0, "#5", 1.59) })
+        {
+            dos.Varillas.Add(new VarillaJson { Clave = cl, DiamCm = d, XCm = x, YCm = 36 });
+        }
+        dos.Varillas.Add(new VarillaJson { Clave = "#5", DiamCm = 1.59, XCm = 4, YCm = 4 });
+        var ld = PlanDespiece.Llamadas(dos);
+        Check("con dos diametros en un renglon, el grueso primero y el otro escalonado",
+            ld[0].Texto == "2 vars. #5C" && ld[1].Texto == "1 vars. #3C"
+            && Math.Abs(ld[1].Y - ld[0].Y - 0.032) < 1e-9 && Math.Abs(ld[0].X - ld[1].X - 0.045) < 1e-9);
+        Check("el escalonado de arriba queda encima de la varilla y su flecha apunta hacia abajo",
+            ld[1].Y > 0.16 && !ld[1].Flechas.Single().DesdeAbajo);
+        Casi("la etiqueta, pegada debajo de la seccion", c.PuntoDeEtiqueta.Y, -0.15 - 0.04);
+
         var cc = PlanDespiece.Corte(k01,
             MarcoPieza.DeColumna(new V3(1, 1, 0), new V3(1, 0, 0), new V3(0, 1, 0), 0, 3, 15, 15));
         Igual("la columna se corta sin longitud en el nombre", cc.Nombre, "Corte K-01");

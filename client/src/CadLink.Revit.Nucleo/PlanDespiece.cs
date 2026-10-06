@@ -24,8 +24,35 @@ public sealed record PropiedadesDeTipo(
     string CodigoDeMontaje, string NotaClave, string Modelo, string Descripcion, string MarcaDeTipo,
     string ComentariosDeTipo = "");
 
-/// <summary>Una llamada de lecho en el corte, en metros de la vista: X a la derecha, Y arriba.</summary>
-public sealed record LlamadaDeCorte(string Texto, double X, double Y);
+/// <summary>Un tramo de linea de una llamada, en metros de la vista.</summary>
+public readonly record struct TramoDeCorte(double X1, double Y1, double X2, double Y2);
+
+/// <summary>
+/// La flecha rellena de una llamada: la punta toca la varilla y el triangulo queda del lado de
+/// donde llega la linea.
+/// </summary>
+/// <param name="DesdeAbajo">La linea llega por debajo de la varilla: la flecha apunta hacia arriba.</param>
+public readonly record struct FlechaDeCorte(double X, double Y, bool DesdeAbajo)
+{
+    /// <summary>Los tres vertices: la punta y los dos de la base.</summary>
+    public (double X, double Y)[] Triangulo()
+    {
+        var lado = PlanDespiece.LadoFlecha;
+        var alto = lado * Math.Sqrt(3) / 2;
+        var yBase = DesdeAbajo ? Y - alto : Y + alto;
+        return new[] { (X, Y), (X + (lado / 2), yBase), (X - (lado / 2), yBase) };
+    }
+}
+
+/// <summary>
+/// Una llamada de lecho en el corte, como en AutoCAD: el texto a la izquierda de la seccion,
+/// una espina horizontal hasta la ultima varilla del grupo y una linea con flecha a cada una.
+/// En metros de la vista: X a la derecha, Y arriba, desde el centro de la seccion.
+/// </summary>
+/// <param name="X">El borde DERECHO del texto: ahi empieza la espina.</param>
+/// <param name="Y">La altura de la espina; el texto va centrado en ella.</param>
+public sealed record LlamadaDeCorte(
+    string Texto, double X, double Y, List<TramoDeCorte> Lineas, List<FlechaDeCorte> Flechas);
 
 /// <summary>
 /// La vista de corte de una seccion: su sistema -origen y direcciones, en el modelo- y su caja
@@ -34,6 +61,7 @@ public sealed record LlamadaDeCorte(string Texto, double X, double Y);
 /// </summary>
 /// <param name="YCotaBase">A que altura de la vista va la cota de la base: encima de la seccion.</param>
 /// <param name="XCotaAltura">Y la del peralte: a la derecha, porque a la izquierda van las llamadas.</param>
+/// <param name="PuntoDeEtiqueta">Donde va lo de ARRIBA y al centro de la etiqueta: pegada debajo de la seccion, como el rotulo de AutoCAD.</param>
 public sealed record CorteDeSeccion(
     string Nombre, V3 Origen, V3 EjeX, V3 EjeY, V3 EjeZ,
     V3 Min, V3 Max, List<LlamadaDeCorte> Llamadas, V3 PuntoDeEtiqueta,
@@ -46,7 +74,30 @@ public static class PlanDespiece
 
     /// <summary>Aire alrededor de la seccion en el corte, en m: llamadas a la izquierda y etiqueta abajo.</summary>
     public const double AireIzquierda = 0.32;
-    public const double AireDerecha = 0.10;
+    public const double AireDerecha = 0.20;
+
+    // Las medidas de las llamadas de AutoCAD (SeccionDrawer: LineaVerticalDist, LechoSepY,
+    // LechoSepX, TamFlecha), en metros del modelo, que a 1:10 son las del plano.
+    /// <summary>Lo que baja la espina desde el renglon de varillas.</summary>
+    public const double BajadaEspina = 0.025;
+
+    /// <summary>Cuanto se escalona el segundo diametro de un mismo renglon, en Y y en X.</summary>
+    public const double EscalonY = 0.032;
+    public const double EscalonX = 0.045;
+
+    /// <summary>Del paño izquierdo de la seccion al final del texto.</summary>
+    public const double AireTexto = 0.02;
+
+    public const double LadoFlecha = 0.01;
+
+    /// <summary>El hueco entre el final del texto de una llamada y su espina.</summary>
+    public const double HuecoTexto = 0.005;
+
+    /// <summary>Lo que va el numero del peralte a la derecha de su linea de cota.</summary>
+    public const double TextoCotaAltura = 0.05;
+
+    /// <summary>Del paño de abajo de la seccion a lo de ARRIBA de su etiqueta. En AutoCAD, 6 cm.</summary>
+    public const double AireEtiqueta = 0.04;
     public const double AireArriba = 0.10;
     public const double AireAbajo = 0.40;
 
@@ -105,7 +156,7 @@ public static class PlanDespiece
         return new CorteDeSeccion(
             nombre, origen, m.Ex, m.Ey, z, min, max,
             Llamadas(a),
-            new V3(0, -(h / 2) - 0.08, 0),
+            new V3(0, -(h / 2) - AireEtiqueta, 0),
             (h / 2) + 0.06,
             (b / 2) + 0.06);
     }
@@ -118,15 +169,61 @@ public static class PlanDespiece
     {
         var b = a.BaseCm / 100;
         var h = a.AlturaCm / 100;
+        var res = new List<LlamadaDeCorte>();
 
-        return a.Varillas
-            .GroupBy(v => (Y: Math.Round(v.YCm, 1), v.Clave))
-            .OrderByDescending(g => g.Key.Y)
-            .Select(g => new LlamadaDeCorte(
-                $"{g.Count()} vars. {g.Key.Clave}C",
-                -(b / 2) - AireIzquierda + 0.02,
-                (g.Key.Y / 100) - (h / 2) + 0.015))
+        // Un renglon por altura; dentro de el, un grupo por diametro -el mas grueso primero-,
+        // escalonados como en AutoCAD para que no se encimen.
+        var renglones = a.Varillas
+            .GroupBy(v => Math.Round(v.YCm, 1))
+            .OrderByDescending(g => g.Key)
             .ToList();
+
+        for (var r = 0; r < renglones.Count; r++)
+        {
+            var yBarra = (renglones[r].Key / 100) - (h / 2);
+
+            // El de arriba escalona hacia ARRIBA, y su segundo grupo queda por encima de las
+            // varillas; los demas hacia abajo. Es el LeaderLecho de AutoCAD.
+            var haciaArriba = r == 0 && renglones.Count > 1;
+
+            var grupos = renglones[r]
+                .GroupBy(v => v.Clave)
+                .OrderByDescending(g => g.First().DiamCm)
+                .ToList();
+
+            for (var i = 0; i < grupos.Count; i++)
+            {
+                var g = grupos[i];
+                var yEspina = yBarra - BajadaEspina + ((haciaArriba ? 1 : -1) * i * EscalonY);
+                var xTexto = -(b / 2) - AireTexto - (i * EscalonX);
+
+                var lineas = new List<TramoDeCorte>();
+                var flechas = new List<FlechaDeCorte>();
+
+                var xs = g.Select(v => (X: (v.XCm / 100) - (b / 2), R: v.DiamCm / 200))
+                    .GroupBy(v => Math.Round(v.X, 4))
+                    .Select(v => v.First())
+                    .OrderBy(v => v.X)
+                    .ToList();
+
+                lineas.Add(new TramoDeCorte(xTexto, yEspina, xs.Max(v => v.X), yEspina));
+
+                foreach (var (x, radio) in xs)
+                {
+                    var desdeAbajo = yEspina < yBarra;
+                    var punta = desdeAbajo ? yBarra - radio : yBarra + radio;
+                    var flecha = new FlechaDeCorte(x, punta, desdeAbajo);
+                    var alto = LadoFlecha * Math.Sqrt(3) / 2;
+
+                    lineas.Add(new TramoDeCorte(x, yEspina, x, desdeAbajo ? punta - alto : punta + alto));
+                    flechas.Add(flecha);
+                }
+
+                res.Add(new LlamadaDeCorte($"{g.Count()} vars. {g.Key}C", xTexto, yEspina, lineas, flechas));
+            }
+        }
+
+        return res;
     }
 
     /// <summary>

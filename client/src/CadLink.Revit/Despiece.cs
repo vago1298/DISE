@@ -162,7 +162,7 @@ internal static class Despiece
             try
             {
                 var vista = Vista(doc, tipoDeCorte, plan, enUso);
-                Llamadas(doc, vista, plan, tipoDeTexto);
+                Llamadas(doc, vista, plan, tipoDeTexto, r);
                 Etiqueta(doc, vista, pieza, plan, a, r);
                 Cotas(doc, vista, pieza, plan, a, r);
                 hechas.Add((vista, plan));
@@ -208,9 +208,11 @@ internal static class Despiece
             plan.Origen + (plan.EjeY * plan.YCotaBase) - (plan.EjeX * (b / 2)),
             plan.Origen + (plan.EjeY * plan.YCotaBase) + (plan.EjeX * (b / 2)));
 
+        // El numero del peralte, A LA DERECHA de su linea: centrado en ella pisaba la seccion.
         var lado = Cota(doc, vista, pieza, plan.EjeY, y1, y2,
             plan.Origen + (plan.EjeX * plan.XCotaAltura) - (plan.EjeY * (h / 2)),
-            plan.Origen + (plan.EjeX * plan.XCotaAltura) + (plan.EjeY * (h / 2)));
+            plan.Origen + (plan.EjeX * plan.XCotaAltura) + (plan.EjeY * (h / 2)),
+            plan.Origen + (plan.EjeX * (plan.XCotaAltura + PlanDespiece.TextoCotaAltura)));
 
         if (!arriba || !lado)
         {
@@ -223,11 +225,11 @@ internal static class Despiece
     /// <summary>Una cota: primero entre las caras de la pieza, y si no, entre sus planos de referencia.</summary>
     private static bool Cota(
         Document doc, View vista, FamilyInstance pieza, V3 eje,
-        FamilyInstanceReferenceType de, FamilyInstanceReferenceType a, V3 p1, V3 p2)
+        FamilyInstanceReferenceType de, FamilyInstanceReferenceType a, V3 p1, V3 p2, V3? texto = null)
     {
         var linea = Line.CreateBound(Punto(p1), Punto(p2));
 
-        if (Caras(pieza, eje) is { } caras && Acotar(doc, vista, linea, caras.Min, caras.Max))
+        if (Caras(pieza, eje) is { } caras && Acotar(doc, vista, linea, caras.Min, caras.Max, texto))
         {
             return true;
         }
@@ -237,7 +239,7 @@ internal static class Despiece
             var r1 = pieza.GetReferences(de).FirstOrDefault();
             var r2 = pieza.GetReferences(a).FirstOrDefault();
 
-            return r1 is not null && r2 is not null && Acotar(doc, vista, linea, r1, r2);
+            return r1 is not null && r2 is not null && Acotar(doc, vista, linea, r1, r2, texto);
         }
         catch (Exception)
         {
@@ -250,7 +252,7 @@ internal static class Despiece
     /// -«hay una o varias referencias de cota que no son validas»-, se deshace sin dejar el
     /// aviso en el informe y se prueba la otra forma.
     /// </summary>
-    private static bool Acotar(Document doc, View vista, Line linea, Reference r1, Reference r2)
+    private static bool Acotar(Document doc, View vista, Line linea, Reference r1, Reference r2, V3? texto)
     {
         using var sub = new SubTransaction(doc);
         sub.Start();
@@ -266,6 +268,18 @@ internal static class Despiece
 
             if (cota is not null && cota.IsValidObject && (cota.Value ?? 0) > 1e-6)
             {
+                if (texto is { } t)
+                {
+                    try
+                    {
+                        cota.TextPosition = Punto(t);
+                    }
+                    catch (Exception)
+                    {
+                        // Si el estilo de cota no deja mover el texto, se queda donde Revit lo pone.
+                    }
+                }
+
                 sub.Commit();
                 return true;
             }
@@ -409,13 +423,202 @@ internal static class Despiece
         return vista;
     }
 
-    /// <summary>Las llamadas de los lechos, «2 vars. #3C», como textos en el plano del corte.</summary>
-    private static void Llamadas(Document doc, View vista, CorteDeSeccion plan, ElementId tipoDeTexto)
+    /// <summary>
+    /// Las llamadas de los lechos como en AutoCAD: el texto «2 vars. #3C» a la izquierda de la
+    /// seccion, una espina horizontal hasta la ultima varilla del grupo y una linea con FLECHA
+    /// RELLENA a cada varilla. Lineas de detalle y regiones rellenas: son del corte, no del modelo.
+    /// </summary>
+    private static void Llamadas(Document doc, View vista, CorteDeSeccion plan, ElementId tipoDeTexto, ResultadoArmado r)
     {
+        XYZ En(double x, double y) => Punto(plan.Origen + (plan.EjeX * x) + (plan.EjeY * y));
+
+        var relleno = TipoDeRellenoSolido(doc);
+        var textos = new List<(TextNote Nota, LlamadaDeCorte Llamada)>();
+        var sinFlecha = false;
+
         foreach (var l in plan.Llamadas)
         {
-            var enModelo = plan.Origen + (plan.EjeX * l.X) + (plan.EjeY * l.Y);
-            TextNote.Create(doc, vista.Id, Punto(enModelo), l.Texto, tipoDeTexto);
+            foreach (var t in l.Lineas)
+            {
+                // Revit no acepta lineas mas cortas que su tolerancia (~0.8 mm).
+                if (Math.Abs(t.X2 - t.X1) + Math.Abs(t.Y2 - t.Y1) < 0.002)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    doc.Create.NewDetailCurve(vista, Line.CreateBound(En(t.X1, t.Y1), En(t.X2, t.Y2)));
+                }
+                catch (Exception)
+                {
+                    // Una linea de menos no quita la llamada.
+                }
+            }
+
+            foreach (var f in l.Flechas)
+            {
+                var v = f.Triangulo().Select(p => En(p.X, p.Y)).ToList();
+                var lados = new List<Curve>
+                {
+                    Line.CreateBound(v[0], v[1]), Line.CreateBound(v[1], v[2]), Line.CreateBound(v[2], v[0])
+                };
+
+                try
+                {
+                    if (relleno is null)
+                    {
+                        throw new InvalidOperationException("sin relleno solido");
+                    }
+
+                    FilledRegion.Create(doc, relleno, vista.Id, new List<CurveLoop> { CurveLoop.Create(lados) });
+                }
+                catch (Exception)
+                {
+                    // Sin relleno, al menos el contorno del triangulo.
+                    sinFlecha = true;
+
+                    foreach (var c in lados)
+                    {
+                        try
+                        {
+                            doc.Create.NewDetailCurve(vista, c);
+                        }
+                        catch (Exception)
+                        {
+                            // Nada.
+                        }
+                    }
+                }
+            }
+
+            textos.Add((TextNote.Create(doc, vista.Id, En(l.X, l.Y), l.Texto, tipoDeTexto), l));
+        }
+
+        if (sinFlecha)
+        {
+            r.Avisos.Add("«flechas sin relleno»: el proyecto no tiene un relleno sólido para las flechas de las llamadas");
+        }
+
+        // El texto se crea con su esquina en el punto; ya medido, se acomoda como en AutoCAD:
+        // su borde derecho al final de la espina y centrado en su altura.
+        doc.Regenerate();
+
+        foreach (var (nota, l) in textos)
+        {
+            if (EnLaVista(nota, vista, plan) is not { } caja)
+            {
+                continue;
+            }
+
+            var dx = (l.X - PlanDespiece.HuecoTexto) - caja.XMax;
+            var dy = l.Y - ((caja.YMin + caja.YMax) / 2);
+            Mover(doc, nota, plan, dx, dy);
+        }
+    }
+
+    /// <summary>
+    /// Lo que ocupa un elemento en el corte, en metros de la vista -X a la derecha y Y arriba
+    /// desde el centro de la seccion-. Null si Revit no lo dice.
+    /// </summary>
+    private static (double XMin, double XMax, double YMin, double YMax)? EnLaVista(Element e, View vista, CorteDeSeccion plan)
+    {
+        try
+        {
+            if (e.get_BoundingBox(vista) is not { } c)
+            {
+                return null;
+            }
+
+            var xs = new List<double>();
+            var ys = new List<double>();
+
+            foreach (var x in new[] { c.Min.X, c.Max.X })
+            {
+                foreach (var y in new[] { c.Min.Y, c.Max.Y })
+                {
+                    foreach (var z in new[] { c.Min.Z, c.Max.Z })
+                    {
+                        var p = new V3(Unidades.AMetros(x), Unidades.AMetros(y), Unidades.AMetros(z)) - plan.Origen;
+                        xs.Add(p.Punto(plan.EjeX));
+                        ys.Add(p.Punto(plan.EjeY));
+                    }
+                }
+            }
+
+            return (xs.Min(), xs.Max(), ys.Min(), ys.Max());
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static void Mover(Document doc, Element e, CorteDeSeccion plan, double dx, double dy)
+    {
+        if (Math.Abs(dx) + Math.Abs(dy) < 1e-4)
+        {
+            return;
+        }
+
+        try
+        {
+            ElementTransformUtils.MoveElement(doc, e.Id, Vector((plan.EjeX * Unidades.AInternas(dx)) + (plan.EjeY * Unidades.AInternas(dy))));
+        }
+        catch (Exception)
+        {
+            // Se queda donde quedo.
+        }
+    }
+
+    /// <summary>
+    /// El tipo de region rellena para las flechas: uno con relleno SOLIDO; si no hay, se crea
+    /// duplicando el primero. Null si el proyecto no tiene ninguno.
+    /// </summary>
+    private static ElementId? TipoDeRellenoSolido(Document doc)
+    {
+        try
+        {
+            var solido = new FilteredElementCollector(doc)
+                .OfClass(typeof(FillPatternElement))
+                .OfType<FillPatternElement>()
+                .FirstOrDefault(f => f.GetFillPattern().IsSolidFill);
+
+            if (solido is null)
+            {
+                return null;
+            }
+
+            var tipos = new FilteredElementCollector(doc)
+                .OfClass(typeof(FilledRegionType))
+                .OfType<FilledRegionType>()
+                .ToList();
+
+            if (tipos.FirstOrDefault(t => t.ForegroundPatternId == solido.Id) is { } ya)
+            {
+                return ya.Id;
+            }
+
+            if (tipos.Count == 0)
+            {
+                return null;
+            }
+
+            var nombre = PlanDespiece.NombreLibre(
+                "CadLink - Flecha sólida",
+                tipos.Select(t => t.Name ?? string.Empty).ToHashSet(StringComparer.OrdinalIgnoreCase));
+
+            if (tipos[0].Duplicate(nombre) is not FilledRegionType nuevo)
+            {
+                return null;
+            }
+
+            nuevo.ForegroundPatternId = solido.Id;
+            return nuevo.Id;
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 
@@ -430,9 +633,21 @@ internal static class Despiece
 
         try
         {
-            IndependentTag.Create(
+            var tag = IndependentTag.Create(
                 doc, vista.Id, new Reference(pieza), false,
                 TagMode.TM_ADDBY_CATEGORY, TagOrientation.Horizontal, Punto(punto));
+
+            // Donde queda el punto dentro de la etiqueta depende de su familia. Ya medida, se
+            // sube para que su borde de ARRIBA quede pegado a la seccion y centrada, como el
+            // rotulo de AutoCAD, que va colgado de su centro de arriba.
+            doc.Regenerate();
+
+            if (EnLaVista(tag, vista, plan) is { } caja)
+            {
+                Mover(doc, tag, plan,
+                    plan.PuntoDeEtiqueta.X - ((caja.XMin + caja.XMax) / 2),
+                    plan.PuntoDeEtiqueta.Y - caja.YMax);
+            }
         }
         catch (Exception)
         {

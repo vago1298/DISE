@@ -15928,6 +15928,20 @@ def v30_armado_por_tipo() -> None:
           and ".AlLargoDe(PuntosDelSolido(inst).Select(P));" in arm and "gi.GetInstanceGeometry()" in arm
           and "linea.AlLargoDe(solido)" in leer(ruta("tools/prueba-revit/Program.cs")))
 
+    # Se pidio: en el corte, FLECHAS a las varillas a un costado como en AutoCAD, y el rotulado
+    # mas cerca de la seccion.
+    check("las llamadas del corte llevan espina y flecha rellena a cada varilla, como en AutoCAD",
+          "public sealed record LlamadaDeCorte(\n    string Texto, double X, double Y, List<TramoDeCorte> Lineas, List<FlechaDeCorte> Flechas);" in pld.replace("\r\n", "\n")
+          and "public const double BajadaEspina = 0.025;" in pld and "public const double EscalonY = 0.032;" in pld
+          and "doc.Create.NewDetailCurve(vista, Line.CreateBound(" in des and "FilledRegion.Create(doc, relleno, vista.Id," in des
+          and "f.GetFillPattern().IsSolidFill" in des)
+    check("la etiqueta queda pegada debajo de la seccion, medida y acomodada",
+          "new V3(0, -(h / 2) - AireEtiqueta, 0)," in pld and "plan.PuntoDeEtiqueta.Y - caja.YMax);" in des
+          and "ElementTransformUtils.MoveElement(doc, e.Id," in des)
+    check("y el numero del peralte a la derecha de su linea, sin pisar la seccion",
+          "cota.TextPosition = Punto(t);" in des)
+    check("tiene pruebas", "PlanDespiece.Llamadas(t01)" in leer(ruta("tools/prueba-revit/Program.cs")))
+
     # CS0104 en la maquina del usuario: WPF y la Revit API comparten nombres de tipo. Con los
     # dos usings, el de WPF tiene que ir con alias o no compila.
     ambiguos = []

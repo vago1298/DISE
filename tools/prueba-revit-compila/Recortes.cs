@@ -302,6 +302,9 @@ public sealed class Creation
     /// <summary>Revit API: Creation.Document.NewDimension(View, Line, ReferenceArray).</summary>
     public Dimension NewDimension(View vista, Line linea, ReferenceArray referencias) => new();
 
+    /// <summary>Revit API: Creation.Document.NewDetailCurve(View, Curve). Una linea de detalle.</summary>
+    public DetailCurve NewDetailCurve(View vista, Curve curva) => new();
+
     public FamilyInstance NewFamilyInstance(
         Curve curva, FamilySymbol simbolo, Level nivel,
         Structure.StructuralType tipo) => new();
@@ -382,6 +385,9 @@ public enum BuiltInParameter
 public static class ElementTransformUtils
 {
     public static void RotateElement(Document doc, ElementId id, Line eje, double angulo) { }
+
+    /// <summary>Revit API: ElementTransformUtils.MoveElement(Document, ElementId, XYZ).</summary>
+    public static void MoveElement(Document doc, ElementId id, XYZ desplazamiento) { }
 }
 
 /// <summary>

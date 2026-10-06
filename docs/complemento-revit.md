@@ -429,8 +429,14 @@ Abajo del cuadro hay dos casillas, las dos encendidas:
   la **etiqueta** de la pieza debajo, acomodados en renglones en la hoja **"DESPIECE DE
   SECCIONES - CadLink"**. Si no caben, se crea otra hoja. La etiqueta es la de la categoría que
   tenga cargada el proyecto (armazón o pilar estructural); si no hay, el informe lo dice.
+  Las llamadas van **como en AutoCAD**: el texto a la izquierda, una espina horizontal 2.5 cm
+  debajo de su renglón de varillas y una línea con **flecha rellena** a cada varilla (un segundo
+  diámetro en el mismo renglón se escalona). Son líneas de detalle y regiones rellenas del corte;
+  si el proyecto no tiene relleno sólido, la flecha sale solo con su contorno. La **etiqueta**
+  se mide al crearla y se acomoda centrada, con su borde de arriba a 4 cm del paño de abajo.
+  El tamaño de los textos es el del tipo de texto por defecto del proyecto.
   Cada corte lleva sus **cotas**: la base arriba y el peralte a la derecha (a la izquierda van
-  las llamadas), amarradas a las caras de la pieza; si no se puede, a los planos de referencia
+  las llamadas), amarradas a las caras de la pieza (el número del peralte, a la derecha de su línea); si no se puede, a los planos de referencia
   de la familia. Si Revit da una cota por mala, se deshace y el informe pide acotarla a mano.
 
 **La misma sección para todas las de su medida**: al elegir a mano la sección de un tipo, los
