@@ -423,8 +423,10 @@
                              tabla y la vista previa, que es donde se mira. -->
                         <Border Style="{StaticResource TarjetaStyle}"
                                 Padding="9,4" Margin="0,0,0,5"
-                                HorizontalAlignment="Left">
-                            <StackPanel Orientation="Horizontal">
+                                HorizontalAlignment="Stretch">
+                            <!-- WrapPanel y no StackPanel: con todos los botones ya no caben en un renglon y los
+                                 ultimos se salian por la derecha. Asi bajan al siguiente. -->
+                            <WrapPanel Orientation="Horizontal">
                                 <TextBlock Text="Estilo de dibujo:" FontWeight="SemiBold" FontSize="12"
                                            VerticalAlignment="Center" Margin="0,0,14,0"
                                            Foreground="{DynamicResource BrandDarkBrush}" />
@@ -491,31 +493,31 @@
 
                                      Va ANTES de los botones de dibujar, que es el orden en que
                                      se usan: se ordena y despues se dibuja. -->
-                                <Button x:Name="OrdenarSeccionesButton" Content="Ordenar"
+                                <Button Margin="0,2,8,2" x:Name="OrdenarSeccionesButton" Content="Ordenar"
                                         Style="{StaticResource SecondaryButtonStyle}"
                                         Click="OnOrdenarSecciones"
                                         ToolTip="Agrupa las secciones por elemento -todos los castillos juntos, todas las trabes juntas- y dentro de cada grupo las pone en orden de ID.&#10;El plano se dibuja en el orden de la hoja, asi que esto ordena tambien el dibujo.&#10;Se deshace con Ctrl+Z." />
-                                <Button Content="Revisar datos" Style="{StaticResource SecondaryButtonStyle}"
+                                <Button Margin="0,2,8,2" Content="Revisar datos" Style="{StaticResource SecondaryButtonStyle}"
                                         Click="OnValidate" />
                                 <!-- UN SOLO ELEMENTO. Para cuando se cambian las medidas o el
                                      armado de una fila: rehace su seccion y su alzado EN SU
                                      SITIO, cotas incluidas, sin volver a dibujar todo. -->
                                 <!-- BASTONES. No van en la tabla: se editan aparte, por fila,
                                      como las grapas. Solo trabes y contratrabes. -->
-                                <Button x:Name="BastonesButton" Content="Bastones…"
+                                <Button Margin="0,2,8,2" x:Name="BastonesButton" Content="Bastones…"
                                         Style="{StaticResource SecondaryButtonStyle}" Click="OnEditarBastones"
                                         ToolTip="Bastones superiores e inferiores de la trabe o contratrabe seleccionada:&#10;lecho, ubicacion, varillas, diametro y distancia desde el paño.&#10;Se dibujan en el alzado y, si los cruza la linea A-A', en el corte." />
-                                <Button x:Name="DibujarSeleccionadaButton" Content="Dibujar solo la seleccionada"
+                                <Button Margin="0,2,8,2" x:Name="DibujarSeleccionadaButton" Content="Dibujar solo la seleccionada"
                                         Style="{StaticResource SecondaryButtonStyle}" Click="OnDibujarSeleccionada"
                                         ToolTip="Rehace SOLO la fila seleccionada: su seccion y, si lleva, su alzado.&#10;Si ya estaban dibujados vuelven a su mismo sitio y se borran sus cotas y rotulos viejos.&#10;Si no, se dibujan al final de su fila." />
-                                <Button Content="Armado para Revit…"
+                                <Button Margin="0,2,8,2" Content="Armado para Revit…"
                                         Style="{StaticResource SecondaryButtonStyle}" Click="OnArmadoParaRevit"
                                         ToolTip="Guarda las secciones de esta hoja en un .cadlink-armado.json.&#10;En Revit, pestaña CadLink → «Armar por tipo»: eliges la seccion de cada tipo de columna y trabe del proyecto&#10;y se arman TODAS sus piezas de un jalon, con corridas, laterales, bastones y estribos por zonas." />
-                                <Button x:Name="AlzadosButton" Content="Generar alzados"
+                                <Button Margin="0,2,8,2" x:Name="AlzadosButton" Content="Generar alzados"
                                         Style="{StaticResource SecondaryButtonStyle}" Click="OnExportAlzados" />
-                                <Button x:Name="ExportButton" Content="Generar dibujo"
+                                <Button Margin="0,2,8,2" x:Name="ExportButton" Content="Generar dibujo"
                                         Style="{StaticResource PrimaryButtonStyle}" Click="OnExport" />
-                            </StackPanel>
+                            </WrapPanel>
                         </Border>
                     </StackPanel>
 
