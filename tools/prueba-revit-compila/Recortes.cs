@@ -346,10 +346,9 @@ public enum BuiltInParameter
     STRUCTURAL_BEAM_END0_ELEVATION,
     STRUCTURAL_BEAM_END1_ELEVATION,
 
-    // Las propiedades de TIPO que escribe el despiece: Codigo de montaje, Nota clave, Modelo,
-    // Descripcion y Marca de tipo. Sin comprobar contra la DLL; son los nombres de la lista de
-    // BuiltInParameter de la documentacion.
-    UNIFORMAT_CODE,
+    // Las propiedades de TIPO que escribe el despiece: Nota clave, Modelo, Descripcion y Marca
+    // de tipo. COMPROBADAS: compilaron contra la DLL de Revit del usuario. El Codigo de montaje NO
+    // va aqui: UNIFORMAT_CODE no existe en su Revit, y Despiece.cs lo busca por nombre en texto.
     KEYNOTE_PARAM,
     ALL_MODEL_MODEL,
     ALL_MODEL_DESCRIPTION,

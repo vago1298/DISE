@@ -35,18 +35,47 @@ internal static class Despiece
 
         var p = PlanDespiece.Propiedades(a);
 
-        Poner(t, BuiltInParameter.UNIFORMAT_CODE, p.CodigoDeMontaje, "Código de montaje", r);
-        Poner(t, BuiltInParameter.KEYNOTE_PARAM, p.NotaClave, "Nota clave", r);
-        Poner(t, BuiltInParameter.ALL_MODEL_MODEL, p.Modelo, "Modelo", r);
-        Poner(t, BuiltInParameter.ALL_MODEL_DESCRIPTION, p.Descripcion, "Descripción", r);
-        Poner(t, BuiltInParameter.ALL_MODEL_TYPE_MARK, p.MarcaDeTipo, "Marca de tipo", r);
+        // POR NOMBRE DE TEXTO, no con el miembro del enum escrito: el del Codigo de montaje no
+        // se llama igual en todas las versiones -el miembro UNIFORMAT_CODE del enum
+        // no compila-, y un nombre que no existe tiraba la compilacion entera. Asi, si no esta,
+        // se busca el parametro por su nombre en ingles y en espanol.
+        Poner(t, new[] { "UNIFORMAT_CODE", "ASSEMBLY_CODE" },
+            new[] { "Código de montaje", "Codigo de montaje", "Assembly Code" }, p.CodigoDeMontaje, "Código de montaje", r);
+        Poner(t, new[] { "KEYNOTE_PARAM" }, new[] { "Nota clave", "Keynote" }, p.NotaClave, "Nota clave", r);
+        Poner(t, new[] { "ALL_MODEL_MODEL" }, new[] { "Modelo", "Model" }, p.Modelo, "Modelo", r);
+        Poner(t, new[] { "ALL_MODEL_DESCRIPTION" }, new[] { "Descripción", "Descripcion", "Description" },
+            p.Descripcion, "Descripción", r);
+        Poner(t, new[] { "ALL_MODEL_TYPE_MARK" }, new[] { "Marca de tipo", "Type Mark" }, p.MarcaDeTipo, "Marca de tipo", r);
     }
 
-    private static void Poner(Element e, BuiltInParameter cual, string valor, string nombre, ResultadoArmado r)
+    /// <summary>El parametro: por el nombre del BuiltInParameter, y si no, por como se llama.</summary>
+    private static Parameter? Parametro(Element e, string[] internos, string[] nombres)
+    {
+        foreach (var n in internos)
+        {
+            if (Enum.TryParse<BuiltInParameter>(n, out var bip) && e.get_Parameter(bip) is { } p)
+            {
+                return p;
+            }
+        }
+
+        foreach (var n in nombres)
+        {
+            if (e.LookupParameter(n) is { } p)
+            {
+                return p;
+            }
+        }
+
+        return null;
+    }
+
+    private static void Poner(
+        Element e, string[] internos, string[] nombres, string valor, string nombre, ResultadoArmado r)
     {
         try
         {
-            var p = e.get_Parameter(cual);
+            var p = Parametro(e, internos, nombres);
 
             if (p is null || p.IsReadOnly || !p.Set(valor))
             {

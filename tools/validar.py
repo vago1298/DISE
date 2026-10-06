@@ -15838,9 +15838,12 @@ def v30_armado_por_tipo() -> None:
     pld = leer(ruta("client/src/CadLink.Revit.Nucleo/PlanDespiece.cs"))
     sec = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
     check("las propiedades de tipo son las que se pidieron",
-          all(x in des for x in ("BuiltInParameter.UNIFORMAT_CODE", "BuiltInParameter.KEYNOTE_PARAM",
-                                 "BuiltInParameter.ALL_MODEL_MODEL", "BuiltInParameter.ALL_MODEL_DESCRIPTION",
-                                 "BuiltInParameter.ALL_MODEL_TYPE_MARK"))
+          # Por nombre en TEXTO y no con el miembro del enum: BuiltInParameter.UNIFORMAT_CODE no
+          # compilo en el Revit del usuario y tiro la instalacion entera.
+          all(x in des for x in ('"UNIFORMAT_CODE"', '"KEYNOTE_PARAM"', '"ALL_MODEL_MODEL"',
+                                 '"ALL_MODEL_DESCRIPTION"', '"ALL_MODEL_TYPE_MARK"', '"Código de montaje"'))
+          and "BuiltInParameter.UNIFORMAT_CODE" not in des
+          and "Enum.TryParse<BuiltInParameter>(n, out var bip)" in des
           and '"CONCRETO",' in pld and '$"{Cm(a.BaseCm)} X {Cm(a.AlturaCm)} CM"' in pld)
     check("y el codigo de montaje dice las varillas como el rotulo de AutoCAD",
           "public static List<string> LineasDeRotulo(SeccionCad s)" in sec
