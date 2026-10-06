@@ -354,6 +354,47 @@ internal static class Armador
         return r;
     }
 
+    /// <summary>
+    /// Cortes nuevos de las secciones que se pidan, con su nombre, SIN volver a armar. Cada uno de
+    /// la pieza que se le da. Van en una transaccion: un Ctrl+Z.
+    /// </summary>
+    public static (ResultadoArmado Resultado, List<View> Vistas) Cortes(
+        Document doc, IReadOnlyList<(ArmadoJson Armado, FamilyInstance Pieza, string Nombre)> pedidos)
+    {
+        var r = new ResultadoArmado();
+        var vistas = new List<View>();
+
+        using var t = new Transaction(doc, "Cortes de CadLink");
+        t.Start();
+
+        try
+        {
+            var cortes = new List<(ArmadoJson, FamilyInstance, MarcoPieza)>();
+            var nombres = new List<string>();
+
+            foreach (var (a, pieza, nombre) in pedidos)
+            {
+                if (Marco(pieza, a, $"«{nombre}»", r) is { } m)
+                {
+                    cortes.Add((a, pieza, m));
+                    nombres.Add(nombre);
+                }
+            }
+
+            vistas = Despiece.Crear(doc, cortes, r, nombres, false);
+            t.Commit();
+            r.Piezas = vistas.Count;
+        }
+        catch (Exception e)
+        {
+            t.RollBack();
+            vistas.Clear();
+            r.Errores.Add("No se crearon los cortes: " + e.Message);
+        }
+
+        return (r, vistas);
+    }
+
     /// <summary>Los tipos de armadura del proyecto, para la tabla de armaduras.</summary>
     public static List<TipoDeVarillaRevit> TiposDeVarilla(Document doc) =>
         new FilteredElementCollector(doc)
@@ -461,7 +502,7 @@ internal static class Armador
     /// <summary>
     /// Donde esta la pieza, en metros. Nulo -y dicho- si es de una forma que la fase 1 no arma.
     /// </summary>
-    private static MarcoPieza? Marco(
+    internal static MarcoPieza? Marco(
         FamilyInstance inst, ArmadoJson armado, string etiqueta, ResultadoArmado r)
     {
         var caja = inst.get_BoundingBox(null);

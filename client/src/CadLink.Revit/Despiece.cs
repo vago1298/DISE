@@ -46,10 +46,31 @@ internal static class Despiece
         Poner(t, new[] { "ALL_MODEL_DESCRIPTION" }, new[] { "Descripción", "Descripcion", "Description" },
             p.Descripcion, "Descripción", r);
         Poner(t, new[] { "ALL_MODEL_TYPE_MARK" }, new[] { "Marca de tipo", "Type Mark" }, p.MarcaDeTipo, "Marca de tipo", r);
+
+        // El estribo, para que la etiqueta tenga de donde leerlo: «Estr. #3C @15 cm».
+        if (p.ComentariosDeTipo.Length > 0)
+        {
+            Poner(t, new[] { "ALL_MODEL_TYPE_COMMENTS" }, new[] { "Comentarios de tipo", "Type Comments" },
+                p.ComentariosDeTipo, "Comentarios de tipo", r);
+        }
+    }
+
+    /// <summary>Lo que dice la Descripcion de un tipo: el ID de CadLink, si ya se armo.</summary>
+    public static string? DescripcionDe(Element tipo)
+    {
+        try
+        {
+            return Parametro(tipo, new[] { "ALL_MODEL_DESCRIPTION" },
+                new[] { "Descripción", "Descripcion", "Description" })?.AsString();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     /// <summary>El parametro: por el nombre del BuiltInParameter, y si no, por como se llama.</summary>
-    private static Parameter? Parametro(Element e, string[] internos, string[] nombres)
+    internal static Parameter? Parametro(Element e, string[] internos, string[] nombres)
     {
         foreach (var n in internos)
         {
@@ -93,13 +114,18 @@ internal static class Despiece
     /// MISMA transaccion del armado: un Ctrl+Z deshace todo.
     /// </summary>
     /// <param name="cortes">Cada seccion con la pieza que la representa.</param>
-    public static void Crear(
+    /// <param name="nombres">El nombre de cada corte, si se eligio; si no, el del plan.</param>
+    /// <param name="enHoja">Ponerlos en la hoja del despiece. Sin hoja, solo las vistas.</param>
+    /// <returns>Las vistas creadas.</returns>
+    public static List<View> Crear(
         Document doc, IReadOnlyList<(ArmadoJson Armado, FamilyInstance Pieza, MarcoPieza Marco)> cortes,
-        ResultadoArmado r)
+        ResultadoArmado r, IReadOnlyList<string>? nombres = null, bool enHoja = true)
     {
+        var creadas = new List<View>();
+
         if (cortes.Count == 0)
         {
-            return;
+            return creadas;
         }
 
         var tipoDeCorte = new FilteredElementCollector(doc)
@@ -110,11 +136,11 @@ internal static class Despiece
         if (tipoDeCorte is null)
         {
             r.Errores.Add("«despiece»: el proyecto no tiene ningún tipo de vista de sección");
-            return;
+            return creadas;
         }
 
         var tipoDeTexto = doc.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType);
-        var nombres = new HashSet<string>(
+        var enUso = new HashSet<string>(
             new FilteredElementCollector(doc).OfClass(typeof(View)).Select(v => v.Name ?? string.Empty),
             StringComparer.OrdinalIgnoreCase);
 
@@ -123,16 +149,24 @@ internal static class Despiece
 
         var hechas = new List<(View Vista, CorteDeSeccion Plan)>();
 
-        foreach (var (a, pieza, marco) in cortes)
+        for (var i = 0; i < cortes.Count; i++)
         {
+            var (a, pieza, marco) = cortes[i];
             var plan = PlanDespiece.Corte(a, marco);
+
+            if (nombres is not null && i < nombres.Count && nombres[i].Trim().Length > 0)
+            {
+                plan = plan with { Nombre = nombres[i].Trim() };
+            }
 
             try
             {
-                var vista = Vista(doc, tipoDeCorte, plan, nombres);
+                var vista = Vista(doc, tipoDeCorte, plan, enUso);
                 Llamadas(doc, vista, plan, tipoDeTexto);
                 Etiqueta(doc, vista, pieza, plan, a, r);
+                Cotas(doc, vista, pieza, plan, a, r);
                 hechas.Add((vista, plan));
+                creadas.Add(vista);
             }
             catch (Exception ex)
             {
@@ -140,10 +174,71 @@ internal static class Despiece
             }
         }
 
-        if (hechas.Count > 0)
+        if (hechas.Count > 0 && enHoja)
         {
             Hoja(doc, hechas, r);
             r.Avisos.Add($"«despiece»: {hechas.Count} corte(s) en la hoja «{NombreHoja}»");
+        }
+
+        return creadas;
+    }
+
+    /// <summary>
+    /// Las dos cotas del corte: la base encima de la seccion y el peralte a su derecha. Se acotan
+    /// los planos de referencia de la familia -izquierda y derecha, arriba y abajo-, asi que la
+    /// cota se mueve con la pieza si cambia de tipo.
+    /// </summary>
+    private static void Cotas(
+        Document doc, View vista, FamilyInstance pieza, CorteDeSeccion plan, ArmadoJson a, ResultadoArmado r)
+    {
+        // En la trabe la base va entre Left y Right y el peralte entre Top y Bottom; en la
+        // columna, que se corta en planta, el peralte va entre Front y Back.
+        var (y1, y2) = a.EsHorizontal
+            ? (FamilyInstanceReferenceType.Bottom, FamilyInstanceReferenceType.Top)
+            : (FamilyInstanceReferenceType.Front, FamilyInstanceReferenceType.Back);
+
+        var b = a.BaseCm / 100;
+        var h = a.AlturaCm / 100;
+
+        var arriba = Cota(doc, vista, pieza,
+            FamilyInstanceReferenceType.Left, FamilyInstanceReferenceType.Right,
+            plan.Origen + (plan.EjeY * plan.YCotaBase) - (plan.EjeX * (b / 2)),
+            plan.Origen + (plan.EjeY * plan.YCotaBase) + (plan.EjeX * (b / 2)));
+
+        var lado = Cota(doc, vista, pieza, y1, y2,
+            plan.Origen + (plan.EjeX * plan.XCotaAltura) - (plan.EjeY * (h / 2)),
+            plan.Origen + (plan.EjeX * plan.XCotaAltura) + (plan.EjeY * (h / 2)));
+
+        if (!arriba || !lado)
+        {
+            r.Avisos.Add($"«sin cotas»: {plan.Nombre}. La familia no tiene planos de referencia "
+                         + "izquierda/derecha y arriba/abajo con los que acotar; acótala a mano");
+        }
+    }
+
+    private static bool Cota(
+        Document doc, View vista, FamilyInstance pieza,
+        FamilyInstanceReferenceType de, FamilyInstanceReferenceType a, V3 p1, V3 p2)
+    {
+        try
+        {
+            var r1 = pieza.GetReferences(de).FirstOrDefault();
+            var r2 = pieza.GetReferences(a).FirstOrDefault();
+
+            if (r1 is null || r2 is null)
+            {
+                return false;
+            }
+
+            var refs = new ReferenceArray();
+            refs.Append(r1);
+            refs.Append(r2);
+
+            return doc.Create.NewDimension(vista, Line.CreateBound(Punto(p1), Punto(p2)), refs) is not null;
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 
@@ -191,12 +286,7 @@ internal static class Despiece
         vista.CropBoxVisible = false;
 
         // El nombre tiene que ser unico en el proyecto: si ya hay uno, «(2)», «(3)»...
-        var nombre = plan.Nombre;
-
-        for (var i = 2; nombres.Contains(nombre); i++)
-        {
-            nombre = $"{plan.Nombre} ({i})";
-        }
+        var nombre = PlanDespiece.NombreLibre(plan.Nombre, nombres);
 
         vista.Name = nombre;
         nombres.Add(nombre);

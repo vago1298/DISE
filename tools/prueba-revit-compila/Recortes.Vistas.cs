@@ -86,3 +86,15 @@ public sealed class Viewport : Element
 
     public static bool CanAddViewToSheet(Document doc, ElementId hoja, ElementId vista) => true;
 }
+
+// Las COTAS del corte. Sin comprobar contra la DLL:
+//   FamilyInstance.GetReferences(FamilyInstanceReferenceType) -> IList<Reference>
+//   doc.Create.NewDimension(View, Line, ReferenceArray) -> Dimension
+public enum FamilyInstanceReferenceType { Left, CenterLeftRight, Right, Front, CenterFrontBack, Back, Bottom, CenterElevation, Top }
+
+public sealed class ReferenceArray
+{
+    public void Append(Reference r) { }
+}
+
+public sealed class Dimension : Element { }

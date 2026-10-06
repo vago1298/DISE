@@ -132,6 +132,32 @@ public sealed class Aplicacion : IExternalApplication
         porTipo.Image = Imagen("CadLink.Revit.armar-16.png");
 
         panel.AddItem(porTipo);
+
+        // ---- El corte de seccion ----
+        //
+        // Solo la vista: un corte transversal con nombre, cotas y escala, de la pieza
+        // seleccionada o de un representante de cada tipo. No toca el armado.
+        var corte = new PushButtonData(
+            "CadLinkCorte",
+            "Corte\nde sección",
+            dll,
+            typeof(ComandoCorte).FullName)
+        {
+            ToolTip = "Crea una vista de corte transversal de la seccion que pidas, con su nombre "
+                      + "y sus cotas.",
+
+            LongDescription =
+                "Con trabes o columnas seleccionadas, ofrece un corte por cada una; sin "
+                + "seleccion, uno por cada tipo que ya tiene seccion de CadLink.\n\n"
+                + "Se marca el renglon, se escribe el nombre de la vista y al pulsar Crear sale "
+                + "el corte a escala 1:10 con la base acotada arriba y el peralte a la derecha. "
+                + "Usa el ultimo .cadlink-armado.json abierto."
+        };
+
+        corte.LargeImage = Imagen("CadLink.Revit.armar-32.png");
+        corte.Image = Imagen("CadLink.Revit.armar-16.png");
+
+        panel.AddItem(corte);
     }
 
     /// <summary>Carga un icono embebido en esta DLL.</summary>

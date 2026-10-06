@@ -59,6 +59,9 @@ public sealed class ComandoArmarPorTipo : IExternalCommand
         try
         {
             archivo = ArchivoArmado.Leer(abrir.FileName);
+
+            // Para que «Corte de seccion» use las mismas secciones sin volver a preguntar.
+            UltimoArchivoArmado.Guardar(abrir.FileName);
         }
         catch (Exception e)
         {

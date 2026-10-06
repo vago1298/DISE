@@ -787,3 +787,125 @@ public sealed class VistaArmadoPorTipo : Avisador
         _ => false
     };
 }
+
+/// <summary>Una fila del cuadro «Corte de sección»: un tipo armado y el nombre de su corte.</summary>
+public sealed class FilaCorte : Avisador
+{
+    private bool _crear;
+    private string _nombre;
+
+    public FilaCorte(TipoArmable tipo, ArmadoJson armado, double largoM)
+    {
+        Tipo = tipo;
+        Armado = armado;
+        _nombre = armado.EsHorizontal && largoM > 0
+            ? $"Corte {armado.Id.Trim()} - {largoM:0.00}m"
+            : $"Corte {armado.Id.Trim()}";
+    }
+
+    public TipoArmable Tipo { get; }
+
+    public ArmadoJson Armado { get; }
+
+    public string Seccion => Armado.Id;
+
+    public string NombreTipo => Tipo.Nombre;
+
+    public int Piezas => Tipo.Piezas;
+
+    public int YaArmadas => Tipo.YaArmadas;
+
+    public bool Crear
+    {
+        get => _crear;
+        set { if (value != _crear) { _crear = value; Aviso(); } }
+    }
+
+    /// <summary>Como se llama la vista nueva. Se puede cambiar antes de crearla.</summary>
+    public string Nombre
+    {
+        get => _nombre;
+        set { if (value != _nombre) { _nombre = value ?? string.Empty; Aviso(); } }
+    }
+}
+
+/// <summary>
+/// El cuadro «Corte de sección»: las secciones de CadLink que hay en el proyecto, para hacerle
+/// un corte nuevo, con su nombre, a la que se pida.
+/// </summary>
+public sealed class VistaCortes : Avisador
+{
+    public VistaCortes(IEnumerable<FilaCorte> filas)
+    {
+        foreach (var f in filas
+                     .OrderBy(f => f.Tipo.Clase)
+                     .ThenBy(f => f.Seccion, StringComparer.CurrentCultureIgnoreCase))
+        {
+            f.PropertyChanged += (_, _) => Aviso(nameof(Resumen));
+            Filas.Add(f);
+        }
+    }
+
+    public ObservableCollection<FilaCorte> Filas { get; } = new();
+
+    public IEnumerable<FilaCorte> ACrear => Filas.Where(f => f.Crear);
+
+    public string Resumen
+    {
+        get
+        {
+            var n = ACrear.Count();
+            return n == 0 ? "Marca la sección de la que quieres el corte." : $"Se van a crear {n} corte(s).";
+        }
+    }
+
+    /// <summary>
+    /// La seccion de CadLink de un tipo de Revit: la que dice su Descripcion -la escribe «Armar
+    /// por tipo»- y si no, la que se llama o mide igual.
+    /// </summary>
+    public static ArmadoJson? SeccionDe(TipoArmable t, string? descripcion, IReadOnlyList<ArmadoJson> armados)
+    {
+        var d = EmparejarArmado.Normalizar(descripcion);
+
+        if (d.Length > 0 && armados.FirstOrDefault(a => EmparejarArmado.Normalizar(a.Id) == d) is { } porDescripcion)
+        {
+            return porDescripcion;
+        }
+
+        return EmparejarArmado.Buscar(t.Tipo, t.Clase, t.AnchoM ?? 0, t.PeralteM ?? 0, armados).Armado;
+    }
+}
+
+/// <summary>El ultimo archivo de secciones que se abrio, para no volver a pedirlo.</summary>
+public static class UltimoArchivoArmado
+{
+    public static string Ruta => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "CadLink", "ultimo-armado.txt");
+
+    public static string? Leer()
+    {
+        try
+        {
+            var r = File.Exists(Ruta) ? File.ReadAllText(Ruta).Trim() : string.Empty;
+            return r.Length > 0 && File.Exists(r) ? r : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    public static void Guardar(string ruta)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Ruta)!);
+            File.WriteAllText(Ruta, ruta);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Es una comodidad.
+        }
+    }
+}

@@ -19,8 +19,10 @@ namespace CadLink.Revit.Nucleo;
 /// <param name="Modelo">Las medidas: <c>15 X 30 CM</c>.</param>
 /// <param name="Descripcion">El ID de la seccion en CadLink: <c>T-04</c>.</param>
 /// <param name="MarcaDeTipo">El elemento: <c>TRABE</c>, <c>CASTILLO</c>, <c>COLUMNA</c>…</param>
+/// <param name="ComentariosDeTipo">El estribo: <c>Estr. #3C @15 cm</c>, para que la etiqueta lo pueda leer.</param>
 public sealed record PropiedadesDeTipo(
-    string CodigoDeMontaje, string NotaClave, string Modelo, string Descripcion, string MarcaDeTipo);
+    string CodigoDeMontaje, string NotaClave, string Modelo, string Descripcion, string MarcaDeTipo,
+    string ComentariosDeTipo = "");
 
 /// <summary>Una llamada de lecho en el corte, en metros de la vista: X a la derecha, Y arriba.</summary>
 public sealed record LlamadaDeCorte(string Texto, double X, double Y);
@@ -30,9 +32,12 @@ public sealed record LlamadaDeCorte(string Texto, double X, double Y);
 /// en coordenadas de la vista. La X de la vista es la base de la seccion y la Y su peralte, asi
 /// que se ve como en el plano de AutoCAD.
 /// </summary>
+/// <param name="YCotaBase">A que altura de la vista va la cota de la base: encima de la seccion.</param>
+/// <param name="XCotaAltura">Y la del peralte: a la derecha, porque a la izquierda van las llamadas.</param>
 public sealed record CorteDeSeccion(
     string Nombre, V3 Origen, V3 EjeX, V3 EjeY, V3 EjeZ,
-    V3 Min, V3 Max, List<LlamadaDeCorte> Llamadas, V3 PuntoDeEtiqueta);
+    V3 Min, V3 Max, List<LlamadaDeCorte> Llamadas, V3 PuntoDeEtiqueta,
+    double YCotaBase = 0, double XCotaAltura = 0);
 
 public static class PlanDespiece
 {
@@ -64,12 +69,17 @@ public static class PlanDespiece
 
         var elemento = a.Elemento.Trim().Length > 0 ? a.Elemento.Trim().ToUpperInvariant() : a.Tipo.ToUpperInvariant();
 
+        var estribo = a.Rotulo.FirstOrDefault(l =>
+            l.StartsWith("Estr.", StringComparison.Ordinal) || l.StartsWith("Zuncho", StringComparison.Ordinal))
+            ?? string.Empty;
+
         return new PropiedadesDeTipo(
             string.Join(" + ", varillas),
             "CONCRETO",
             $"{Cm(a.BaseCm)} X {Cm(a.AlturaCm)} CM",
             a.Id.Trim(),
-            elemento);
+            elemento,
+            estribo);
     }
 
     /// <summary>
@@ -94,7 +104,9 @@ public static class PlanDespiece
         return new CorteDeSeccion(
             nombre, origen, m.Ex, m.Ey, z, min, max,
             Llamadas(a),
-            new V3(0, -(h / 2) - 0.08, 0));
+            new V3(0, -(h / 2) - 0.08, 0),
+            (h / 2) + 0.06,
+            (b / 2) + 0.06);
     }
 
     /// <summary>
@@ -166,6 +178,23 @@ public static class PlanDespiece
     /// <summary>Lo que mide el corte en el papel, a su escala.</summary>
     public static (double Ancho, double Alto) EnPapel(CorteDeSeccion c) =>
         ((c.Max.X - c.Min.X) / Escala, (c.Max.Y - c.Min.Y) / Escala);
+
+    /// <summary>
+    /// El nombre de un corte nuevo que no choque con las vistas que ya hay: «Corte T-01», y si
+    /// existe, «Corte T-01 (2)», «(3)»…
+    /// </summary>
+    public static string NombreLibre(string deseado, ICollection<string> existentes)
+    {
+        var nombre = deseado.Trim().Length == 0 ? "Corte" : deseado.Trim();
+        var res = nombre;
+
+        for (var i = 2; existentes.Contains(res); i++)
+        {
+            res = $"{nombre} ({i})";
+        }
+
+        return res;
+    }
 
     private static string Cm(double v) =>
         v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);

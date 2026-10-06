@@ -220,6 +220,9 @@ public sealed class FamilyInstance : Element
     public XYZ HandOrientation => new(1, 0, 0);
 
     public XYZ FacingOrientation => new(0, 1, 0);
+
+    /// <summary>Los planos de referencia de la familia, para acotar.</summary>
+    public IList<Reference> GetReferences(FamilyInstanceReferenceType tipo) => new List<Reference>();
 }
 
 public enum WallKind { Basic, Curtain, Stacked, Unknown }
@@ -288,6 +291,9 @@ public sealed class Document
 
 public sealed class Creation
 {
+    /// <summary>Revit API: Creation.Document.NewDimension(View, Line, ReferenceArray).</summary>
+    public Dimension NewDimension(View vista, Line linea, ReferenceArray referencias) => new();
+
     public FamilyInstance NewFamilyInstance(
         Curve curva, FamilySymbol simbolo, Level nivel,
         Structure.StructuralType tipo) => new();

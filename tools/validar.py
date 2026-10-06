@@ -15874,6 +15874,32 @@ def v30_armado_por_tipo() -> None:
           and os.path.exists(ruta("client/src/CadLink.Revit/Assets/armar-32.png"))
           and os.path.exists(ruta("client/src/CadLink.Revit/Assets/armar-16.png")))
 
+    # CORTE DE SECCION. Se pidio: «que me generes una nueva seccion de corte de la seccion que
+    # te pido y ahi lo nombres». Solo la vista, sin volver a armar.
+    cor = leer(ruta("client/src/CadLink.Revit/ComandoCorte.cs"))
+    cpt = leer(ruta("client/src/CadLink.Revit/ComandoArmarPorTipo.cs"))
+    check("hay boton «Corte de sección» en la cinta",
+          "typeof(ComandoCorte).FullName" in apl and '"CadLinkCorte"' in apl
+          and "public sealed class ComandoCorte : IExternalCommand" in cor)
+    check("corta lo seleccionado o un representante por tipo, con el nombre que se escriba",
+          "uidoc.Selection.GetElementIds()" in cor and "public sealed class FilaCorte" in nuc
+          and "public static ArmadoJson? SeccionDe(" in nuc and ".Select(f => (f.Armado, piezaDe[f], f.Nombre))" in cor)
+    check("solo crea las vistas, en su transaccion, sin rearmar ni hoja",
+          'new Transaction(doc, "Cortes de CadLink")' in arm
+          and "Despiece.Crear(doc, cortes, r, nombres, false)" in arm and "&& enHoja" in des)
+    check("el corte sale acotado: la base arriba y el peralte a la derecha",
+          "doc.Create.NewDimension(vista, Line.CreateBound(" in des
+          and "FamilyInstanceReferenceType.Left, FamilyInstanceReferenceType.Right" in des
+          and "(h / 2) + 0.06," in pld and "(b / 2) + 0.06);" in pld)
+    check("el nombre de la vista nunca choca con uno que ya existe",
+          "public static string NombreLibre(" in pld and "PlanDespiece.NombreLibre(plan.Nombre, nombres)" in des)
+    check("el estribo va a Comentarios de tipo, para la etiqueta",
+          '"ALL_MODEL_TYPE_COMMENTS"' in des and "string ComentariosDeTipo" in pld)
+    check("las secciones son las del ultimo archivo abierto: no se vuelven a pedir",
+          "public static class UltimoArchivoArmado" in nuc and "UltimoArchivoArmado.Guardar(abrir.FileName);" in cpt
+          and "UltimoArchivoArmado.Leer()" in cor)
+    check("tiene pruebas", "VistaCortes.SeccionDe(" in leer(ruta("tools/prueba-revit/Program.cs")))
+
 def v26_plugin_revit() -> None:
     print("\n[26] Complemento de Revit")
 

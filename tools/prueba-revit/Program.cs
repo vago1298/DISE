@@ -2277,6 +2277,38 @@ internal static partial class Programa
         a.Seccion = FilaArmadoTipo.SinArmar;
         Check("lo que la persona eligio a mano no se pisa", b.Seccion == "T-04");
         Check("los ajustes del despiece vienen encendidos", v.EscribirPropiedades && v.CrearDespiece);
+
+        // ---------- Corte de seccion: el estribo, las cotas y el nombre ----------
+        Igual("comentarios de tipo = la linea del estribo", p.ComentariosDeTipo, "Estr. #3C @15 cm");
+        Igual("sin rotulo no se inventa estribo", PlanDespiece.Propiedades(t04).ComentariosDeTipo, "");
+        Casi("la cota de la base va encima de la seccion", c.YCotaBase, 0.15 + 0.06);
+        Casi("y la del peralte a la derecha", c.XCotaAltura, 0.075 + 0.06);
+        Check("las dos caben dentro de la caja del corte",
+            c.YCotaBase < c.Max.Y && c.XCotaAltura < c.Max.X);
+
+        var existentes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Corte T-04 - 6.00m", "corte t-04 - 6.00m (2)" };
+        Igual("un nombre libre se queda como esta", PlanDespiece.NombreLibre("Corte X", existentes), "Corte X");
+        Igual("si ya existe se numera, sin chocar con los que hay",
+            PlanDespiece.NombreLibre("Corte T-04 - 6.00m", existentes), "Corte T-04 - 6.00m (3)");
+        Igual("vacio se llama Corte", PlanDespiece.NombreLibre("  ", existentes), "Corte");
+
+        var porDescripcion = VistaCortes.SeccionDe(tipos[0], "t-09", new List<ArmadoJson> { s1530, otra });
+        Igual("la seccion del tipo sale de su Descripcion", porDescripcion?.Id, "T-09");
+        Check("sin Descripcion y con dos de su medida, no se adivina",
+            VistaCortes.SeccionDe(tipos[0], null, new List<ArmadoJson> { s1530, otra }) is null);
+        Igual("con una sola de su medida, esa",
+            VistaCortes.SeccionDe(tipos[2], "", new List<ArmadoJson> { s1530, otra,
+                new ArmadoJson { Id = "T-20", Tipo = "Trabe", BaseCm = 20, AlturaCm = 40 } })?.Id, "T-20");
+
+        var fTrabe = new FilaCorte(tipos[0], t04, 6);
+        Igual("el corte de una trabe lleva su longitud", fTrabe.Nombre, "Corte T-04 - 6.00m");
+        Igual("el de una columna no", new FilaCorte(tipos[3], k01, 3).Nombre, "Corte K-01");
+        var vc = new VistaCortes(new[] { fTrabe });
+        Check("sin marcar no hay nada que crear", !vc.ACrear.Any());
+        fTrabe.Crear = true;
+        fTrabe.Nombre = "CORTE T-01 PB";
+        Check("marcada se crea con el nombre que se le puso",
+            vc.ACrear.Single().Nombre == "CORTE T-01 PB" && vc.Resumen.Contains("1 corte"));
     }
 
     private static void ArmadoPorTipo()

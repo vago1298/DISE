@@ -420,6 +420,7 @@ Abajo del cuadro hay dos casillas, las dos encendidas:
   | Modelo | Sus medidas | `15 X 30 CM` |
   | Descripción | El ID de CadLink | `T-04` |
   | Marca de tipo | El elemento | `TRABE`, `CASTILLO`, `COLUMNA`… |
+  | Comentarios de tipo | El estribo | `Estr. #3C @15 cm` |
 
   Las **etiquetas** leen esas propiedades: para cambiar lo que dice el plano se editan las
   propiedades de tipo. Los textos son los mismos del rótulo de AutoCAD (`LineasDeRotulo`).
@@ -428,6 +429,8 @@ Abajo del cuadro hay dos casillas, las dos encendidas:
   la **etiqueta** de la pieza debajo, acomodados en renglones en la hoja **"DESPIECE DE
   SECCIONES - CadLink"**. Si no caben, se crea otra hoja. La etiqueta es la de la categoría que
   tenga cargada el proyecto (armazón o pilar estructural); si no hay, el informe lo dice.
+  Cada corte lleva sus **cotas**: la base arriba y el peralte a la derecha (a la izquierda van
+  las llamadas), amarradas a los planos de referencia de la familia.
 
 **La misma sección para todas las de su medida**: al elegir a mano la sección de un tipo, los
 demás tipos de la misma clase y las mismas medidas (todas las 15x30, por ejemplo) toman la misma.
@@ -439,6 +442,21 @@ Cada pieza se arma con **su longitud real**: los estribos por zonas y los baston
 Revit con las mismas reglas del alzado de AutoCAD. El reparto de estribos es el **mismo archivo**
 (`Estribos.cs`) compilado en el núcleo; los tramos de bastón siguen la regla de
 `Bastones.Tramos`, comprobada igual en 16 000 casos.
+
+### Corte de sección: un corte nuevo, con su nombre
+
+El botón **Corte de sección** crea solo la vista —no rearma nada— de la sección que pidas:
+
+1. Selecciona en Revit las trabes o columnas que quieres cortar (opcional). Sin selección, sale
+   un renglón por cada tipo que ya tiene sección de CadLink, cortado en su primera pieza.
+2. Marca el renglón, escribe el nombre del corte (se propone `Corte T-01 - 6.00m` o
+   `Corte K-01`) y pulsa **Crear cortes**.
+3. Se crea el corte 1:10 con llamadas, etiqueta y cotas, y se abre el primero. Si el nombre ya
+   existe se le añade `(2)`, `(3)`…
+
+La sección de cada tipo sale de su **Descripción** (la escribe *Armar por tipo*) o, si no, de
+su nombre o medidas. Usa el último `.cadlink-armado.json` abierto; solo lo pide si no hay
+ninguno.
 
 ### Lo que avisa el cuadro (columna Notas)
 
