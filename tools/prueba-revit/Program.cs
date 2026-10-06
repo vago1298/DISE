@@ -2225,6 +2225,34 @@ internal static partial class Programa
         Check("y en la segunda empieza arriba a la izquierda",
             Math.Abs(centros[8].X - centros[0].X) < 1e-12 && Math.Abs(centros[8].Y - centros[0].Y) < 1e-12);
 
+        // ---------- Las varillas de esquina, asentadas en el doblez del estribo ----------
+        // #2.5 con 31.8 mm de doblez: radio interior 1.59 cm; la #3 de la esquina, radio 0.475 cm.
+        var asiento = PlanDespiece.Escala > 0 ? PlanDeArmado.AsientoEnElDoblez(1.59, 0.475) : 0;
+        Casi("la varilla de esquina se mete (R - r)(1 - 1/raiz 2) para tocar el doblez",
+            asiento, (1.59 - 0.475) * (1 - (1 / Math.Sqrt(2))), 1e-12);
+        Igual("con un doblez que no pasa de la varilla no se mueve", PlanDeArmado.AsientoEnElDoblez(0.3, 0.475), 0.0);
+
+        var k = new ArmadoJson
+        {
+            Id = "K", Tipo = "Columna", BaseCm = 15, AlturaCm = 20, RecubrimientoCm = 2, DiamEstriboCm = 0.79
+        };
+        foreach (var (x, y) in new[] { (3.27, 3.27), (11.73, 3.27), (3.27, 10.0), (11.73, 10.0), (3.27, 16.73), (11.73, 16.73) })
+        {
+            k.Varillas.Add(new VarillaJson { Clave = "#3", DiamCm = 0.95, XCm = x, YCm = y });
+        }
+        var mk = MarcoPieza.DeColumna(new V3(0, 0, 0), new V3(1, 0, 0), new V3(0, 1, 0), 0, 3, 15, 20);
+        var sin = PlanDeArmado.Armar(k, new ArmadoBarraJson(), mk);
+        var con = PlanDeArmado.Armar(k, new ArmadoBarraJson(), mk, 1.59);
+        double Xde(VarillaArmada v) => v.Puntos[0].X * 100 + 7.5;
+        double Yde(VarillaArmada v) => v.Puntos[0].Y * 100 + 10;
+        Check("sin radio, las varillas quedan donde las pone la tabla", Math.Abs(Xde(sin[0]) - 3.27) < 1e-9);
+        Check("con el doblez de Revit, la de esquina se asienta hacia dentro en X y en Y",
+            Math.Abs(Xde(con[0]) - (3.27 + asiento)) < 1e-9 && Math.Abs(Yde(con[0]) - (3.27 + asiento)) < 1e-9);
+        Check("y la de la otra esquina, hacia su lado", Math.Abs(Xde(con[5]) - (11.73 - asiento)) < 1e-9
+            && Math.Abs(Yde(con[5]) - (16.73 - asiento)) < 1e-9);
+        Check("las de en medio de los costados no se mueven", Math.Abs(Yde(con[2]) - 10.0) < 1e-9
+            && Math.Abs(Xde(con[2]) - 3.27) < 1e-9);
+
         // ---------- La misma seccion para todas las de su medida ----------
         var s1530 = new ArmadoJson { Id = "T-04", Tipo = "Trabe", BaseCm = 15, AlturaCm = 30, SeparacionesCm = new() { 15, 15, 15 } };
         var otra = new ArmadoJson { Id = "T-09", Tipo = "Trabe", BaseCm = 15, AlturaCm = 30, SeparacionesCm = new() { 10, 20, 10 } };

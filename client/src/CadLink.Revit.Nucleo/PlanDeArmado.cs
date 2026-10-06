@@ -197,12 +197,49 @@ public static class PlanDeArmado
     public static LadoGancho Lado(V3 normal, V3 tangente, V3 haciaDonde) =>
         normal.Cruz(tangente).Punto(haciaDonde) >= 0 ? LadoGancho.Izquierda : LadoGancho.Derecha;
 
+    /// <summary>
+    /// Cuanto se mete hacia dentro cada varilla de ESQUINA para quedar asentada en el doblez del
+    /// estribo, en cm por cada lado.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En el plano de AutoCAD el estribo da la vuelta ABRAZANDO la varilla de la esquina. En
+    /// Revit el doblez del estribo lo pone el tipo de armadura -su «Diametro de curvatura de
+    /// estribo/tirante», 4 db por norma- y es mas abierto que la varilla: con la varilla puesta
+    /// como si la esquina fuera en escuadra, quedaba un hueco entre la varilla y el doblez y
+    /// el estribo no la abrazaba.
+    /// </para>
+    /// <para>
+    /// Asentada, la varilla toca el doblez por dentro: su centro va sobre la diagonal, a
+    /// <c>R − r</c> del centro del doblez. Medido desde las caras interiores del estribo eso da
+    /// <c>R − (R − r)/√2</c>, en lugar de <c>r</c>. Con un doblez que no pasa de la varilla no se
+    /// mueve nada.
+    /// </para>
+    /// </remarks>
+    /// <param name="radioInteriorCm">El radio interior del doblez del estribo.</param>
+    /// <param name="radioVarillaCm">El radio de la varilla de la esquina.</param>
+    public static double AsientoEnElDoblez(double radioInteriorCm, double radioVarillaCm) =>
+        radioInteriorCm > radioVarillaCm
+            ? (radioInteriorCm - radioVarillaCm) * (1 - (1 / Math.Sqrt(2)))
+            : 0;
+
     /// <summary>Todas las varillas de una pieza.</summary>
-    public static List<VarillaArmada> Armar(ArmadoJson a, ArmadoBarraJson ab, MarcoPieza m)
+    /// <param name="radioInteriorEstriboCm">
+    /// El radio interior del doblez del estribo en Revit -medio «Diametro de curvatura de
+    /// estribo/tirante» de su tipo de armadura-. Con el, las varillas de esquina se asientan en
+    /// el doblez, como en el plano de AutoCAD. Cero: como estan en la tabla.
+    /// </param>
+    public static List<VarillaArmada> Armar(
+        ArmadoJson a, ArmadoBarraJson ab, MarcoPieza m, double radioInteriorEstriboCm = 0)
     {
         var res = new List<VarillaArmada>();
         var rec = a.RecubrimientoCm / 100;
         var horizontal = a.EsHorizontal;
+
+        // Las esquinas: la X mas chica o mas grande Y la Y mas chica o mas grande de todas.
+        var xs = a.Varillas.Select(v => v.XCm).DefaultIfEmpty().ToList();
+        var ys = a.Varillas.Select(v => v.YCm).DefaultIfEmpty().ToList();
+        var (xMin, xMax, yMin, yMax) = (xs.Min(), xs.Max(), ys.Min(), ys.Max());
 
         // ---------- Las longitudinales ----------
         //
@@ -211,8 +248,22 @@ public static class PlanDeArmado
         // como en el alzado de CadLink; las laterales van rectas. En la columna, todas rectas.
         foreach (var v in a.Varillas)
         {
-            var p1 = m.En(v.XCm, v.YCm, rec);
-            var p2 = m.En(v.XCm, v.YCm, m.LargoM - rec);
+            var (x, y) = (v.XCm, v.YCm);
+
+            var izq = Math.Abs(x - xMin) < 0.5;
+            var der = Math.Abs(x - xMax) < 0.5;
+            var aba = Math.Abs(y - yMin) < 0.5;
+            var arr = Math.Abs(y - yMax) < 0.5;
+
+            if (a.DiamEstriboCm > 0 && (izq || der) && (aba || arr) && xMax - xMin > 1 && yMax - yMin > 1)
+            {
+                var d = AsientoEnElDoblez(radioInteriorEstriboCm, v.DiamCm / 2);
+                x += izq ? d : -d;
+                y += aba ? d : -d;
+            }
+
+            var p1 = m.En(x, y, rec);
+            var p2 = m.En(x, y, m.LargoM - rec);
 
             var conGancho = horizontal && (v.Lecho is "Superior" or "Inferior");
             var hacia = v.Lecho == "Superior" ? m.Ey * -1 : m.Ey;

@@ -163,6 +163,28 @@ internal static class Despiece
 
         var vista = ViewSection.CreateSection(doc, tipo.Id, caja);
 
+        // QUE NO SALGA EN ESPEJO. El corte tiene que verse como el plano de AutoCAD -la base de la
+        // seccion de izquierda a derecha, el gancho del estribo arriba a la DERECHA-. Si Revit
+        // pone la derecha de la vista al reves de la X pedida, se rehace girado media vuelta
+        // sobre la vertical: misma seccion, vista desde el otro lado.
+        if (vista.RightDirection.DotProduct(Vector(plan.EjeX)) < 0)
+        {
+            doc.Delete(new List<ElementId> { vista.Id });
+
+            var g = Transform.Identity;
+            g.Origin = t.Origin;
+            g.BasisX = Vector(plan.EjeX * -1);
+            g.BasisY = t.BasisY;
+            g.BasisZ = Vector(plan.EjeZ * -1);
+
+            caja = new BoundingBoxXYZ();
+            caja.Transform = g;
+            caja.Min = Punto(new V3(-plan.Max.X, plan.Min.Y, plan.Min.Z));
+            caja.Max = Punto(new V3(-plan.Min.X, plan.Max.Y, plan.Max.Z));
+
+            vista = ViewSection.CreateSection(doc, tipo.Id, caja);
+        }
+
         vista.Scale = PlanDespiece.Escala;
         vista.DetailLevel = ViewDetailLevel.Fine;
         vista.CropBoxActive = true;

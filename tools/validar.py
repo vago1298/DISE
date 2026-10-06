@@ -15857,6 +15857,12 @@ def v30_armado_por_tipo() -> None:
           "Despiece.Crear(doc, cortes, r);" in arm and arm.index("Despiece.Crear(doc, cortes, r);") < arm.index("t.Commit();", arm.index("Armado por tipo de CadLink")))
     check("la misma seccion para todas las de su medida",
           "private void AlasDeSuMedida(FilaArmadoTipo elegida)" in nuc and "public bool MismaMedida(" in nuc)
+    check("las varillas de esquina se asientan en el doblez del estribo de Revit, como en AutoCAD",
+          "public static double AsientoEnElDoblez(" in leer(ruta("client/src/CadLink.Revit.Nucleo/PlanDeArmado.cs"))
+          and "PlanDeArmado.Armar(armado, porLargo(marco.LargoM), marco, radioEstribo)" in arm
+          and "public double DiametroDeDobleEstribo(RebarBarType t)" in arm)
+    check("y el corte no sale en espejo: el gancho arriba a la derecha, como en AutoCAD",
+          "vista.RightDirection.DotProduct(Vector(plan.EjeX)) < 0" in des)
     check("el arnes compila el despiece",
           "CadLink.Revit\\Despiece.cs" in leer(ruta("tools/prueba-revit-compila/Prueba.csproj")))
     check("y tiene pruebas", "DespieceEnRevit();" in leer(ruta("tools/prueba-revit/Program.cs")))

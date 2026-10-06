@@ -412,7 +412,24 @@ internal static class Armador
             viejo.Remove(llave);
         }
 
-        var varillas = PlanDeArmado.Armar(armado, porLargo(marco.LargoM), marco);
+        // El doblez del estribo lo pone su tipo de armadura de Revit: con el se asientan las
+        // varillas de esquina, para que el estribo las abrace como en el plano de AutoCAD.
+        var radioEstribo = 0.0;
+
+        if (armado.DiamEstriboCm > 0)
+        {
+            var sonda = new VarillaArmada(
+                armado.ClaveEstribo, armado.DiamEstriboCm / 100, EstiloVarilla.Estribo, new List<V3>(),
+                GanchoVarilla.De135, GanchoVarilla.De135, LadoGancho.Izquierda, LadoGancho.Izquierda,
+                marco.Eje, 1, 0, "estribo");
+
+            var tipoEstribo = (elegido?.Invoke(sonda) is long idE ? tipos.PorId(idE) : null)
+                              ?? tipos.Barra(armado.ClaveEstribo, armado.DiamEstriboCm / 100);
+
+            radioEstribo = tipos.DiametroDeDobleEstribo(tipoEstribo) * 100 / 2;
+        }
+
+        var varillas = PlanDeArmado.Armar(armado, porLargo(marco.LargoM), marco, radioEstribo);
         var hechas = 0;
 
         foreach (var v in varillas)
@@ -571,6 +588,42 @@ internal static class Armador
                 .OfClass(typeof(RebarBarType))
                 .OfType<RebarBarType>()
                 .ToList();
+        }
+
+        /// <summary>
+        /// El «Diametro de curvatura de estribo/tirante» del tipo, en m; cero si no se puede leer.
+        /// Por NOMBRE en texto, como las propiedades de tipo: el nombre del enum cambia entre
+        /// versiones y uno que no existe tiraba la compilacion.
+        /// </summary>
+        public double DiametroDeDobleEstribo(RebarBarType t)
+        {
+            try
+            {
+                Parameter? p = null;
+
+                foreach (var n in new[] { "REBAR_BAR_STIRRUP_BEND_DIAMETER", "REBAR_STANDARD_STIRRUP_BEND_DIAMETER" })
+                {
+                    if (p is null && Enum.TryParse<BuiltInParameter>(n, out var bip))
+                    {
+                        p = t.get_Parameter(bip);
+                    }
+                }
+
+                foreach (var n in new[]
+                         {
+                             "Diámetro de curvatura de estribo/tirante", "Stirrup/Tie Bend Diameter",
+                             "Diámetro de curvatura de estribo/atadura"
+                         })
+                {
+                    p ??= t.LookupParameter(n);
+                }
+
+                return p is not null && p.StorageType == StorageType.Double ? Unidades.AMetros(p.AsDouble()) : 0;
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
         }
 
         /// <summary>Un tipo de armadura del proyecto por su Id, o null si ya no esta.</summary>

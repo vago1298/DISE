@@ -78,6 +78,9 @@ public sealed class XYZ
     public double DistanceTo(XYZ otro) => 0;
 
     public static XYZ operator +(XYZ a, XYZ b) => new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
+
+    /// <summary>Revit API: XYZ.DotProduct(XYZ).</summary>
+    public double DotProduct(XYZ otro) => 0;
 }
 
 public abstract class Curve
@@ -178,6 +181,9 @@ public class View : Element
     public bool CropBoxActive { get; set; }
 
     public bool CropBoxVisible { get; set; }
+
+    /// <summary>Revit API: View.RightDirection, la derecha de la vista en el modelo.</summary>
+    public XYZ RightDirection => new(1, 0, 0);
 
     /// <summary>El contorno de la hoja, en pies de papel.</summary>
     public BoundingBoxUV Outline => new();
