@@ -218,6 +218,7 @@ internal static partial class Programa
         NombresBonitosDeNivel();
         MallaDeEjes();
         Armado();
+        ArmadoPorTipo();
 
         Console.WriteLine();
         Console.WriteLine("============================================================");
@@ -2156,6 +2157,116 @@ internal static partial class Programa
     // ==================================================================
     //  [13] El armado: de la tabla de CadLink a varillas de Revit
     // ==================================================================
+    private static void ArmadoPorTipo()
+    {
+        Console.WriteLine();
+        Console.WriteLine("[14] Armar por tipo de Revit: la receta y el cuadro");
+
+        ArmadoJson Fila(string id, string tipo, double b, double h) => new()
+        {
+            Id = id, Tipo = tipo, BaseCm = b, AlturaCm = h, RecubrimientoCm = 2.5,
+            ClaveEstribo = "#3", DiamEstriboCm = 0.95,
+            SeparacionesCm = new List<double> { 10, 20, 10 }
+        };
+
+        var t01 = Fila("T-01", "Trabe", 25, 50);
+        t01.Varillas.Add(new VarillaJson { Clave = "#5", DiamCm = 1.59, XCm = 4.2, YCm = 45.8, Lecho = "Superior" });
+        t01.QuitarEstribosExtremos = true;
+        t01.MargenBastonesM = 0.05;
+        t01.Bastones.Add(new BastonRecetaJson
+        {
+            Clave = "#5", DiamCm = 1.59, Lecho = "Superior", XsCm = new List<double> { 8, 17 },
+            YCm = 43, Ubicacion = "Extremos", DistanciaM = 1.2
+        });
+        var t02 = Fila("T-02", "Trabe", 30, 60);
+        var c01 = Fila("C-01", "Columna", 40, 50);
+        var vieja = new ArmadoJson { Id = "V-9", Tipo = "Trabe", BaseCm = 30, AlturaCm = 60 };
+
+        // ---------- La receta, con la longitud de la pieza de Revit ----------
+        var ab = RecetaArmado.ParaLargo(t01, 6.0);
+        Check("la receta da estribos para la longitud real", ab.EstribosM.Count > 10);
+        Check("y todos caen dentro de la pieza", ab.EstribosM.All(x => x > 0 && x < 6.0));
+        Check("los estribos son los del alzado, sin los dos de los extremos por los bastones",
+            ab.EstribosM.Count == new List<double>(RecetaArmado.ParaLargo(t02, 6.0).EstribosM).Count - 2);
+        Igual("baston de extremos: dos tramos", ab.Bastones.Count, 2);
+        Casi("el primero arranca en el margen", ab.Bastones[0].IniM, 0.05);
+        Casi("y mide su distancia", ab.Bastones[0].FinM, 1.25);
+        Casi("el segundo acaba en el margen del otro lado", ab.Bastones[1].FinM, 5.95);
+        Check("con sus dos varillas en la cama", ab.Bastones.All(t => t.XsCm.Count == 2 && t.GanchoIni && t.GanchoFin));
+
+        var corta = RecetaArmado.Tramos("Extremos", 1.2, 2.0, 0.05);
+        Casi("en una trabe corta los de extremo no pasan de la mitad util", corta[0].Fin, 0.05 + 0.95);
+        Casi("al centro, centrado", RecetaArmado.Tramos("AlCentro", 2, 6, 0.05)[0].Ini, 2.0);
+        Igual("sin distancia no hay baston", RecetaArmado.Tramos("Extremos", 0, 6, 0.05).Count, 0);
+
+        var col = RecetaArmado.ParaLargo(c01, 3.0);
+        var colComoTrabe = RecetaArmado.ParaLargo(Fila("X", "Dado", 40, 50), 3.0);
+        Check("la columna pierde el ultimo estribo, como en el alzado; el dado no",
+            col.EstribosM.Count == colComoTrabe.EstribosM.Count - 1);
+
+        Igual("una fila sin receta no da estribos", RecetaArmado.ParaLargo(vieja, 6).EstribosM.Count, 0);
+
+        // ---------- El archivo ----------
+        var archivo = new ArchivoArmadoJson { Aplicacion = "CadLink 1.1.0", Armados = { t01, c01 } };
+        var leido = ArchivoArmado.DeTexto(ArchivoArmado.ATexto(archivo));
+        Check("el archivo de secciones va y vuelve con su receta",
+            leido.Armados.Count == 2 && leido.Armados[0].TieneReceta
+            && leido.Armados[0].Bastones.Count == 1 && leido.Armados[0].Bastones[0].Ubicacion == "Extremos");
+
+        var futuro = false;
+        try { ArchivoArmado.DeTexto("{\"Version\": 99}"); }
+        catch (InvalidDataException) { futuro = true; }
+        Check("un archivo de una version futura se rechaza", futuro);
+
+        // ---------- El cuadro ----------
+        var tipos = new List<TipoArmable>
+        {
+            new() { Id = 1, Clase = ClasePieza.Trabe, Familia = "Viga-Concreto", Tipo = "T-01", Piezas = 40, DeConcreto = 40, AnchoM = 0.25, PeralteM = 0.5 },
+            new() { Id = 2, Clase = ClasePieza.Trabe, Familia = "Viga-Concreto", Tipo = "30 x 60cm", Piezas = 12, DeConcreto = 12, AnchoM = 0.3, PeralteM = 0.6, YaArmadas = 3 },
+            new() { Id = 3, Clase = ClasePieza.Columna, Familia = "Columna-Concreto", Tipo = "50 x 40cm", Piezas = 20, DeConcreto = 20, AnchoM = 0.5, PeralteM = 0.4 },
+            new() { Id = 4, Clase = ClasePieza.Trabe, Familia = "W-Wide Flange", Tipo = "W12X26", Piezas = 8, DeConcreto = 0, AnchoM = 0.17, PeralteM = 0.31 },
+            new() { Id = 5, Clase = ClasePieza.Trabe, Familia = "Viga", Tipo = "Sin usar", Piezas = 0 }
+        };
+
+        var vista = new VistaArmadoPorTipo(tipos, new List<ArmadoJson> { t01, t02, c01, vieja });
+
+        Igual("salen los tipos con piezas, uno por fila", vista.Filas.Count, 4);
+        Check("las columnas primero", vista.Filas[0].Categoria == "Columna");
+        Check("la seccion sin receta no se ofrece", vista.Filas.All(f => !f.Secciones.Contains("V-9")));
+
+        var fT01 = vista.Filas.Single(f => f.Tipo.Id == 1);
+        Check("el tipo que se llama como la fila sale sugerido por nombre y marcado",
+            fT01.Seccion == "T-01" && fT01.Armar && fT01.Sugerencia.Contains("nombre"));
+
+        var f3060 = vista.Filas.Single(f => f.Tipo.Id == 2);
+        Check("el que no se llama como ninguna, por sus medidas",
+            f3060.Seccion == "T-02" && f3060.Sugerencia.Contains("medidas"));
+        Check("y avisa que ya tiene armado y se rehace", f3060.Diagnostico.Contains("se rehacen"));
+
+        var fCol = vista.Filas.Single(f => f.Tipo.Id == 3);
+        Check("la columna girada tambien se reconoce por medidas", fCol.Seccion == "C-01" && fCol.Coherente);
+        Check("a una columna no se le ofrecen trabes", !fCol.Secciones.Contains("T-01"));
+
+        var fAcero = vista.Filas.Single(f => f.Tipo.Id == 4);
+        fAcero.Seccion = "T-02";
+        Check("el acero no se puede marcar para armar", !fAcero.Armar);
+        Check("y se dice por que", fAcero.Diagnostico.Contains("no son de concreto") || fAcero.Diagnostico.Contains("de concreto"));
+
+        fT01.Seccion = "T-02";
+        Check("elegir una seccion que no mide lo mismo avisa", !fT01.Coherente && fT01.Diagnostico.Contains("OJO"));
+
+        Igual("se arman las piezas de concreto de los tipos marcados", vista.PiezasAArmar, 40 + 12 + 20);
+
+        fT01.Seccion = FilaArmadoTipo.SinArmar;
+        Check("con «no armar» la fila se desmarca", !fT01.Armar && fT01.Armado is null);
+        Check("y el resumen lo cuenta", vista.Resumen.Contains("32 pieza(s)"));
+
+        vista.MarcarTodas(false);
+        Igual("desmarcar todas", vista.PiezasAArmar, 0);
+        vista.MarcarTodas(true);
+        Igual("y volver a marcar solo las que tienen seccion y son de concreto", vista.PiezasAArmar, 32);
+    }
+
     private static void Armado()
     {
         Console.WriteLine();

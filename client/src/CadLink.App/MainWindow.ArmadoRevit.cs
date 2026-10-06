@@ -1,6 +1,9 @@
+using System.IO;
+using System.Windows;
 using CadLink.App.Models;
 using CadLink.Cad;
 using CadLink.Revit.Nucleo;
+using Microsoft.Win32;
 
 namespace CadLink.App;
 
@@ -40,7 +43,7 @@ public partial class MainWindow
                 continue;
             }
 
-            armados.Add(ArmadoDe(s, tipo.Value));
+            armados.Add(ArmadoConReceta(s, tipo.Value));
             filas[id] = s;
         }
 
@@ -196,6 +199,147 @@ public partial class MainWindow
         }
 
         return ab;
+    }
+
+    /// <summary>
+    /// La fila con su RECETA: las reglas de estribos y bastones para armarla en una pieza de
+    /// cualquier longitud. Es lo que usa «Armar por tipo» en Revit, donde la longitud la pone la
+    /// pieza dibujada en Revit y no el modelo de ETABS.
+    /// </summary>
+    private ArmadoJson ArmadoConReceta(SeccionConcretoRow s, TipoElemento tipo)
+    {
+        var a = ArmadoDe(s, tipo);
+        var rec = RecubrimientoDe(s);
+        Varilla.TryDiametroCm(s.Estribo, out var de);
+
+        a.SeparacionesCm = Separaciones(s.SeparacionCm).Take(3).ToList();
+
+        var bastones = LlevaBastones(s)
+            ? BastonesCad(s).Where(CadLink.Cad.Bastones.EsValido).ToList()
+            : new List<BastonCad>();
+
+        a.QuitarEstribosExtremos = a.EsHorizontal && bastones.Count > 0;
+        a.MargenBastonesM = MargenBastonesM(s);
+
+        foreach (var bas in bastones)
+        {
+            var cama = CamaDeBaston(s, bas, de, rec);
+
+            if (cama is null)
+            {
+                continue;
+            }
+
+            a.Bastones.Add(new BastonRecetaJson
+            {
+                Clave = bas.Var.Clave,
+                DiamCm = bas.Var.Cm,
+                Lecho = bas.Posicion == PosicionBaston.Superior ? "Superior" : "Inferior",
+                XsCm = cama.Value.Xs,
+                YCm = cama.Value.Y,
+                Ubicacion = bas.Ubicacion.ToString(),
+                DistanciaM = bas.DistanciaM
+            });
+        }
+
+        return a;
+    }
+
+    /// <summary>
+    /// El boton «Armado para Revit»: escribe TODAS las secciones de la tabla en un
+    /// <c>.cadlink-armado.json</c>, para el boton «Armar por tipo» del complemento de Revit.
+    /// </summary>
+    /// <remarks>
+    /// No hace falta el modelo de ETABS: en Revit se asigna una seccion a cada TIPO de columna o
+    /// trabe del proyecto y se arman todas sus piezas de un jalon.
+    /// </remarks>
+    private void OnArmadoParaRevit(object sender, RoutedEventArgs e)
+    {
+        CerrarEdicionDeLasHojas();
+
+        var armados = new List<ArmadoJson>();
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var saltadas = new List<string>();
+
+        foreach (var s in _datos.SeccionesConcreto)
+        {
+            var tipo = TipoDe(s.Elemento, s.Id);
+            var id = (s.Id ?? string.Empty).Trim();
+
+            if (id.Length == 0)
+            {
+                continue;
+            }
+
+            if (tipo is null || s.EsCircular)
+            {
+                saltadas.Add(id);
+                continue;
+            }
+
+            if (!ids.Add(id))
+            {
+                saltadas.Add(id + " (repetido)");
+                continue;
+            }
+
+            armados.Add(ArmadoConReceta(s, tipo.Value));
+        }
+
+        if (armados.Count == 0)
+        {
+            MessageBox.Show(this,
+                "No hay secciones que mandar: el armado para Revit lleva las trabes, contratrabes, "
+                + "columnas y dados RECTANGULARES de la hoja de secciones de concreto.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var nombre = string.IsNullOrWhiteSpace(_archivoActual)
+            ? "secciones"
+            : Path.GetFileNameWithoutExtension(_archivoActual);
+
+        var dialogo = new SaveFileDialog
+        {
+            Title = "Guardar las secciones para armarlas en Revit",
+            Filter = ArchivoArmado.Filtro,
+            DefaultExt = ArchivoArmado.Extension,
+            FileName = nombre + ArchivoArmado.Extension
+        };
+
+        if (dialogo.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            ArchivoArmado.Guardar(new ArchivoArmadoJson
+            {
+                Aplicacion = AppInfo.ProductName + " " + AppInfo.Version,
+                Fecha = DateTime.Now,
+                Origen = _archivoActual,
+                Armados = armados
+            }, dialogo.FileName);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, "No se pudo guardar el archivo:\n\n" + ex.Message,
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        StatusText.Text = $"{armados.Count} seccion(es) listas para armar en Revit: {Path.GetFileName(dialogo.FileName)}";
+
+        MessageBox.Show(this,
+            $"Se guardaron {armados.Count} seccion(es).\n\n"
+            + "En Revit: pestaña CadLink → «Armar por tipo», abre este archivo, elige la seccion de "
+            + "cada tipo de columna y de trabe, y pulsa Armar. Se arman todas las piezas de cada "
+            + "tipo de un jalon."
+            + (saltadas.Count == 0 ? string.Empty
+                : "\n\nNo van (circulares, de otro elemento o repetidas): " + string.Join(", ", saltadas.Take(12))
+                  + (saltadas.Count > 12 ? "…" : string.Empty)),
+            AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private static double RecubrimientoDe(SeccionConcretoRow s) =>

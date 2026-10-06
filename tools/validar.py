@@ -12201,7 +12201,7 @@ def main() -> int:
               v24_rediseno,
               v25_ifc,
               v26_plugin_revit, v27_muros_contencion, v28_estilo_dibujo,
-              v29_paquete_oficina):
+              v29_paquete_oficina, v30_armado_por_tipo):
         f()
 
     print("\n" + "=" * 66)
@@ -15780,6 +15780,46 @@ def v29_paquete_oficina() -> None:
           "if not configurado or not codigo:\n        return False" in srv)
     check("queda explicado en EMPIEZA-AQUI.md",
           "## Las PCs de tu oficina: la forma fácil" in leer(ruta("EMPIEZA-AQUI.md")))
+
+def v30_armado_por_tipo() -> None:
+    print("\n[30] Revit: armar por tipo, todas las piezas de un jalon")
+
+    nuc = leer(ruta("client/src/CadLink.Revit.Nucleo/ArmadoPorTipo.cs"))
+    arj = leer(ruta("client/src/CadLink.Revit.Nucleo/ArmadoJson.cs"))
+    csp = leer(ruta("client/src/CadLink.Revit.Nucleo/CadLink.Revit.Nucleo.csproj"))
+    est = leer(ruta("client/src/CadLink.Cad/Estribos.cs"))
+    arm = leer(ruta("client/src/CadLink.Revit/Armador.cs"))
+    cmd = leer(ruta("client/src/CadLink.Revit/ComandoArmarPorTipo.cs"))
+    apl = leer(ruta("client/src/CadLink.Revit/Aplicacion.cs"))
+    app = leer(ruta("client/src/CadLink.App/MainWindow.ArmadoRevit.cs"))
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+
+    check("la seccion viaja con su RECETA, para cualquier longitud",
+          "public List<double>? SeparacionesCm" in arj and "public List<BastonRecetaJson> Bastones" in arj
+          and "public static ArmadoBarraJson ParaLargo(" in arj)
+    check("los estribos salen del MISMO archivo que el alzado, enlazado en el nucleo",
+          'Include="..\\CadLink.Cad\\Estribos.cs"' in csp and "CADLINK_NUCLEO" in csp
+          and "#if CADLINK_NUCLEO\ninternal static class Estribos" in est.replace("\r\n", "\n")
+          and "CadLink.Cad.Estribos.CentrosDeAlzado(" in arj)
+    check("el nucleo sigue sin referenciar proyectos", "ProjectReference" not in csp)
+    check("CadLink escribe la receta y el archivo de secciones",
+          "private ArmadoJson ArmadoConReceta(" in app and "ArchivoArmado.Guardar(" in app
+          and 'Click="OnArmadoParaRevit"' in xaml)
+    check("el cuadro sugiere por nombre y medidas, y solo marca piezas de concreto",
+          "public sealed class VistaArmadoPorTipo" in nuc and "EmparejarArmado.Buscar(" in nuc
+          and "value && Armado is not null && DeConcreto > 0" in nuc)
+    check("el complemento cuenta las piezas de cada tipo y cuales son de concreto",
+          "public static List<TipoArmable> TiposArmables(" in arm and "t.DeConcreto++;" in arm
+          and "fi.GetTypeId().Value" in arm)
+    check("arma cada pieza con su longitud real, en una sola transaccion",
+          "RecetaArmado.ParaLargo(w.Armado, largo)" in arm
+          and 'new Transaction(doc, "Armado por tipo de CadLink")' in arm)
+    check("y volver a armar rehace, tambien en piezas que no puso CadLink",
+          '"Revit|" + inst.Id.Value' in arm and "viejo.Remove(llave);" in arm)
+    check("hay boton en la cinta y comando con su cuadro",
+          "typeof(ComandoArmarPorTipo).FullName" in apl and "new VentanaArmadoPorTipo(vista)" in cmd
+          and os.path.exists(ruta("client/src/CadLink.Revit/VentanaArmadoPorTipo.xaml")))
+    check("tiene pruebas", "ArmadoPorTipo();" in leer(ruta("tools/prueba-revit/Program.cs")))
 
 def v26_plugin_revit() -> None:
     print("\n[26] Complemento de Revit")

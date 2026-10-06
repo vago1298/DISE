@@ -508,6 +508,9 @@
                                 <Button x:Name="DibujarSeleccionadaButton" Content="Dibujar solo la seleccionada"
                                         Style="{StaticResource SecondaryButtonStyle}" Click="OnDibujarSeleccionada"
                                         ToolTip="Rehace SOLO la fila seleccionada: su seccion y, si lleva, su alzado.&#10;Si ya estaban dibujados vuelven a su mismo sitio y se borran sus cotas y rotulos viejos.&#10;Si no, se dibujan al final de su fila." />
+                                <Button Content="Armado para Revit…"
+                                        Style="{StaticResource SecondaryButtonStyle}" Click="OnArmadoParaRevit"
+                                        ToolTip="Guarda las secciones de esta hoja en un .cadlink-armado.json.&#10;En Revit, pestaña CadLink → «Armar por tipo»: eliges la seccion de cada tipo de columna y trabe del proyecto&#10;y se arman TODAS sus piezas de un jalon, con corridas, laterales, bastones y estribos por zonas." />
                                 <Button x:Name="AlzadosButton" Content="Generar alzados"
                                         Style="{StaticResource SecondaryButtonStyle}" Click="OnExportAlzados" />
                                 <Button x:Name="ExportButton" Content="Generar dibujo"

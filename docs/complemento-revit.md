@@ -369,6 +369,45 @@ En la primera prueba:
 
 ---
 
+## Armar por tipo: todas las piezas de un tipo, de un jalón
+
+En Revit el armado se pone eligiendo una pieza ya dibujada. Con cien trabes iguales eso es
+elegirla cien veces. El botón **CadLink → Armar por tipo** lo hace **una vez por tipo**, en
+**cualquier proyecto** (no hace falta haber importado desde ETABS).
+
+### Cómo se usa
+
+1. En CadLink, hoja **Secciones Concreto**, pulsa **Armado para Revit…**. Guarda un
+   `.cadlink-armado.json` con todas las trabes, contratrabes, columnas y dados rectangulares de la
+   hoja, con sus varillas, estribos por zonas y bastones.
+2. En Revit: **CadLink → Armar por tipo** y abre ese archivo.
+3. Sale un renglón por cada **tipo** de columna estructural y de trabe (armazón estructural) que
+   tiene piezas en el proyecto: familia, tipo, medidas, cuántas piezas tiene y cuántas son de
+   concreto.
+4. En **Sección de CadLink** eliges qué fila de la tabla lo arma. Ya viene sugerida la que se
+   **llama** como el tipo o, si no, la única que **mide** lo mismo. Solo se ofrecen trabes para
+   las trabes y columnas o dados para las columnas.
+5. Marca los tipos que quieras (**Marcar todas** / **Desmarcar todas**) y pulsa **Armar**.
+
+Cada pieza se arma con **su longitud real**: los estribos por zonas y los bastones se calculan en
+Revit con las mismas reglas del alzado de AutoCAD. El reparto de estribos es el **mismo archivo**
+(`Estribos.cs`) compilado en el núcleo; los tramos de bastón siguen la regla de
+`Bastones.Tramos`, comprobada igual en 16 000 casos.
+
+### Lo que avisa el cuadro (columna Notas)
+
+- **Ámbar**: la sección elegida no mide lo que el tipo de Revit. Se puede armar igual, pero las
+  varillas se colocan con las medidas de la sección de CadLink.
+- **Gris**: ninguna pieza del tipo es de concreto; Revit no deja armarlas y no se puede marcar.
+- *"N ya armadas: se rehacen"*: volver a armar **rehace** el armado de CadLink de esas piezas
+  (marca `CadLink|Armado|…`); el puesto a mano no se toca.
+
+Todo va en una sola transacción: **un Ctrl+Z** deshace el armado de todos los tipos. Los
+límites son los de la fase 1 (arriba): piezas horizontales o verticales y secciones
+rectangulares.
+
+---
+
 ## Cómo está construido, y por qué
 
 El complemento es el único proyecto de este repositorio que **no se puede compilar sin Revit

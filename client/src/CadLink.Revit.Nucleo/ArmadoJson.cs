@@ -64,6 +64,166 @@ public sealed class ArmadoJson
     /// <summary>Si es una pieza tendida: trabe o contratrabe.</summary>
     public bool EsHorizontal =>
         Tipo is "Trabe" or "Contratrabe";
+
+    // ------------------------------------------------------------------
+    //  LA RECETA: lo que hace falta para armar una pieza de CUALQUIER longitud.
+    //
+    //  Con el modelo de ETABS, CadLink ya sabe la longitud de cada barra y manda los estribos
+    //  y bastones calculados (ArmadoBarraJson). En el armado POR TIPO de Revit la pieza es una
+    //  que alguien dibujo en Revit: su longitud se sabe alla. Por eso viajan las reglas y no el
+    //  resultado, y RecetaArmado las aplica con la longitud real. Archivos viejos no la traen.
+    // ------------------------------------------------------------------
+
+    /// <summary>Las separaciones de las tres zonas de estribos -L/4, L/2, L/4-, en cm.</summary>
+    public List<double>? SeparacionesCm { get; set; }
+
+    /// <summary>Si lleva bastones validos, la trabe pierde el estribo de cada extremo.</summary>
+    public bool QuitarEstribosExtremos { get; set; }
+
+    /// <summary>Desde donde arrancan los bastones de extremo, en m desde el pano.</summary>
+    public double MargenBastonesM { get; set; }
+
+    public List<BastonRecetaJson> Bastones { get; set; } = new();
+
+    /// <summary>Si trae la receta, y por tanto se puede armar en una pieza de Revit.</summary>
+    public bool TieneReceta => SeparacionesCm is { Count: 3 };
+}
+
+/// <summary>Un baston de la fila, todavia sin colocar: su cama y su regla de longitud.</summary>
+public sealed class BastonRecetaJson
+{
+    public string Clave { get; set; } = string.Empty;
+
+    public double DiamCm { get; set; }
+
+    /// <summary><c>Superior</c> o <c>Inferior</c>.</summary>
+    public string Lecho { get; set; } = string.Empty;
+
+    public List<double> XsCm { get; set; } = new();
+
+    public double YCm { get; set; }
+
+    /// <summary><c>Extremos</c>, <c>Izquierdo</c>, <c>Derecho</c> o <c>AlCentro</c>.</summary>
+    public string Ubicacion { get; set; } = string.Empty;
+
+    /// <summary>Lo que mide cada tramo, en m.</summary>
+    public double DistanciaM { get; set; }
+}
+
+/// <summary>
+/// Aplica la <see cref="ArmadoJson"/> receta de una fila a una pieza de longitud dada.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Los estribos salen de <c>Estribos.CentrosDeAlzado</c>: el MISMO archivo que usa el alzado de
+/// AutoCAD, enlazado en este nucleo. Los tramos de baston siguen la regla de
+/// <c>CadLink.Cad.Bastones.Tramos</c>, que se repite aqui porque arrastra todo el modelo de la
+/// seccion; <c>tools/prueba-revit</c> la compara caso por caso.
+/// </para>
+/// </remarks>
+public static class RecetaArmado
+{
+    /// <summary>Lo que lleva una pieza de <paramref name="largoM"/> con este armado.</summary>
+    public static ArmadoBarraJson ParaLargo(ArmadoJson a, double largoM, string por = "tipo")
+    {
+        var ab = new ArmadoBarraJson { Id = a.Id, Por = por, LargoM = largoM };
+
+        if (!a.TieneReceta || largoM <= 0)
+        {
+            return ab;
+        }
+
+        var s = a.SeparacionesCm!;
+
+        var centros = CadLink.Cad.Estribos.CentrosDeAlzado(
+            largoM, s[0] / 100, s[1] / 100, s[2] / 100,
+            !a.EsHorizontal, a.Tipo == "Columna");
+
+        if (a.EsHorizontal && a.QuitarEstribosExtremos)
+        {
+            QuitarExtremos(centros);
+        }
+
+        ab.EstribosM = centros;
+
+        foreach (var b in a.Bastones)
+        {
+            foreach (var (ini, fin) in Tramos(b.Ubicacion, b.DistanciaM, largoM, a.MargenBastonesM))
+            {
+                ab.Bastones.Add(new TramoBastonJson
+                {
+                    Clave = b.Clave,
+                    DiamCm = b.DiamCm,
+                    Lecho = b.Lecho,
+                    XsCm = b.XsCm.ToList(),
+                    YCm = b.YCm,
+                    IniM = ini,
+                    FinM = fin,
+                    GanchoIni = true,
+                    GanchoFin = true
+                });
+            }
+        }
+
+        return ab;
+    }
+
+    /// <summary>
+    /// Los tramos de un baston. Es la regla de <c>CadLink.Cad.Bastones.Tramos</c>: sin
+    /// cantidad, varilla o distancia validas no hay tramos; los de extremo no pasan de la
+    /// mitad util, y todos llevan gancho en sus dos puntas.
+    /// </summary>
+    public static List<(double Ini, double Fin)> Tramos(
+        string ubicacion, double distanciaM, double largo, double margen)
+    {
+        var res = new List<(double, double)>();
+        var util = largo - (2 * margen);
+
+        if (distanciaM <= 0 || largo <= 0 || util <= 0)
+        {
+            return res;
+        }
+
+        var d = distanciaM;
+
+        switch (ubicacion)
+        {
+            case "Extremos":
+            {
+                var l = Math.Min(d, util / 2);
+                res.Add((margen, margen + l));
+                res.Add((largo - margen - l, largo - margen));
+                break;
+            }
+
+            case "Izquierdo":
+                res.Add((margen, margen + Math.Min(d, util)));
+                break;
+
+            case "Derecho":
+                res.Add((largo - margen - Math.Min(d, util), largo - margen));
+                break;
+
+            case "AlCentro":
+            {
+                var l = Math.Min(d, util);
+                res.Add(((largo - l) / 2, (largo + l) / 2));
+                break;
+            }
+        }
+
+        return res;
+    }
+
+    /// <summary>La regla de <c>Bastones.QuitarEstribosExtremos</c>.</summary>
+    private static void QuitarExtremos(List<double> centros)
+    {
+        if (centros.Count > 2)
+        {
+            centros.RemoveAt(centros.Count - 1);
+            centros.RemoveAt(0);
+        }
+    }
 }
 
 /// <summary>Un tramo de baston, ya colocado a lo largo de su pieza.</summary>

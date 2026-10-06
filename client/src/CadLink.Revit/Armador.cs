@@ -189,29 +189,186 @@ internal static class Armador
     {
         var etiqueta = $"«{barra.Etiqueta}» ({armado.Id})";
 
+        var hecha = ArmarEn(doc, inst, llave, etiqueta, armado, _ => barra.Armado!, tipos, viejo, r);
+
+        if (hecha && barra.Armado!.Por == "medidas")
+        {
+            r.Avisos.Add($"«armada por sus medidas»: {etiqueta}. Su seccion «{barra.Seccion.Nombre}» "
+                         + "no se llama como ninguna fila; se uso la unica fila que mide lo mismo");
+        }
+    }
+
+    // ==================================================================
+    //  ARMAR POR TIPO: todas las piezas de un tipo de Revit, de un jalon
+    // ==================================================================
+
+    /// <summary>Lo que se le pide a <see cref="EjecutarPorTipo"/>: un tipo, sus piezas y su seccion.</summary>
+    public sealed record TrabajoPorTipo(string Tipo, IReadOnlyList<FamilyInstance> Piezas, ArmadoJson Armado);
+
+    /// <summary>
+    /// Los tipos de columna y de trabe que tienen piezas en el proyecto, cada uno con cuantas
+    /// tiene, cuantas son de concreto y cuantas ya llevan armado de CadLink.
+    /// </summary>
+    /// <param name="piezas">Las piezas de cada tipo, por el Id del tipo.</param>
+    public static List<TipoArmable> TiposArmables(
+        Document doc, out Dictionary<long, List<FamilyInstance>> piezas)
+    {
+        piezas = new Dictionary<long, List<FamilyInstance>>();
+        var tipos = new Dictionary<long, TipoArmable>();
+        var viejo = ArmadoViejo(doc);
+
+        foreach (var (cat, clase) in new[]
+                 {
+                     (BuiltInCategory.OST_StructuralColumns, ClasePieza.Columna),
+                     (BuiltInCategory.OST_StructuralFraming, ClasePieza.Trabe)
+                 })
+        {
+            foreach (var e in new FilteredElementCollector(doc)
+                         .OfCategory(cat)
+                         .WhereElementIsNotElementType())
+            {
+                if (e is not FamilyInstance fi)
+                {
+                    continue;
+                }
+
+                var idTipo = fi.GetTypeId().Value;
+
+                if (!tipos.TryGetValue(idTipo, out var t))
+                {
+                    t = new TipoArmable { Id = idTipo, Clase = clase };
+
+                    if (doc.GetElement(fi.GetTypeId()) is FamilySymbol s)
+                    {
+                        t.Familia = s.FamilyName ?? string.Empty;
+                        t.Tipo = s.Name ?? string.Empty;
+                        (t.AnchoM, t.PeralteM) = LectorDeCatalogo.Medidas(s);
+                    }
+
+                    tipos[idTipo] = t;
+                    piezas[idTipo] = new List<FamilyInstance>();
+                }
+
+                t.Piezas++;
+                piezas[idTipo].Add(fi);
+
+                var host = RebarHostData.GetRebarHostData(fi);
+
+                if (host is not null && host.IsValidHost())
+                {
+                    t.DeConcreto++;
+                }
+
+                if (viejo.ContainsKey(LlaveDe(fi)))
+                {
+                    t.YaArmadas++;
+                }
+            }
+        }
+
+        return tipos.Values.ToList();
+    }
+
+    /// <summary>
+    /// Arma todas las piezas de cada tipo con su seccion, en una sola transaccion: un Ctrl+Z
+    /// lo deshace todo. Estribos y bastones se calculan con la longitud de CADA pieza.
+    /// </summary>
+    public static ResultadoArmado EjecutarPorTipo(Document doc, IEnumerable<TrabajoPorTipo> trabajo)
+    {
+        var r = new ResultadoArmado();
+
+        using var t = new Transaction(doc, "Armado por tipo de CadLink");
+        t.Start();
+
+        var manejador = new SinCuadros();
+        var opciones = t.GetFailureHandlingOptions();
+
+        opciones.SetFailuresPreprocessor(manejador);
+        opciones.SetClearAfterRollback(true);
+        t.SetFailureHandlingOptions(opciones);
+
+        try
+        {
+            var tipos = new TiposDeArmado(doc, r);
+            var viejo = ArmadoViejo(doc);
+
+            foreach (var w in trabajo)
+            {
+                foreach (var inst in w.Piezas)
+                {
+                    var etiqueta = $"«{w.Tipo} #{inst.Id.Value}» ({w.Armado.Id})";
+
+                    ArmarEn(doc, inst, LlaveDe(inst), etiqueta, w.Armado,
+                        largo => RecetaArmado.ParaLargo(w.Armado, largo), tipos, viejo, r);
+                }
+            }
+
+            t.Commit();
+
+            if (manejador.ElementosBorrados > 0)
+            {
+                r.Errores.Add($"«Revit»: {manejador.ElementosBorrados} varilla(s) se borraron "
+                              + "porque Revit dio un error que no se puede ignorar.");
+            }
+
+            foreach (var m in manejador.Motivos.Take(4))
+            {
+                r.Avisos.Add("Revit dijo: " + m);
+            }
+        }
+        catch (Exception e)
+        {
+            t.RollBack();
+            r.Errores.Add("Se deshizo el armado completo por un fallo general: " + e.Message);
+        }
+
+        return r;
+    }
+
+    /// <summary>
+    /// La llave con la que se marca el armado de una pieza: la de CadLink si la modelo CadLink,
+    /// y si no, la de su Id de Revit. Con ella, volver a armar REHACE en vez de duplicar.
+    /// </summary>
+    private static string LlaveDe(FamilyInstance inst)
+    {
+        var comentario = inst.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.AsString();
+
+        return Llave.EsNuestra(comentario) ? comentario! : "Revit|" + inst.Id.Value;
+    }
+
+    /// <summary>
+    /// Arma UNA pieza. Lo de lo largo -estribos, bastones- lo da <paramref name="porLargo"/> con
+    /// la longitud real de la pieza: del archivo en el modelo de ETABS, de la receta por tipo.
+    /// </summary>
+    private static bool ArmarEn(
+        Document doc, FamilyInstance inst, string llave, string etiqueta, ArmadoJson armado,
+        Func<double, ArmadoBarraJson> porLargo,
+        TiposDeArmado tipos, Dictionary<string, List<ElementId>> viejo, ResultadoArmado r)
+    {
         var datosHost = RebarHostData.GetRebarHostData(inst);
 
         if (datosHost is null || !datosHost.IsValidHost())
         {
             r.Errores.Add($"«no admite armado»: {etiqueta}. Revit solo arma piezas de concreto: "
                           + "revisa el material estructural de su familia");
-            return;
+            return false;
         }
 
         var marco = Marco(inst, armado, etiqueta, r);
 
         if (marco is null)
         {
-            return;
+            return false;
         }
 
         // Lo de la vez anterior, fuera: volver a armar REHACE, no duplica.
         if (viejo.TryGetValue(llave, out var ids) && ids.Count > 0)
         {
             doc.Delete(ids);
+            viejo.Remove(llave);
         }
 
-        var varillas = PlanDeArmado.Armar(armado, barra.Armado!, marco);
+        var varillas = PlanDeArmado.Armar(armado, porLargo(marco.LargoM), marco);
         var hechas = 0;
 
         foreach (var v in varillas)
@@ -237,11 +394,7 @@ internal static class Armador
             r.Varillas += hechas;
         }
 
-        if (barra.Armado!.Por == "medidas")
-        {
-            r.Avisos.Add($"«armada por sus medidas»: {etiqueta}. Su seccion «{barra.Seccion.Nombre}» "
-                         + "no se llama como ninguna fila; se uso la unica fila que mide lo mismo");
-        }
+        return hechas > 0;
     }
 
     /// <summary>

@@ -210,6 +210,29 @@ internal static class LectorDeCatalogo
     }
 
     /// <summary>Una longitud de los parametros del tipo, en metros, o <c>null</c>.</summary>
+    /// <summary>
+    /// La base y el peralte de un tipo, en metros: por sus parametros y, si no, por su nombre.
+    /// Es lo mismo que hace <see cref="Cargables"/>; lo usa tambien «Armar por tipo».
+    /// </summary>
+    public static (double? AnchoM, double? PeralteM) Medidas(FamilySymbol s)
+    {
+        var ancho = Longitud(s, NombresDeAncho);
+        var peralte = Longitud(s, NombresDePeralte);
+
+        if (ancho is null || peralte is null)
+        {
+            var delNombre = MedidasPorNombre.Dos(s.Name);
+
+            if (delNombre is not null)
+            {
+                ancho ??= delNombre.Value.AnchoM;
+                peralte ??= delNombre.Value.PeralteM;
+            }
+        }
+
+        return (ancho, peralte);
+    }
+
     private static double? Longitud(FamilySymbol s, string[] nombres)
     {
         foreach (var n in nombres)

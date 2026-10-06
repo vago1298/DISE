@@ -104,6 +104,34 @@ public sealed class Aplicacion : IExternalApplication
         armar.Image = Imagen("CadLink.Revit.importar-16.png");
 
         panel.AddItem(armar);
+
+        // ---- El armado POR TIPO ----
+        //
+        // Para cualquier proyecto, no solo los modelados desde ETABS: un renglon por tipo de
+        // columna y de trabe, se le elige la seccion de CadLink y se arman todas sus piezas.
+        var porTipo = new PushButtonData(
+            "CadLinkArmarPorTipo",
+            "Armar\npor tipo",
+            dll,
+            typeof(ComandoArmarPorTipo).FullName)
+        {
+            ToolTip = "Arma de un jalon todas las columnas y trabes de cada tipo con una seccion "
+                      + "de la tabla de CadLink.",
+
+            LongDescription =
+                "Lee el .cadlink-armado.json que escribe CadLink con el boton «Armado para "
+                + "Revit» de la hoja de secciones de concreto, y ensena un renglon por cada TIPO "
+                + "de columna y de trabe del proyecto, con cuantas piezas tiene.\n\n"
+                + "A cada tipo se le elige su seccion -se sugiere la que se llama o mide igual- y "
+                + "al pulsar Armar se ponen varillas nativas en todas sus piezas: corridas, "
+                + "laterales, bastones y estribos por zonas con la longitud real de cada una.\n\n"
+                + "Volver a armar rehace el armado de CadLink; el puesto a mano no se toca."
+        };
+
+        porTipo.LargeImage = Imagen("CadLink.Revit.importar-32.png");
+        porTipo.Image = Imagen("CadLink.Revit.importar-16.png");
+
+        panel.AddItem(porTipo);
     }
 
     /// <summary>Carga un icono embebido en esta DLL.</summary>

@@ -81,14 +81,15 @@ public sealed class ComandoArmar : IExternalCommand
         return Result.Succeeded;
     }
 
-    private static string Informe(ResultadoArmado r, int conArmado)
+    /// <summary>El informe del armado. Tambien lo usa «Armar por tipo».</summary>
+    internal static string Informe(ResultadoArmado r, int conArmado)
     {
         var sb = new StringBuilder();
 
         sb.AppendLine("Armado terminado.");
         sb.AppendLine();
         sb.Append("Piezas armadas: ").Append(r.Piezas).Append(" de ").Append(conArmado)
-          .AppendLine(" que traen armado en el archivo");
+          .AppendLine(" que se pidieron");
         sb.Append("Varillas y juegos de estribos creados: ").Append(r.Varillas).AppendLine();
 
         if (r.SinArmado > 0)

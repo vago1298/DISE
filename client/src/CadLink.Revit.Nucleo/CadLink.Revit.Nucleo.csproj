@@ -31,6 +31,15 @@
     <LangVersion>latest</LangVersion>
     <RootNamespace>CadLink.Revit.Nucleo</RootNamespace>
     <AssemblyName>CadLink.Revit.Nucleo</AssemblyName>
+    <DefineConstants>$(DefineConstants);CADLINK_NUCLEO</DefineConstants>
   </PropertyGroup>
+
+  <!-- EL REPARTO DE ESTRIBOS, COMPARTIDO. No es una referencia a CadLink.Cad -este nucleo no
+       referencia ningun proyecto-: es el MISMO archivo, compilado aqui como internal. Asi el
+       armado por tipo de Revit pone los estribos donde los pone el alzado de AutoCAD, y si
+       cambia la regla, cambia en los dos. -->
+  <ItemGroup>
+    <Compile Include="..\CadLink.Cad\Estribos.cs" Link="Compartido\Estribos.cs" />
+  </ItemGroup>
 
 </Project>
