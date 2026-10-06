@@ -545,7 +545,9 @@ internal static class Armador
                 return null;
             }
 
-            return MarcoPieza.DeTrabe(p1, p2, M(caja.Min.Z), armado.BaseCm);
+            // De cara a cara de columna, no de centro a centro: ver MarcoPieza.AlLargoDe.
+            return MarcoPieza.DeTrabe(p1, p2, M(caja.Min.Z), armado.BaseCm)
+                .AlLargoDe(PuntosDelSolido(inst).Select(P));
         }
 
         if (inst.Location is not LocationPoint lp)
@@ -557,6 +559,61 @@ internal static class Armador
         return MarcoPieza.DeColumna(
             P(lp.Point), P(inst.HandOrientation), P(inst.FacingOrientation),
             M(caja.Min.Z), M(caja.Max.Z), armado.BaseCm, armado.AlturaCm);
+    }
+
+    /// <summary>
+    /// Los vertices del solido de la pieza tal como la dibuja Revit: ya recortada en las caras
+    /// de las columnas. Vacio si no se puede leer.
+    /// </summary>
+    private static List<XYZ> PuntosDelSolido(FamilyInstance inst)
+    {
+        var res = new List<XYZ>();
+
+        try
+        {
+            var geo = inst.get_Geometry(new Options { DetailLevel = ViewDetailLevel.Fine });
+
+            if (geo is null)
+            {
+                return res;
+            }
+
+            void DeSolidos(IEnumerable<GeometryObject> objetos)
+            {
+                foreach (var o in objetos)
+                {
+                    if (o is Solid solido && solido.Volume > 1e-9)
+                    {
+                        foreach (var e in solido.Edges)
+                        {
+                            if (e is Edge arista)
+                            {
+                                res.AddRange(arista.Tessellate());
+                            }
+                        }
+                    }
+                }
+            }
+
+            foreach (var o in geo)
+            {
+                if (o is GeometryInstance gi)
+                {
+                    // Aqui si la geometria de la INSTANCIA: hacen falta coordenadas del modelo.
+                    DeSolidos(gi.GetInstanceGeometry());
+                }
+                else
+                {
+                    DeSolidos(new[] { o });
+                }
+            }
+        }
+        catch (Exception)
+        {
+            res.Clear();
+        }
+
+        return res;
     }
 
     /// <summary>Crea una varilla, o un juego de estribos, en la pieza.</summary>

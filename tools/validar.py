@@ -15920,6 +15920,13 @@ def v30_armado_por_tipo() -> None:
     check("lo que dice Revit lleva el Id del elemento, para encontrarlo",
           "m.GetFailingElementIds()?.Select(e => e.Value)" in leer(ruta("client/src/CadLink.Revit/SinCuadros.cs")))
     check("y tiene pruebas", "TiposNuevos.Faltantes(" in leer(ruta("tools/prueba-revit/Program.cs")))
+    # «La armadura se encuentra totalmente fuera de su anfitrion» en TODAS las trabes: se armaban
+    # con el largo de la linea, de centro a centro de columna, y los estribos de la punta caian
+    # dentro de la columna. Se arma con lo que mide el solido, de cara a cara.
+    check("la trabe se arma de cara a cara de columna, con lo que mide su solido",
+          "public MarcoPieza AlLargoDe(IEnumerable<V3> puntosDelSolido)" in leer(ruta("client/src/CadLink.Revit.Nucleo/PlanDeArmado.cs"))
+          and ".AlLargoDe(PuntosDelSolido(inst).Select(P));" in arm and "gi.GetInstanceGeometry()" in arm
+          and "linea.AlLargoDe(solido)" in leer(ruta("tools/prueba-revit/Program.cs")))
 
     # CS0104 en la maquina del usuario: WPF y la Revit API comparten nombres de tipo. Con los
     # dos usings, el de WPF tiene que ir con alias o no compila.

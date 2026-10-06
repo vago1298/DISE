@@ -148,6 +148,8 @@ public sealed class GeometryInstance : GeometryObject
     public Transform Transform => Transform.Identity;
 
     public GeometryElement GetSymbolGeometry() => new();
+
+    public GeometryElement GetInstanceGeometry() => new();
 }
 
 public abstract class Face
@@ -173,7 +175,27 @@ public sealed class FaceArray : IEnumerable<Face>
     System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
 }
 
+/// <summary>Revit API: Edge.Tessellate() devuelve IList&lt;XYZ&gt;.</summary>
+public sealed class Edge
+{
+    public IList<XYZ> Tessellate() => new List<XYZ>();
+}
+
+/// <summary>Revit API: EdgeArray se recorre con foreach.</summary>
+public sealed class EdgeArray : IEnumerable<Edge>
+{
+    public int Size => 0;
+
+    public IEnumerator<Edge> GetEnumerator() => new List<Edge>().GetEnumerator();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
 public sealed class Solid : GeometryObject
 {
     public FaceArray Faces => new();
+
+    public EdgeArray Edges => new();
+
+    public double Volume => 0;
 }

@@ -53,6 +53,43 @@ public sealed record MarcoPieza(V3 Origen, V3 Eje, V3 Ex, V3 Ey, double LargoM)
         Origen + (Ex * (xCm / 100)) + (Ey * (yCm / 100)) + (Eje * sM);
 
     /// <summary>
+    /// El marco recortado a lo que mide la pieza DE VERDAD a lo largo de su eje: de cara a cara.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Es el «armadura totalmente fuera de su anfitrion».</b> La linea de una trabe se dibuja
+    /// de centro a centro de columna, pero Revit recorta su solido en la CARA de la columna. Con
+    /// el largo de la linea, el primer y el ultimo estribo -a 5 cm de la punta- caian DENTRO
+    /// de la columna: fuera de la trabe. Y las corridas, los bastones y las zonas de estribos
+    /// se median desde el centro de la columna y no desde su paño, como en el alzado.
+    /// </para>
+    /// <para>
+    /// Con los puntos del solido proyectados en el eje se saca donde empieza y acaba la pieza.
+    /// Sin puntos, o si dan algo absurdo, se queda como estaba.
+    /// </para>
+    /// </remarks>
+    public MarcoPieza AlLargoDe(IEnumerable<V3> puntosDelSolido)
+    {
+        var s = puntosDelSolido.Select(p => (p - Origen).Punto(Eje)).ToList();
+
+        if (s.Count < 2)
+        {
+            return this;
+        }
+
+        var (min, max) = (s.Min(), s.Max());
+
+        // Una pieza de menos de 5 cm, o que se sale mas de un metro de su linea, no es una
+        // trabe de verdad: mejor la linea.
+        if (max - min < 0.05 || min < -1 || max > LargoM + 1)
+        {
+            return this;
+        }
+
+        return this with { Origen = Origen + (Eje * min), LargoM = max - min };
+    }
+
+    /// <summary>
     /// El marco de una trabe <b>horizontal</b>: su linea en planta, y la cara de abajo.
     /// </summary>
     /// <param name="p1">Arranque de su linea de colocacion.</param>

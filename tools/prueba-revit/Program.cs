@@ -2278,6 +2278,25 @@ internal static partial class Programa
         Check("lo que la persona eligio a mano no se pisa", b.Seccion == "T-04");
         Check("los ajustes del despiece vienen encendidos", v.EscribirPropiedades && v.CrearDespiece);
 
+        // ---------- La trabe se arma de cara a cara de columna, no de centro a centro ----------
+        // La linea va de centro a centro (0 a 6 m) y Revit recorta el solido en la cara de dos
+        // columnas de 40: la trabe de verdad va de 0.20 a 5.80.
+        var linea = MarcoPieza.DeTrabe(new V3(0, 0, 3), new V3(6, 0, 3), 2.7, 15);
+        var solido = new List<V3> { new(0.20, 0.075, 2.7), new(5.80, -0.075, 3.0), new(3, 0, 2.85) };
+        var real = linea.AlLargoDe(solido);
+        Casi("arranca en la cara de la primera columna", real.Origen.X, 0.20, 1e-12);
+        Casi("y mide el claro libre", real.LargoM, 5.60, 1e-12);
+        Check("sin cambiar la seccion: misma X, misma altura",
+            Math.Abs(real.Origen.Y - linea.Origen.Y) < 1e-12 && Math.Abs(real.Origen.Z - linea.Origen.Z) < 1e-12);
+        var est = RecetaArmado.ParaLargo(new ArmadoJson
+        {
+            Id = "T", Tipo = "Trabe", BaseCm = 15, AlturaCm = 30, SeparacionesCm = new() { 10, 15, 10 }
+        }, real.LargoM).EstribosM;
+        Check("el primer estribo queda a 5 cm del paño, DENTRO de la trabe y no de la columna",
+            Math.Abs(real.En(0, 0, est.Min()).X - 0.25) < 1e-9 && Math.Abs(real.En(0, 0, est.Max()).X - 5.75) < 1e-9);
+        Check("sin solido, o con uno absurdo, se queda la linea",
+            linea.AlLargoDe(new List<V3>()) == linea && linea.AlLargoDe(new List<V3> { new(-5, 0, 3), new(12, 0, 3) }) == linea);
+
         // ---------- La contratrabe dice CONTRATRABE en la nota clave ----------
         Igual("nota clave de una contratrabe = CONTRATRABE",
             PlanDespiece.Propiedades(new ArmadoJson { Id = "CT-01", Tipo = "Contratrabe", BaseCm = 30, AlturaCm = 80 }).NotaClave,

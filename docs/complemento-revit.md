@@ -444,6 +444,14 @@ Revit con las mismas reglas del alzado de AutoCAD. El reparto de estribos es el 
 (`Estribos.cs`) compilado en el núcleo; los tramos de bastón siguen la regla de
 `Bastones.Tramos`, comprobada igual en 16 000 casos.
 
+### De cara a cara de columna
+
+La línea de una trabe suele dibujarse de centro a centro de columna, pero Revit recorta su sólido
+en la **cara** de la columna. Antes se armaba con el largo de la línea, así que el estribo de la
+punta (a 5 cm del extremo) caía dentro de la columna y Revit avisaba *«La armadura se encuentra
+totalmente fuera de su anfitrión»*. Ahora se mide el sólido de la trabe a lo largo de su eje y
+se arma el **claro libre**: corridas, bastones y zonas de estribos, como en el alzado.
+
 ### Las secciones que Revit no tiene
 
 Al abrir el archivo, *Armar por tipo* compara las secciones de CadLink con los tipos de columna
