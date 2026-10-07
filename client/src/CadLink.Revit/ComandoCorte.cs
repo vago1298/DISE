@@ -32,8 +32,11 @@ namespace CadLink.Revit;
 /// </para>
 /// </remarks>
 [Transaction(TransactionMode.Manual)]
-public sealed class ComandoCorte : IExternalCommand
+public class ComandoCorte : IExternalCommand
 {
+    /// <summary>Solo los tipos de este elemento -los botones «Corte» de Columnas y de Vigas-, o todos.</summary>
+    protected virtual ClasePieza? Solo => null;
+
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         var uidoc = commandData?.Application?.ActiveUIDocument;
@@ -85,7 +88,9 @@ public sealed class ComandoCorte : IExternalCommand
         }
 
         // ---- 2. Que se puede cortar ----
-        var tipos = Armador.TiposArmables(doc, out var piezas);
+        var tipos = Armador.TiposArmables(doc, out var piezas)
+            .Where(t => Solo is null || t.Clase == Solo)
+            .ToList();
         var porId = tipos.ToDictionary(t => t.Id);
 
         ArmadoJson? SeccionDe(TipoArmable t) =>
@@ -313,4 +318,18 @@ public sealed class ComandoCorte : IExternalCommand
 
         return ventana.ShowDialog() == true;
     }
+}
+
+/// <summary>El boton «Corte» del panel Columnas.</summary>
+[Transaction(TransactionMode.Manual)]
+public sealed class ComandoCorteColumnas : ComandoCorte
+{
+    protected override ClasePieza? Solo => ClasePieza.Columna;
+}
+
+/// <summary>El boton «Corte» del panel Vigas.</summary>
+[Transaction(TransactionMode.Manual)]
+public sealed class ComandoCorteVigas : ComandoCorte
+{
+    protected override ClasePieza? Solo => ClasePieza.Trabe;
 }

@@ -23,8 +23,11 @@ namespace CadLink.Revit;
 /// </para>
 /// </remarks>
 [Transaction(TransactionMode.Manual)]
-public sealed class ComandoArmarPorTipo : IExternalCommand
+public class ComandoArmarPorTipo : IExternalCommand
 {
+    /// <summary>Solo los tipos de este elemento -los botones «Acero» de Columnas y de Vigas-, o todos.</summary>
+    protected virtual ClasePieza? Solo => null;
+
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         var doc = commandData?.Application?.ActiveUIDocument?.Document;
@@ -79,10 +82,12 @@ public sealed class ComandoArmarPorTipo : IExternalCommand
         }
 
         // ---- 2. Las secciones de CadLink que Revit no tiene: se ofrecen crear ----
-        CrearLasQueFaltan(doc, archivo);
+        CrearLasQueFaltan(doc, archivo, Solo);
 
         // ---- 3. Los tipos del proyecto ----
-        var tipos = Armador.TiposArmables(doc, out var piezas);
+        var tipos = Armador.TiposArmables(doc, out var piezas)
+            .Where(t => Solo is null || t.Clase == Solo)
+            .ToList();
 
         if (tipos.Count == 0)
         {
@@ -139,13 +144,15 @@ public sealed class ComandoArmarPorTipo : IExternalCommand
     /// Si CadLink tiene secciones -una trabe de 50x90, por ejemplo- que no existen como tipo en
     /// Revit, pregunta si se crean. Se crean duplicando un tipo de la familia de concreto.
     /// </summary>
-    private static void CrearLasQueFaltan(Document doc, ArchivoArmadoJson archivo)
+    private static void CrearLasQueFaltan(Document doc, ArchivoArmadoJson archivo, ClasePieza? solo)
     {
         List<TipoPorCrear> faltan;
 
         try
         {
-            faltan = TiposNuevos.Faltantes(archivo.Armados, CreadorDeTipos.Existentes(doc));
+            faltan = TiposNuevos.Faltantes(archivo.Armados, CreadorDeTipos.Existentes(doc))
+                .Where(f => solo is null || f.Clase == solo)
+                .ToList();
         }
         catch (Exception)
         {
@@ -194,4 +201,18 @@ public sealed class ComandoArmarPorTipo : IExternalCommand
 
         TaskDialog.Show("CadLink", texto);
     }
+}
+
+/// <summary>El boton «Acero» del panel Columnas: «Armar por tipo» solo con las columnas.</summary>
+[Transaction(TransactionMode.Manual)]
+public sealed class ComandoAceroColumnas : ComandoArmarPorTipo
+{
+    protected override ClasePieza? Solo => ClasePieza.Columna;
+}
+
+/// <summary>El boton «Acero» del panel Vigas: «Armar por tipo» solo con las trabes.</summary>
+[Transaction(TransactionMode.Manual)]
+public sealed class ComandoAceroVigas : ComandoArmarPorTipo
+{
+    protected override ClasePieza? Solo => ClasePieza.Trabe;
 }

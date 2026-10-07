@@ -15880,7 +15880,7 @@ def v30_armado_por_tipo() -> None:
     cpt = leer(ruta("client/src/CadLink.Revit/ComandoArmarPorTipo.cs"))
     check("hay boton «Corte de sección» en la cinta",
           "typeof(ComandoCorte).FullName" in apl and '"CadLinkCorte"' in apl
-          and "public sealed class ComandoCorte : IExternalCommand" in cor)
+          and "public class ComandoCorte : IExternalCommand" in cor)
     check("corta lo seleccionado o un representante por tipo, con el nombre que se escriba",
           "uidoc.Selection.GetElementIds()" in cor and "public sealed class FilaCorte" in nuc
           and "public static ArmadoJson? SeccionDe(" in nuc and ".Select(f => (f.Armado, piezaDe[f], f.Nombre))" in cor)
@@ -15911,7 +15911,7 @@ def v30_armado_por_tipo() -> None:
           'a.Tipo == "Contratrabe" ? "CONTRATRABE" : "CONCRETO",' in pld)
     check("se crean los tipos de las secciones que Revit no tiene, duplicando uno de concreto",
           "public static List<TipoPorCrear> Faltantes(" in tnu and "plantilla.Duplicate(nombre)" in cdt
-          and "LectorDeCatalogo.NombresDeAncho" in cdt and "CrearLasQueFaltan(doc, archivo);" in cpt
+          and "LectorDeCatalogo.NombresDeAncho" in cdt and "CrearLasQueFaltan(doc, archivo, Solo);" in cpt
           and "TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No" in cpt
           and "CadLink.Revit\\CreadorDeTipos.cs" in leer(ruta("tools/prueba-revit-compila/Prueba.csproj")))
     check("las cotas van a las CARAS de la pieza, y si Revit las da por malas se deshacen",
@@ -15965,6 +15965,20 @@ def v30_armado_por_tipo() -> None:
           and "new OpcionesMuro { RecortarEnCastillos = false }" in imp
           and "CadLink.Revit\\Geometria.cs" in leer(ruta("tools/prueba-revit-compila/Prueba.csproj"))
           and "AjusteDeMuros.APanoDeColumnas(deEje" in leer(ruta("tools/prueba-revit/Program.cs")))
+
+    # Se pidio: los dinteles se subian sobre la losa. Van en el nivel en que se APOYAN, y su base
+    # se comprueba contra la del calculo.
+    check("los dinteles van en el nivel en que se apoyan y a la cota de su base",
+          "public static (string Nombre, double DesfaseM) NivelDeApoyo(" in leer(ruta("client/src/CadLink.Revit.Nucleo/Colocacion.cs"))
+          and "Colocacion.NivelDeApoyo(zBase, comoJson)" in mod and "r.Muros.Add((hecho, pano.Vertices.Min(v => v.Z)));" in mod
+          and "Colocacion.NivelDeApoyo(2.10, nivs)" in leer(ruta("tools/prueba-revit/Program.cs")))
+    # Se pidio la cinta por elemento: Entrada, Columnas, Vigas...
+    check("la cinta va por elemento, con el acero y el corte de cada uno",
+          all(f'"{x}"' in apl for x in ("Entrada", "Columnas", "Vigas"))
+          and "typeof(ComandoAceroColumnas).FullName" in apl and "typeof(ComandoAceroVigas).FullName" in apl
+          and "typeof(ComandoCorteColumnas).FullName" in apl and "typeof(ComandoCorteVigas).FullName" in apl
+          and "public sealed class ComandoAceroColumnas : ComandoArmarPorTipo" in cpt
+          and "public sealed class ComandoCorteVigas : ComandoCorte" in cor)
 
     # CS0104 en la maquina del usuario: WPF y la Revit API comparten nombres de tipo. Con los
     # dos usings, el de WPF tiene que ir con alias o no compila.
@@ -16572,8 +16586,12 @@ def v26_plugin_revit() -> None:
     # piso. Hubo una version que lo corregia MOVIENDO la pieza segun su caja envolvente; se
     # quito porque la caja de una viga estructural incluye mas que su solido y el
     # desplazamiento salia impredecible.
-    check("y NO se mueve la pieza a mano para colocarla",
-          "ElementTransformUtils.MoveElement(" not in modelador,
+    # La UNICA pieza que se mueve es el muro, y midiendo su SOLIDO: un dintel atado al nivel de
+    # arriba salia sobre la losa. Las trabes no se mueven nunca.
+    check("y NO se mueve la pieza a mano para colocarla: solo el muro, medido por su solido",
+          modelador.count("ElementTransformUtils.MoveElement(") == 1
+          and "ElementTransformUtils.MoveElement(doc, muro.Id, new XYZ(0, 0, Unidades.AInternas(dz)));" in modelador
+          and "var puntos = Geometria.PuntosDelSolido(muro);" in modelador,
           "mover segun la caja envolvente daba un desplazamiento impredecible, porque la caja "
           "de una viga estructural incluye mas que su solido")
 

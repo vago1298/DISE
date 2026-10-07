@@ -169,6 +169,17 @@ tipo elegido, que **no se va a modelar**.
 
 **Un solo Ctrl+Z deshace la importación completa**, porque todo va en una sola transacción.
 
+### La cinta
+
+La pestaña **CadLink** va por elemento:
+
+| Panel | Botones |
+|---|---|
+| Entrada | **Importar ETABS**, **Armar modelo** (el armado que trae el modelo de ETABS) |
+| Columnas | **Acero** (Armar por tipo, solo columnas), **Corte** (Corte de sección, solo columnas) |
+| Vigas | **Acero** (solo trabes y contratrabes), **Corte** |
+| Todo | **Armar por tipo** y **Corte de sección** con columnas y trabes juntas |
+
 ---
 
 ## Cómo se emparejan las secciones con tus familias
@@ -258,6 +269,11 @@ ya colocada es de solo lectura, su escritura fallaba y arrastraba la del desfase
 parámetro va por su cuenta, también el desfase Z inicial y final, se repite al final con todo
 regenerado, se aplica también al **actualizar**, y si alguna viga se queda con desfase sale
 como error.
+
+**Los dinteles, en su sitio.** Un muro va atado al nivel en que **se apoya** (el más alto que
+no pasa de su base), no al más cercano: el de un dintel es el de arriba, y atado a él Revit lo
+subía por encima de la losa. Además, al final se mide el sólido de cada muro y, si su base no
+quedó en la cota del cálculo, se lleva ahí.
 
 **Los muros, a paño de las columnas.** Las barras se modelan primero; después se **mide el
 sólido** de cada columna del proyecto y cada punta de muro se lleva a la cara de la columna que

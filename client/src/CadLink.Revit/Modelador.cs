@@ -28,6 +28,9 @@ public sealed class ResultadoModelado
 
     internal int PuntasSinColumna { get; set; }
 
+    /// <summary>Los muros creados, con la cota a la que tiene que quedar su base.</summary>
+    internal List<(Element Muro, double ZBaseM)> Muros { get; } = new();
+
     /// <summary>Las vigas creadas o actualizadas, para dejarlas en su nivel al final.</summary>
     internal List<(FamilyInstance Viga, BarraJson Barra)> Vigas { get; } = new();
 }
@@ -135,6 +138,56 @@ internal static class Modelador
                 {
                     r.Errores.Add($"«desfase Z»: {conDesfase} viga(s) se quedaron con Valor de desfase Z "
                                   + "distinto de cero; su familia no deja cambiarlo");
+                }
+            }
+
+            // ---- Los muros a su cota: que ninguno quede subido o bajado ----
+            //
+            // Se mide el SOLIDO del muro, no su caja: la base tiene que quedar en la cota que
+            // trae el calculo. Si Revit lo puso en otra -un dintel atado al nivel de arriba
+            // salia por encima de la losa-, se baja o se sube lo que falta.
+            if (r.Muros.Count > 0)
+            {
+                doc.Regenerate();
+
+                var movidos = 0;
+                var mal = 0;
+
+                foreach (var (muro, zBase) in r.Muros)
+                {
+                    var puntos = Geometria.PuntosDelSolido(muro);
+
+                    if (puntos.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    var dz = zBase - Unidades.AMetros(puntos.Min(q => q.Z));
+
+                    if (Math.Abs(dz) < 0.005)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        ElementTransformUtils.MoveElement(doc, muro.Id, new XYZ(0, 0, Unidades.AInternas(dz)));
+                        movidos++;
+                    }
+                    catch (Exception)
+                    {
+                        mal++;
+                    }
+                }
+
+                if (movidos > 0)
+                {
+                    r.Avisos.Add($"{movidos} muro(s) -dinteles, sobre todo- se llevaron a la cota de su base en el calculo");
+                }
+
+                if (mal > 0)
+                {
+                    r.Errores.Add($"«muro fuera de su cota»: {mal} muro(s) no quedaron a la altura del calculo y Revit no dejo moverlos");
                 }
             }
 
@@ -552,6 +605,12 @@ internal static class Modelador
             // La marca, que es como se reconoce la pieza la proxima vez.
             hecho.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.Set(paso.Llave);
 
+            // Los muros se comprueban al final: que su base quede DONDE la trae el calculo.
+            if (hecho is Wall && paso.Pano is { } pano && pano.Vertices.Count > 0)
+            {
+                r.Muros.Add((hecho, pano.Vertices.Min(v => v.Z)));
+            }
+
             r.Creadas++;
         }
         catch (Exception e)
@@ -886,7 +945,12 @@ internal static class Modelador
             })
             .ToList();
 
-        var donde = Colocacion.NivelDePano(p.Vertices.Min(v => v.Z), comoJson);
+        // Un MURO va en el nivel en que se apoya, no en el mas cercano: el de un dintel es el de
+        // ARRIBA, y atado a el Revit lo subia sobre la losa. La losa, en el mas cercano.
+        var zBase = p.Vertices.Min(v => v.Z);
+        var donde = paso.Tipo?.Categoria == CategoriaRevit.Muro
+            ? Colocacion.NivelDeApoyo(zBase, comoJson)
+            : Colocacion.NivelDePano(zBase, comoJson);
 
         if (donde.Nombre.Length == 0)
         {

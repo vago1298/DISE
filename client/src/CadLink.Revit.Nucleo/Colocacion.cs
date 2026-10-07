@@ -86,6 +86,37 @@ public static class Colocacion
             nPunta.Nombre, arriba - nPunta.ElevacionM);
     }
 
+    /// <summary>
+    /// El nivel en que SE APOYA un muro: el mas alto que no pasa de su base (con 5 cm de
+    /// holgura). Si no hay ninguno por debajo, el mas cercano.
+    /// </summary>
+    /// <remarks>
+    /// Para un muro de piso a techo da lo mismo que <see cref="NivelDePano"/>. La diferencia
+    /// esta en los <b>dinteles</b>: el muro de encima de una puerta arranca a dos metros del
+    /// piso y su nivel MAS CERCANO es el de ARRIBA. Atado a un nivel que esta por encima de su
+    /// base, Revit lo subia por encima de la losa.
+    /// </remarks>
+    public static (string Nombre, double DesfaseM) NivelDeApoyo(
+        double zBaseM, IReadOnlyList<NivelJson>? niveles)
+    {
+        var lista = (niveles ?? new List<NivelJson>())
+            .Where(n => !string.IsNullOrWhiteSpace(n.Nombre))
+            .ToList();
+
+        if (lista.Count == 0)
+        {
+            return (string.Empty, 0);
+        }
+
+        var abajo = lista
+            .Where(n => n.ElevacionM <= zBaseM + 0.05)
+            .OrderByDescending(n => n.ElevacionM)
+            .FirstOrDefault()
+            ?? MasCercano(lista, zBaseM);
+
+        return (abajo.Nombre, zBaseM - abajo.ElevacionM);
+    }
+
     private static NivelJson MasCercano(List<NivelJson> niveles, double z) =>
         niveles
             .OrderBy(n => Math.Abs(n.ElevacionM - z))

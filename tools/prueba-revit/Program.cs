@@ -2086,6 +2086,14 @@ internal static partial class Programa
         lejos.Panos.AddRange(new[] { ll, Muro(0, 0.5, 4, 0.5, 0.15) });
         Check("un muro que no va por la orilla no la mueve", LosasAPano.AplicarATodos(lejos).Count == 0);
 
+        // ---------- El dintel se ata al nivel en que se APOYA, no al de arriba ----------
+        var nivs = new List<NivelJson> { new() { Nombre = "PB", ElevacionM = 0 }, new() { Nombre = "N1", ElevacionM = 2.7 } };
+        Igual("el dintel de 2.10 a 2.70 va en planta baja, aunque el mas cercano sea el de arriba",
+            Colocacion.NivelDeApoyo(2.10, nivs), ("PB", 2.10));
+        Igual("el muro de piso a techo, en su piso", Colocacion.NivelDeApoyo(0, nivs).Nombre, "PB");
+        Igual("el de arriba, en el de arriba aunque venga 2 cm abajo", Colocacion.NivelDeApoyo(2.68, nivs).Nombre, "N1");
+        Igual("y uno por debajo de todo, en el mas cercano", Colocacion.NivelDeApoyo(-1, nivs).Nombre, "PB");
+
         // ---------- Los muros al paño de las columnas YA MODELADAS ----------
         // Muro de eje a eje entre dos castillos de 20x20 en x=0 y x=4; altura 0 a 2.4.
         AjusteDeMuros.HuellaColumna Castillo(double cx, double cy, double lado) => new(

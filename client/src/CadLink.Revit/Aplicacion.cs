@@ -31,6 +31,10 @@ public sealed class Aplicacion : IExternalApplication
 
     public Result OnShutdown(UIControlledApplication app) => Result.Succeeded;
 
+    /// <summary>
+    /// La cinta, por ELEMENTO, como se pidio: Entrada, Columnas, Vigas... Cada panel con lo que
+    /// se le hace a ese elemento: su acero y su corte.
+    /// </summary>
     private static void CrearCinta(UIControlledApplication app)
     {
         try
@@ -40,124 +44,122 @@ public sealed class Aplicacion : IExternalApplication
         catch (Autodesk.Revit.Exceptions.ArgumentException)
         {
             // Ya existe, porque otro complemento de la casa la creo antes. No es un error:
-            // se sigue y se anade el panel a la que hay.
+            // se sigue y se anaden los paneles a la que hay.
         }
-
-        var panel = app.CreateRibbonPanel(Pestana, "Modelo de calculo");
 
         // La ruta de ESTA dll, que es lo que Revit necesita para encontrar el comando.
         var dll = typeof(Aplicacion).Assembly.Location;
 
-        var boton = new PushButtonData(
-            "CadLinkImportarModelo",
-            "Importar\nmodelo",
-            dll,
-            typeof(ComandoImportar).FullName)
-        {
-            ToolTip = "Importa el modelo estructural exportado por CadLink desde ETABS o "
-                      + "SAP2000.",
+        // ---- Entrada: lo que llega de ETABS ----
+        var entrada = app.CreateRibbonPanel(Pestana, "Entrada");
 
-            LongDescription =
-                "Lee el archivo .cadlink-modelo.json que escribe CadLink, revisa que familias "
-                + "hay cargadas en este proyecto, y pregunta que familia y tipo le toca a cada "
-                + "seccion del modelo de calculo.\n\n"
-                + "Despues crea columnas, trabes, diagonales, muros y losas nativas de Revit, "
-                + "cada una en su nivel.\n\n"
-                + "La eleccion se guarda: la siguiente vez no hay que volver a mapear."
-        };
+        Boton(entrada, dll, "CadLinkImportarModelo", "Importar\nETABS", typeof(ComandoImportar).FullName,
+            "Importa el modelo estructural exportado por CadLink desde ETABS o SAP2000.",
+            "Lee el archivo .cadlink-modelo.json que escribe CadLink, revisa que familias "
+            + "hay cargadas en este proyecto, y pregunta que familia y tipo le toca a cada "
+            + "seccion del modelo de calculo.\n\n"
+            + "Despues crea columnas, trabes, diagonales, muros y losas nativas de Revit, "
+            + "cada una en su nivel.\n\n"
+            + "La eleccion se guarda: la siguiente vez no hay que volver a mapear.",
+            "importar");
 
-        // Sin imagen, el boton sale EN BLANCO con el texto solo debajo. Revit no se queja:
-        // simplemente se ve mal y no se distingue de los botones de los demas complementos.
-        //
-        // Pide las dos medidas y usa una u otra segun como dibuje el boton: la de 32 en el
-        // boton grande del panel, que es el caso normal, y la de 16 cuando lo apila o lo
-        // mete en un desplegable. Dandole solo la grande, Revit la reduce al vuelo y a 16 px
-        // queda una mancha.
-        boton.LargeImage = Imagen("CadLink.Revit.importar-32.png");
-        boton.Image = Imagen("CadLink.Revit.importar-16.png");
-
-        panel.AddItem(boton);
-
-        // ---- El armado ----
-        //
         // Un boton aparte para poder REHACER el armado -despues de cambiar una seccion en
         // CadLink- sin volver a pasar por el cuadro de mapeo.
-        var armar = new PushButtonData(
-            "CadLinkArmar",
-            "Armar",
-            dll,
-            typeof(ComandoArmar).FullName)
-        {
-            ToolTip = "Pone el armado de CadLink -varillas, bastones y estribos- en las trabes y "
-                      + "columnas ya modeladas.",
+        Boton(entrada, dll, "CadLinkArmar", "Armar\nmodelo", typeof(ComandoArmar).FullName,
+            "Pone el armado de CadLink -varillas, bastones y estribos- en las trabes y "
+            + "columnas que importo CadLink.",
+            "Lee el mismo archivo .cadlink-modelo.json, que trae el armado de la tabla de "
+            + "secciones de concreto, y crea varillas nativas de Revit en cada pieza que "
+            + "importo CadLink: corridas y laterales con sus ganchos, bastones con su "
+            + "longitud real y estribos por zonas.\n\n"
+            + "Volver a armar rehace el armado de CadLink; el puesto a mano no se toca.",
+            "armar");
 
-            LongDescription =
-                "Lee el mismo archivo .cadlink-modelo.json, que trae el armado de la tabla de "
-                + "secciones de concreto, y crea varillas nativas de Revit en cada pieza que "
-                + "importo CadLink: corridas y laterales con sus ganchos, bastones con su "
-                + "longitud real y estribos por zonas.\n\n"
-                + "Volver a armar rehace el armado de CadLink; el puesto a mano no se toca."
-        };
-
-        // Su propio icono: la seccion de una trabe con su estribo y sus varillas.
-        armar.LargeImage = Imagen("CadLink.Revit.armar-32.png");
-        armar.Image = Imagen("CadLink.Revit.armar-16.png");
-
-        panel.AddItem(armar);
-
-        // ---- El armado POR TIPO ----
+        // ---- Columnas y Vigas: su acero y su corte ----
         //
-        // Para cualquier proyecto, no solo los modelados desde ETABS: un renglon por tipo de
-        // columna y de trabe, se le elige la seccion de CadLink y se arman todas sus piezas.
-        var porTipo = new PushButtonData(
-            "CadLinkArmarPorTipo",
-            "Armar\npor tipo",
-            dll,
-            typeof(ComandoArmarPorTipo).FullName)
-        {
-            ToolTip = "Arma de un jalon todas las columnas y trabes de cada tipo con una seccion "
-                      + "de la tabla de CadLink.",
+        // «Acero» es «Armar por tipo» solo con los tipos de ESE elemento, y «Corte» es «Corte de
+        // sección» solo con los suyos: un renglon por tipo, se elige la seccion de CadLink y se
+        // arman todas sus piezas de un jalon.
+        var columnas = app.CreateRibbonPanel(Pestana, "Columnas");
 
-            LongDescription =
-                "Lee el .cadlink-armado.json que escribe CadLink con el boton «Armado para "
-                + "Revit» de la hoja de secciones de concreto, y ensena un renglon por cada TIPO "
-                + "de columna y de trabe del proyecto, con cuantas piezas tiene.\n\n"
-                + "A cada tipo se le elige su seccion -se sugiere la que se llama o mide igual- y "
-                + "al pulsar Armar se ponen varillas nativas en todas sus piezas: corridas, "
-                + "laterales, bastones y estribos por zonas con la longitud real de cada una.\n\n"
-                + "Volver a armar rehace el armado de CadLink; el puesto a mano no se toca."
+        Boton(columnas, dll, "CadLinkAceroColumnas", "Acero", typeof(ComandoAceroColumnas).FullName,
+            "Arma todas las columnas de cada tipo con su seccion de la tabla de CadLink.",
+            TextoAcero("columna"), "armar");
+
+        Boton(columnas, dll, "CadLinkCorteColumnas", "Corte", typeof(ComandoCorteColumnas).FullName,
+            "Crea el corte de la seccion de las columnas que pidas, con su nombre y sus cotas.",
+            TextoCorte("columna"), "armar");
+
+        var vigas = app.CreateRibbonPanel(Pestana, "Vigas");
+
+        Boton(vigas, dll, "CadLinkAceroVigas", "Acero", typeof(ComandoAceroVigas).FullName,
+            "Arma todas las trabes y contratrabes de cada tipo con su seccion de la tabla de CadLink.",
+            TextoAcero("trabe"), "armar");
+
+        Boton(vigas, dll, "CadLinkCorteVigas", "Corte", typeof(ComandoCorteVigas).FullName,
+            "Crea el corte de la seccion de las trabes que pidas, con su nombre y sus cotas.",
+            TextoCorte("trabe"), "armar");
+
+        // ---- Todo junto: columnas y trabes en el mismo cuadro ----
+        var todo = app.CreateRibbonPanel(Pestana, "Todo");
+
+        Boton(todo, dll, "CadLinkArmarPorTipo", "Armar\npor tipo", typeof(ComandoArmarPorTipo).FullName,
+            "Arma de un jalon todas las columnas y trabes de cada tipo con una seccion "
+            + "de la tabla de CadLink.",
+            TextoAcero("columna y de trabe"), "armar");
+
+        Boton(todo, dll, "CadLinkCorte", "Corte\nde sección", typeof(ComandoCorte).FullName,
+            "Crea una vista de corte transversal de la seccion que pidas, con su nombre "
+            + "y sus cotas.",
+            TextoCorte("columna o trabe"), "armar");
+    }
+
+    private static string TextoAcero(string elemento) =>
+        "Lee el .cadlink-armado.json que escribe CadLink con el boton «Armado para "
+        + "Revit» de la hoja de secciones de concreto, y ensena un renglon por cada TIPO "
+        + $"de {elemento} del proyecto, con cuantas piezas tiene.\n\n"
+        + "A cada tipo se le elige su seccion -se sugiere la que se llama o mide igual- y "
+        + "al pulsar Armar se ponen varillas nativas en todas sus piezas: corridas, "
+        + "laterales, bastones y estribos por zonas con la longitud real de cada una.\n\n"
+        + "Las secciones de CadLink que no tengan tipo en Revit se ofrecen crear.\n\n"
+        + "Volver a armar rehace el armado de CadLink; el puesto a mano no se toca.";
+
+    private static string TextoCorte(string elemento) =>
+        $"Con piezas seleccionadas, ofrece un corte por cada {elemento}; sin "
+        + "seleccion, uno por cada tipo que ya tiene seccion de CadLink.\n\n"
+        + "Se marca el renglon, se escribe el nombre de la vista y al pulsar Crear sale "
+        + "el corte a escala 1:10 con sus llamadas, su etiqueta y sus cotas. "
+        + "Usa el ultimo .cadlink-armado.json abierto.";
+
+    /// <summary>Un boton con su texto de ayuda y su icono, en las dos medidas.</summary>
+    /// <remarks>
+    /// Sin imagen, el boton sale EN BLANCO con el texto solo debajo. Revit pide las dos
+    /// medidas y usa una u otra segun como dibuje el boton: la de 32 en el boton grande del
+    /// panel, y la de 16 cuando lo apila o lo mete en un desplegable. Dandole solo la grande,
+    /// Revit la reduce al vuelo y a 16 px queda una mancha.
+    /// </remarks>
+    private static void Boton(
+        RibbonPanel panel, string dll, string nombre, string texto, string? clase,
+        string ayuda, string ayudaLarga, string icono)
+    {
+        var boton = new PushButtonData(nombre, texto, dll, clase)
+        {
+            ToolTip = ayuda,
+            LongDescription = ayudaLarga
         };
 
-        porTipo.LargeImage = Imagen("CadLink.Revit.armar-32.png");
-        porTipo.Image = Imagen("CadLink.Revit.armar-16.png");
-
-        panel.AddItem(porTipo);
-
-        // ---- El corte de seccion ----
-        //
-        // Solo la vista: un corte transversal con nombre, cotas y escala, de la pieza
-        // seleccionada o de un representante de cada tipo. No toca el armado.
-        var corte = new PushButtonData(
-            "CadLinkCorte",
-            "Corte\nde sección",
-            dll,
-            typeof(ComandoCorte).FullName)
+        if (icono == "importar")
         {
-            ToolTip = "Crea una vista de corte transversal de la seccion que pidas, con su nombre "
-                      + "y sus cotas.",
+            boton.LargeImage = Imagen("CadLink.Revit.importar-32.png");
+            boton.Image = Imagen("CadLink.Revit.importar-16.png");
+        }
+        else
+        {
+            boton.LargeImage = Imagen("CadLink.Revit.armar-32.png");
+            boton.Image = Imagen("CadLink.Revit.armar-16.png");
+        }
 
-            LongDescription =
-                "Con trabes o columnas seleccionadas, ofrece un corte por cada una; sin "
-                + "seleccion, uno por cada tipo que ya tiene seccion de CadLink.\n\n"
-                + "Se marca el renglon, se escribe el nombre de la vista y al pulsar Crear sale "
-                + "el corte a escala 1:10 con la base acotada arriba y el peralte a la derecha. "
-                + "Usa el ultimo .cadlink-armado.json abierto."
-        };
-
-        corte.LargeImage = Imagen("CadLink.Revit.armar-32.png");
-        corte.Image = Imagen("CadLink.Revit.armar-16.png");
-
-        panel.AddItem(corte);
+        panel.AddItem(boton);
     }
 
     /// <summary>Carga un icono embebido en esta DLL.</summary>
