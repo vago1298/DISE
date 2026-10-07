@@ -15781,6 +15781,11 @@ def v29_paquete_oficina() -> None:
     check("queda explicado en EMPIEZA-AQUI.md",
           "## Las PCs de tu oficina: la forma fácil" in leer(ruta("EMPIEZA-AQUI.md")))
 
+
+# Los iconos de la cinta de Revit, uno por boton (tools/make_iconos_cinta.py).
+ICONOS_CINTA = ("importar-etabs", "armar-modelo", "columna-acero", "columna-corte",
+                "viga-acero", "viga-corte", "armar-tipo", "corte-seccion")
+
 def v30_armado_por_tipo() -> None:
     print("\n[30] Revit: armar por tipo, todas las piezas de un jalon")
 
@@ -15868,11 +15873,12 @@ def v30_armado_por_tipo() -> None:
     check("y tiene pruebas", "DespieceEnRevit();" in leer(ruta("tools/prueba-revit/Program.cs")))
 
     csr = leer(ruta("client/src/CadLink.Revit/CadLink.Revit.csproj"))
-    check("los botones de armar llevan su icono de armadura",
-          'Imagen("CadLink.Revit.armar-32.png")' in apl and "<LogicalName>CadLink.Revit.armar-32.png</LogicalName>" in csr
-          and "<LogicalName>CadLink.Revit.armar-16.png</LogicalName>" in csr
-          and os.path.exists(ruta("client/src/CadLink.Revit/Assets/armar-32.png"))
-          and os.path.exists(ruta("client/src/CadLink.Revit/Assets/armar-16.png")))
+    # Se pidio: cada boton con SU icono, piezas en isometrico como en la imagen del usuario.
+    check("cada boton lleva su icono: columna, viga, corte, ETABS...",
+          all(f'Imagen("CadLink.Revit.{n}-32.png")' in apl and f"<LogicalName>CadLink.Revit.{n}-16.png</LogicalName>" in csr
+              and os.path.exists(ruta(f"client/src/CadLink.Revit/Assets/{n}-32.png"))
+              for n in ICONOS_CINTA)
+          and os.path.exists(ruta("tools/make_iconos_cinta.py")))
 
     # CORTE DE SECCION. Se pidio: «que me generes una nueva seccion de corte de la seccion que
     # te pido y ahi lo nombres». Solo la vista, sin volver a armar.
@@ -15968,6 +15974,9 @@ def v30_armado_por_tipo() -> None:
 
     # Se pidio: los dinteles se subian sobre la losa. Van en el nivel en que se APOYAN, y su base
     # se comprueba contra la del calculo.
+    check("el muro rectangular se crea con su altura y su desfase de base, no con su contorno",
+          "Unidades.AInternas(recto.ZAlta - recto.ZBase)," in mod
+          and "Unidades.AInternas(recto.ZBase) - elev," in mod and "false, true);" in mod)
     check("los dinteles van en el nivel en que se apoyan y a la cota de su base",
           "public static (string Nombre, double DesfaseM) NivelDeApoyo(" in leer(ruta("client/src/CadLink.Revit.Nucleo/Colocacion.cs"))
           and "Colocacion.NivelDeApoyo(zBase, comoJson)" in mod and "r.Muros.Add((hecho, pano.Vertices.Min(v => v.Z)));" in mod
@@ -16135,11 +16144,10 @@ def v26_plugin_revit() -> None:
 
     # Dos iconos: el de importar y el de ARMAR -la seccion armada-, cada uno en sus dos medidas.
     check("los botones piden sus iconos, en sus dos medidas",
-          pedidos == {"CadLink.Revit.importar-32.png", "CadLink.Revit.importar-16.png",
-                      "CadLink.Revit.armar-32.png", "CadLink.Revit.armar-16.png"},
+          pedidos == {f"CadLink.Revit.{n}-{t}.png" for n in ICONOS_CINTA for t in (32, 16)},
           str(sorted(pedidos)))
 
-    check("el .csproj los declara como recurso embebido", len(declarados) == 4,
+    check("el .csproj los declara como recurso embebido", len(declarados) == 2 * len(ICONOS_CINTA),
           str(sorted(declarados)))
 
     sin_declarar = sorted(pedidos - declarados)
@@ -16165,8 +16173,7 @@ def v26_plugin_revit() -> None:
           "catch (Exception)" in arranque)
 
     # Los PNG, de verdad: que existan, que sean PNG y que midan lo que dicen.
-    for nombre, medida in (("importar-32.png", 32), ("importar-16.png", 16),
-                           ("armar-32.png", 32), ("armar-16.png", 16)):
+    for nombre, medida in [(f"{n}-{t}.png", t) for n in ICONOS_CINTA for t in (32, 16)]:
         p = ruta("client/src/CadLink.Revit/Assets", nombre)
 
         if not os.path.exists(p):
@@ -16186,11 +16193,10 @@ def v26_plugin_revit() -> None:
                   ancho == medida and alto == medida, f"{ancho}x{alto}")
 
     check("existe el generador de los iconos",
-          os.path.exists(ruta("tools/make_iconos_revit.py")))
+          os.path.exists(ruta("tools/make_iconos_cinta.py")))
 
-    check("y reutiliza el dibujo del icono de la aplicacion",
-          "from make_icon import" in leer(ruta("tools/make_iconos_revit.py")),
-          "con el poligono copiado, el icono de Revit y el de la app se separarian")
+    check("y reutiliza el escritor de PNG de la aplicacion",
+          "from make_icon import como_png" in leer(ruta("tools/make_iconos_cinta.py")))
 
     # ---- Los errores clasicos del codigo del complemento ----
     comando = leer(ruta("client/src/CadLink.Revit/ComandoImportar.cs"))

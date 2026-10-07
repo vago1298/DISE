@@ -173,6 +173,8 @@ tipo elegido, que **no se va a modelar**.
 
 La pestaña **CadLink** va por elemento:
 
+Cada botón lleva su icono (`tools/make_iconos_cinta.py`): piezas en isométrico, en azules.
+
 | Panel | Botones |
 |---|---|
 | Entrada | **Importar ETABS**, **Armar modelo** (el armado que trae el modelo de ETABS) |
@@ -234,12 +236,13 @@ fila vacía sin explicación.
 | Columna | `FamilyInstance` en Pilares estructurales |
 | Trabe | `FamilyInstance` en Estructura, como viga |
 | Diagonal | `FamilyInstance` en Estructura, como arriostre |
-| Muro | `Wall.Create` desde el **contorno** del paño |
+| Muro | Rectangular: `Wall.Create` por su **línea, altura y desfase de base**; de otra forma, desde su **contorno** |
 | Losa | `Floor.Create` desde el contorno |
 
-Los muros se crean desde el contorno y no desde una línea con una altura, porque un paño de
-muro de ETABS puede ser cualquier polígono y con la otra forma se perdería su geometría en
-cuanto no sea un rectángulo.
+Un muro **rectangular** se crea por su línea con su altura y su **desfase de base** escritos:
+con el contorno, Revit ponía la base del muro en su nivel y no en la cota del contorno, y los
+dinteles salían sobre la losa o en el suelo. Solo los paños de otra forma se crean desde su
+contorno, para no perder su geometría.
 
 **Los niveles** se emparejan primero por nombre y, si no, **por cota** con 10 cm de
 tolerancia: en ETABS el nivel se llama `Story1` y en Revit `PLANTA BAJA`. Los que no tengan

@@ -61,7 +61,7 @@ public sealed class Aplicacion : IExternalApplication
             + "Despues crea columnas, trabes, diagonales, muros y losas nativas de Revit, "
             + "cada una en su nivel.\n\n"
             + "La eleccion se guarda: la siguiente vez no hay que volver a mapear.",
-            "importar");
+            "importar-etabs");
 
         // Un boton aparte para poder REHACER el armado -despues de cambiar una seccion en
         // CadLink- sin volver a pasar por el cuadro de mapeo.
@@ -73,7 +73,7 @@ public sealed class Aplicacion : IExternalApplication
             + "importo CadLink: corridas y laterales con sus ganchos, bastones con su "
             + "longitud real y estribos por zonas.\n\n"
             + "Volver a armar rehace el armado de CadLink; el puesto a mano no se toca.",
-            "armar");
+            "armar-modelo");
 
         // ---- Columnas y Vigas: su acero y su corte ----
         //
@@ -84,21 +84,21 @@ public sealed class Aplicacion : IExternalApplication
 
         Boton(columnas, dll, "CadLinkAceroColumnas", "Acero", typeof(ComandoAceroColumnas).FullName,
             "Arma todas las columnas de cada tipo con su seccion de la tabla de CadLink.",
-            TextoAcero("columna"), "armar");
+            TextoAcero("columna"), "columna-acero");
 
         Boton(columnas, dll, "CadLinkCorteColumnas", "Corte", typeof(ComandoCorteColumnas).FullName,
             "Crea el corte de la seccion de las columnas que pidas, con su nombre y sus cotas.",
-            TextoCorte("columna"), "armar");
+            TextoCorte("columna"), "columna-corte");
 
         var vigas = app.CreateRibbonPanel(Pestana, "Vigas");
 
         Boton(vigas, dll, "CadLinkAceroVigas", "Acero", typeof(ComandoAceroVigas).FullName,
             "Arma todas las trabes y contratrabes de cada tipo con su seccion de la tabla de CadLink.",
-            TextoAcero("trabe"), "armar");
+            TextoAcero("trabe"), "viga-acero");
 
         Boton(vigas, dll, "CadLinkCorteVigas", "Corte", typeof(ComandoCorteVigas).FullName,
             "Crea el corte de la seccion de las trabes que pidas, con su nombre y sus cotas.",
-            TextoCorte("trabe"), "armar");
+            TextoCorte("trabe"), "viga-corte");
 
         // ---- Todo junto: columnas y trabes en el mismo cuadro ----
         var todo = app.CreateRibbonPanel(Pestana, "Todo");
@@ -106,12 +106,12 @@ public sealed class Aplicacion : IExternalApplication
         Boton(todo, dll, "CadLinkArmarPorTipo", "Armar\npor tipo", typeof(ComandoArmarPorTipo).FullName,
             "Arma de un jalon todas las columnas y trabes de cada tipo con una seccion "
             + "de la tabla de CadLink.",
-            TextoAcero("columna y de trabe"), "armar");
+            TextoAcero("columna y de trabe"), "armar-tipo");
 
         Boton(todo, dll, "CadLinkCorte", "Corte\nde sección", typeof(ComandoCorte).FullName,
             "Crea una vista de corte transversal de la seccion que pidas, con su nombre "
             + "y sus cotas.",
-            TextoCorte("columna o trabe"), "armar");
+            TextoCorte("columna o trabe"), "corte-seccion");
     }
 
     private static string TextoAcero(string elemento) =>
@@ -148,19 +148,29 @@ public sealed class Aplicacion : IExternalApplication
             LongDescription = ayudaLarga
         };
 
-        if (icono == "importar")
-        {
-            boton.LargeImage = Imagen("CadLink.Revit.importar-32.png");
-            boton.Image = Imagen("CadLink.Revit.importar-16.png");
-        }
-        else
-        {
-            boton.LargeImage = Imagen("CadLink.Revit.armar-32.png");
-            boton.Image = Imagen("CadLink.Revit.armar-16.png");
-        }
+        var (grande, chica) = Iconos(icono);
+        boton.LargeImage = grande;
+        boton.Image = chica;
 
         panel.AddItem(boton);
     }
+
+    /// <summary>
+    /// El icono de cada boton, en sus dos medidas: piezas en isometrico, en azules, como se pidio.
+    /// Los dibuja <c>tools/make_iconos_cinta.py</c>.
+    /// </summary>
+    private static (ImageSource? Grande, ImageSource? Chica) Iconos(string icono) => icono switch
+    {
+        "importar-etabs" => (Imagen("CadLink.Revit.importar-etabs-32.png"), Imagen("CadLink.Revit.importar-etabs-16.png")),
+        "armar-modelo" => (Imagen("CadLink.Revit.armar-modelo-32.png"), Imagen("CadLink.Revit.armar-modelo-16.png")),
+        "columna-acero" => (Imagen("CadLink.Revit.columna-acero-32.png"), Imagen("CadLink.Revit.columna-acero-16.png")),
+        "columna-corte" => (Imagen("CadLink.Revit.columna-corte-32.png"), Imagen("CadLink.Revit.columna-corte-16.png")),
+        "viga-acero" => (Imagen("CadLink.Revit.viga-acero-32.png"), Imagen("CadLink.Revit.viga-acero-16.png")),
+        "viga-corte" => (Imagen("CadLink.Revit.viga-corte-32.png"), Imagen("CadLink.Revit.viga-corte-16.png")),
+        "armar-tipo" => (Imagen("CadLink.Revit.armar-tipo-32.png"), Imagen("CadLink.Revit.armar-tipo-16.png")),
+        "corte-seccion" => (Imagen("CadLink.Revit.corte-seccion-32.png"), Imagen("CadLink.Revit.corte-seccion-16.png")),
+        _ => (null, null)
+    };
 
     /// <summary>Carga un icono embebido en esta DLL.</summary>
     /// <remarks>

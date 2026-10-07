@@ -988,6 +988,26 @@ internal static class Modelador
             // "structural: true" y en la DLL real ese parametro se llama de otra forma, no
             // compila en la maquina del usuario aunque compile en el arnes. El ultimo bool de
             // esta sobrecarga es el de estructural.
+            // EL MURO RECTANGULAR, POR SU LINEA, SU ALTURA Y SU DESFASE DE BASE. Con el contorno,
+            // Revit ponia la base del muro EN SU NIVEL y no en la cota del contorno: un dintel
+            // salio sobre la losa atado al nivel de arriba, y en el suelo atado al de abajo.
+            // Con la altura y el desfase escritos, el muro queda donde lo trae el calculo.
+            if (AjusteDeMuros.ComoRecto(p.Vertices) is { } recto)
+            {
+                var elev = nivel.Elevation;
+                var linea = Line.CreateBound(
+                    new XYZ(Unidades.AInternas(recto.X1), Unidades.AInternas(recto.Y1), elev),
+                    new XYZ(Unidades.AInternas(recto.X2), Unidades.AInternas(recto.Y2), elev));
+
+                // Posicionales: documento, linea, tipo, nivel, altura, desfase de base, voltear
+                // y estructural.
+                return Wall.Create(
+                    doc, linea, tipoId, nivel.Id,
+                    Unidades.AInternas(recto.ZAlta - recto.ZBase),
+                    Unidades.AInternas(recto.ZBase) - elev,
+                    false, true);
+            }
+
             return Wall.Create(doc, curvas, tipoId, nivel.Id, true);
         }
 

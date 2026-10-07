@@ -73,23 +73,70 @@
          nada falle al compilar: el boton simplemente vuelve a salir en blanco.
          Lo que pide el codigo esta comprobado en tools/validar.py seccion 26.
 
-         Se generan con  python tools/make_iconos_revit.py,  que reutiliza el dibujo del
-         icono de la aplicacion para que las dos marcas no se separen. -->
-    <EmbeddedResource Include="Assets\importar-32.png">
-      <LogicalName>CadLink.Revit.importar-32.png</LogicalName>
+         Se generan con  python tools/make_iconos_cinta.py:  piezas en isometrico, en
+         azules, uno por boton. -->
+    <EmbeddedResource Include="Assets\importar-etabs-32.png">
+      <LogicalName>CadLink.Revit.importar-etabs-32.png</LogicalName>
     </EmbeddedResource>
 
-    <EmbeddedResource Include="Assets\importar-16.png">
-      <LogicalName>CadLink.Revit.importar-16.png</LogicalName>
+    <EmbeddedResource Include="Assets\importar-etabs-16.png">
+      <LogicalName>CadLink.Revit.importar-etabs-16.png</LogicalName>
     </EmbeddedResource>
 
-    <!-- El de los botones de ARMAR: la seccion de una trabe con su estribo y sus varillas. -->
-    <EmbeddedResource Include="Assets\armar-32.png">
-      <LogicalName>CadLink.Revit.armar-32.png</LogicalName>
+    <EmbeddedResource Include="Assets\armar-modelo-32.png">
+      <LogicalName>CadLink.Revit.armar-modelo-32.png</LogicalName>
     </EmbeddedResource>
 
-    <EmbeddedResource Include="Assets\armar-16.png">
-      <LogicalName>CadLink.Revit.armar-16.png</LogicalName>
+    <EmbeddedResource Include="Assets\armar-modelo-16.png">
+      <LogicalName>CadLink.Revit.armar-modelo-16.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\columna-acero-32.png">
+      <LogicalName>CadLink.Revit.columna-acero-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\columna-acero-16.png">
+      <LogicalName>CadLink.Revit.columna-acero-16.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\columna-corte-32.png">
+      <LogicalName>CadLink.Revit.columna-corte-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\columna-corte-16.png">
+      <LogicalName>CadLink.Revit.columna-corte-16.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\viga-acero-32.png">
+      <LogicalName>CadLink.Revit.viga-acero-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\viga-acero-16.png">
+      <LogicalName>CadLink.Revit.viga-acero-16.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\viga-corte-32.png">
+      <LogicalName>CadLink.Revit.viga-corte-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\viga-corte-16.png">
+      <LogicalName>CadLink.Revit.viga-corte-16.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\armar-tipo-32.png">
+      <LogicalName>CadLink.Revit.armar-tipo-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\armar-tipo-16.png">
+      <LogicalName>CadLink.Revit.armar-tipo-16.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\corte-seccion-32.png">
+      <LogicalName>CadLink.Revit.corte-seccion-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\corte-seccion-16.png">
+      <LogicalName>CadLink.Revit.corte-seccion-16.png</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

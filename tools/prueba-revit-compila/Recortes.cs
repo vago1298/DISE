@@ -256,6 +256,14 @@ public sealed class Wall : Element
     public static Wall Create(
         Document doc, IList<Curve> contorno, ElementId tipoDeMuro, ElementId nivel,
         bool estructural) => new();
+
+    /// <summary>
+    /// Revit API: Wall.Create(Document, Curve, ElementId tipo, ElementId nivel, double altura,
+    /// double desfase, bool voltear, bool estructural). El muro recto con su altura y su base.
+    /// </summary>
+    public static Wall Create(
+        Document doc, Curve linea, ElementId tipoDeMuro, ElementId nivel, double altura,
+        double desfase, bool voltear, bool estructural) => new();
 }
 
 public sealed class CompoundStructure
