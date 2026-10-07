@@ -175,6 +175,11 @@ public sealed class ComandoImportar : IExternalCommand
             $"«medidas»: {conMedidas} de {modelo.Barras.Count} barra(s) se ajustaron con las "
             + "medidas del tipo de Revit elegido; el resto, con las de la seccion del calculo");
 
+        // Las losas A PAÑO: su orilla en la cara exterior de los muros y trabes de fachada, no
+        // en su eje. Con los espesores de los tipos elegidos, igual que los muros.
+        avisosMuros.AddRange(LosasAPano.AplicarATodos(
+            modelo, medidor, Orientacion.MedidorDeMuros(modelo, mapeo, catalogo)));
+
         // ---- 7. El plan y el modelado ----
         var plan = Planificador.Armar(
             modelo, mapeo, catalogo, LectorDeCatalogo.Existentes(doc), modo);
@@ -194,12 +199,32 @@ public sealed class ComandoImportar : IExternalCommand
         r.Avisos.InsertRange(0, modelo.Avisos);
         r.Avisos.InsertRange(0, avisosMuros);
 
-        TaskDialog.Show("CadLink", Informe(modo, plan, r, rutaMapeo));
+        // EN PANTALLA, SOLO LOS ERRORES: se pidio «solo quiero que me anuncie si hay un error,
+        // no todo». El informe completo -recortes de muros, niveles renombrados, avisos de
+        // Revit...- se guarda junto al mapeo por si hace falta revisarlo.
+        var rutaInforme = Path.ChangeExtension(rutaMapeo, null);
+        rutaInforme = (rutaInforme.EndsWith(".cadlink-mapeo", StringComparison.OrdinalIgnoreCase)
+            ? rutaInforme.Substring(0, rutaInforme.Length - ".cadlink-mapeo".Length)
+            : rutaInforme) + ".cadlink-informe.txt";
+
+        try
+        {
+            File.WriteAllText(rutaInforme, Informe(modo, plan, r, rutaMapeo, completo: true));
+        }
+        catch (Exception)
+        {
+            rutaInforme = string.Empty;
+        }
+
+        TaskDialog.Show("CadLink", Informe(modo, plan, r, rutaMapeo, completo: false, rutaInforme));
 
         return Result.Succeeded;
     }
 
-    private static string Informe(Modo modo, Plan plan, ResultadoModelado r, string rutaMapeo)
+    /// <param name="completo">Con los avisos. En pantalla va sin ellos: solo los errores.</param>
+    /// <param name="rutaInforme">Donde quedo el informe completo, para decirlo.</param>
+    private static string Informe(
+        Modo modo, Plan plan, ResultadoModelado r, string rutaMapeo, bool completo, string rutaInforme = "")
     {
         var sb = new StringBuilder();
 
@@ -249,7 +274,7 @@ public sealed class ComandoImportar : IExternalCommand
                 + "y ya no estan en el modelo. NO se borraron: revisalas a mano.");
         }
 
-        if (r.Avisos.Count > 0)
+        if (completo && r.Avisos.Count > 0)
         {
             // AGRUPADOS por causa, igual que los errores y por el mismo motivo: un muro mallado
             // en cien trozos generaba cien avisos con la misma causa, y ensenar los seis
@@ -267,6 +292,20 @@ public sealed class ComandoImportar : IExternalCommand
             // este contorno", y eso si dice donde mirar.
             sb.AppendLine();
             sb.AppendLine(Agrupador.Texto(r.Errores));
+        }
+
+        if (!completo)
+        {
+            if (r.Errores.Count == 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Sin errores.");
+            }
+
+            if (rutaInforme.Length > 0)
+            {
+                sb.Append("El informe completo esta en ").Append(Path.GetFileName(rutaInforme)).AppendLine(".");
+            }
         }
 
         sb.AppendLine();

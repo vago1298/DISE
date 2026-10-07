@@ -250,6 +250,17 @@ La equivalencia entre la justificación de Revit y el punto cardinal de ETABS no
 suposición: es la que usa el propio exportador de IFC de Autodesk para traducir entre los dos
 sistemas.
 
+**La trabe va «normal», como a mano**: atada al nivel más cercano a su línea, con el
+*Valor de desfase Z* en **cero** y la altura en sus desfases de nivel inicial y final (los que
+salen de la cota de su línea). Antes salían con un desfase Z que nadie pone (0.60 m en un
+modelo de prueba).
+
+**Las losas, a paño.** ETABS modela losas, muros y trabes por su eje, así que la losa llegaba al
+centro del muro de fachada. Ahora cada lado de **orilla** de una losa plana que tiene debajo un
+muro o una trabe que corre a lo largo de él se corre hacia fuera medio espesor (el del tipo de
+Revit elegido), y las esquinas quedan en el cruce de los dos paños. Los lados que comparte con
+otra losa del mismo nivel se quedan en el eje, y los volados sin nada debajo no se mueven.
+
 #### Por qué la trabe se mide y no solo se justifica
 
 Pedir la justificación no basta, y fallaba de la peor manera: `get_Parameter` devuelve `null`
@@ -282,6 +293,15 @@ exterior, de modo que el primer y el último eje de cada dirección se corren ha
 espesor de la pieza más gruesa que corre a lo largo de ellos, con preferencia **muro, trabe,
 apoyo**. Los ejes interiores no se mueven. Un eje cuyo nombre ya existe no se vuelve a crear,
 para que reimportar no deje seis rejillas llamadas `1` una encima de otra.
+
+**Las burbujas en los dos extremos** se encienden en el **tipo** de eje (*Símbolos de vista
+de plano en extremo 1 y 2*), que vale en todas las vistas, y además en cada vista de planta.
+
+### El informe
+
+En pantalla solo salen las cuentas y los **errores**. El informe completo —muros recortados,
+niveles renombrados, avisos de Revit— se guarda junto al mapeo como
+`<modelo>.cadlink-informe.txt`.
 
 ### Cómo reconoce sus propias piezas
 

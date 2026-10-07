@@ -217,6 +217,7 @@ internal static partial class Programa
         MuroAlPanoDeLoModelado();
         NombresBonitosDeNivel();
         MallaDeEjes();
+        LosasAPanoDeOrilla();
         Armado();
         ArmadoPorTipo();
         DespieceEnRevit();
@@ -2024,6 +2025,72 @@ internal static partial class Programa
 
         Check("un modelo sin niveles no revienta", NombresDeNivel.Aplicar(new ModeloJson()).Count == 0);
         Check("ni uno nulo", NombresDeNivel.Aplicar(null).Count == 0);
+    }
+
+    // ------------------------------------------------------------------
+    private static void LosasAPanoDeOrilla()
+    {
+        Console.WriteLine();
+        Console.WriteLine("[13b] Las losas a paño de sus muros y trabes de orilla");
+
+        PuntoJson P(double x, double y, double z = 3) => new() { X = x, Y = y, Z = z };
+
+        PanoJson Losa(params (double X, double Y)[] v)
+        {
+            var l = new PanoJson { Clase = ClasePieza.Losa, Etiqueta = "S" };
+            l.Vertices.AddRange(v.Select(q => P(q.X, q.Y)));
+            return l;
+        }
+
+        PanoJson Muro(double x1, double y1, double x2, double y2, double esp)
+        {
+            var m = new PanoJson { Clase = ClasePieza.Muro, Seccion = new SeccionJson { EspesorM = esp } };
+            m.Vertices.AddRange(new[] { P(x1, y1, 0), P(x2, y2, 0), P(x2, y2, 2.6), P(x1, y1, 2.6) });
+            return m;
+        }
+
+        // Dos tableros de 4x5 junto a junto; muro de 15 en la orilla de abajo y la izquierda,
+        // trabe de 20 en la de arriba; la derecha es un volado sin nada.
+        var m = new ModeloJson();
+        var a = Losa((0, 0), (4, 0), (4, 5), (0, 5));
+        var b = Losa((4, 0), (8, 0), (8, 5), (4, 5));
+        m.Panos.AddRange(new[] { a, b, Muro(0, 0, 8, 0, 0.15), Muro(0, 0, 0, 5, 0.15) });
+        m.Barras.Add(new BarraJson { Clase = ClasePieza.Trabe, P1 = P(0, 5), P2 = P(8, 5), Seccion = new SeccionJson { AnchoM = 0.20, PeralteM = 0.40 } });
+
+        var avisos = LosasAPano.AplicarATodos(m);
+        Igual("se dice cuantas losas se corrieron", avisos.Single(), "2 losa(s) se dibujaron a paño de sus muros y trabes de orilla.");
+
+        double XMin(PanoJson l) => l.Vertices.Min(v => v.X);
+        double XMax(PanoJson l) => l.Vertices.Max(v => v.X);
+        double YMin(PanoJson l) => l.Vertices.Min(v => v.Y);
+        double YMax(PanoJson l) => l.Vertices.Max(v => v.Y);
+
+        Casi("la orilla del muro de abajo, en su cara de fuera", YMin(a), -0.075, 1e-9);
+        Casi("la del muro de la izquierda, tambien", XMin(a), -0.075, 1e-9);
+        Casi("la de la trabe, en su paño", YMax(a), 5.10, 1e-9);
+        Casi("el lado que comparte con el otro tablero se queda en el eje", XMax(a), 4.0, 1e-9);
+        Casi("y el otro tablero tambien arranca en el eje", XMin(b), 4.0, 1e-9);
+        Casi("el volado, sin nada debajo, no se mueve", XMax(b), 8.0, 1e-9);
+        Check("la esquina queda en el cruce de los dos paños",
+            a.Vertices.Any(v => Math.Abs(v.X + 0.075) < 1e-9 && Math.Abs(v.Y + 0.075) < 1e-9));
+        Check("la losa sigue en su cota", a.Vertices.All(v => Math.Abs(v.Z - 3) < 1e-9));
+
+        var inclinada = new ModeloJson();
+        var li = Losa((0, 0), (4, 0), (4, 5), (0, 5));
+        li.Vertices[2].Z = 3.5;
+        inclinada.Panos.AddRange(new[] { li, Muro(0, 0, 4, 0, 0.15) });
+        Check("una losa inclinada se deja como esta", LosasAPano.AplicarATodos(inclinada).Count == 0 && li.Vertices[0].Y == 0);
+
+        var lejos = new ModeloJson();
+        var ll = Losa((0, 0), (4, 0), (4, 5), (0, 5));
+        lejos.Panos.AddRange(new[] { ll, Muro(0, 0.5, 4, 0.5, 0.15) });
+        Check("un muro que no va por la orilla no la mueve", LosasAPano.AplicarATodos(lejos).Count == 0);
+
+        var conTipo = new ModeloJson();
+        var lt = Losa((0, 0), (4, 0), (4, 5), (0, 5));
+        conTipo.Panos.AddRange(new[] { lt, Muro(0, 0, 4, 0, 0.15) });
+        LosasAPano.AplicarATodos(conTipo, null, _ => 0.25);
+        Casi("con el espesor del tipo de Revit elegido, no el del calculo", YMin(lt), -0.125, 1e-9);
     }
 
     // ------------------------------------------------------------------

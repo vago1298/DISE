@@ -177,7 +177,6 @@ internal static class Despiece
         if (hechas.Count > 0 && enHoja)
         {
             Hoja(doc, hechas, r);
-            r.Avisos.Add($"«despiece»: {hechas.Count} corte(s) en la hoja «{NombreHoja}»");
         }
 
         return creadas;

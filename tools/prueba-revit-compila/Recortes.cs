@@ -112,6 +112,8 @@ public sealed class Parameter
 
     public bool Set(double v) => true;
 
+    public bool Set(int v) => true;
+
     public bool Set(ElementId v) => true;
 
     public bool Set(string v) => true;

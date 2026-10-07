@@ -306,7 +306,7 @@ internal static class Modelador
             }
             catch (Exception ex)
             {
-                r.Avisos.Add($"«eje {id}»: no se pudo crear: {ex.Message}");
+                r.Errores.Add($"«eje {id}»: no se pudo crear: {ex.Message}");
             }
         }
 
@@ -344,6 +344,43 @@ internal static class Modelador
             return;
         }
 
+        // EL TIPO DE EJE, PRIMERO. Encender la burbuja vista por vista no basto en el proyecto
+        // del usuario: los ejes salieron con la burbuja en UN extremo. «Símbolo de vista en
+        // planta extremo 1 / 2 (predeterminado)» es del tipo y vale en todas las vistas, las de
+        // ahora y las que se creen despues.
+        foreach (var idTipo in rejillas.Select(g => g.GetTypeId()).Distinct())
+        {
+            if (doc.GetElement(idTipo) is not ElementType tipo)
+            {
+                continue;
+            }
+
+            foreach (var (interno, nombres) in new[]
+                     {
+                         ("GRID_BUBBLE_END_1", new[] { "Plan View Symbols End 1 (Default)",
+                             "Símbolos de vista de plano en extremo 1 (predeterminado)",
+                             "Símbolo de vista de plano extremo 1 (predeterminado)" }),
+                         ("GRID_BUBBLE_END_2", new[] { "Plan View Symbols End 2 (Default)",
+                             "Símbolos de vista de plano en extremo 2 (predeterminado)",
+                             "Símbolo de vista de plano extremo 2 (predeterminado)" })
+                     })
+            {
+                try
+                {
+                    var p = Despiece.Parametro(tipo, new[] { interno }, nombres);
+
+                    if (p is null || p.IsReadOnly || !p.Set(1))
+                    {
+                        r.Errores.Add($"«ejes»: no se pudo encender la burbuja en los dos extremos del tipo «{tipo.Name}»");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    r.Errores.Add($"«ejes»: tipo «{tipo.Name}»: {ex.Message}");
+                }
+            }
+        }
+
         // Una sola vez: hasta que Revit no regenera, un eje recien creado no esta en las vistas.
         doc.Regenerate();
 
@@ -358,8 +395,7 @@ internal static class Modelador
             return;
         }
 
-        var fallos = 0;
-
+        // Y en cada vista, por si alguna tiene la burbuja cambiada a mano.
         foreach (var rejilla in rejillas)
         {
             foreach (var vista in plantas)
@@ -371,17 +407,10 @@ internal static class Modelador
                 }
                 catch (Exception)
                 {
-                    // Hay vistas donde el eje no llega a verse, y entonces Revit no deja tocar
-                    // su burbuja. No es un fallo del modelo: se cuenta y se sigue.
-                    fallos++;
+                    // Hay vistas donde el eje no llega a verse, y Revit no deja tocar su
+                    // burbuja. Con el tipo ya encendido no es un problema.
                 }
             }
-        }
-
-        if (fallos > 0)
-        {
-            r.Avisos.Add($"«{fallos} burbuja(s)»: no se pudieron encender porque el eje no se ve "
-                         + "en esa vista");
         }
     }
 
@@ -526,7 +555,71 @@ internal static class Modelador
 
         JustificarComoEnEtabs(inst, b);
 
+        if (b.Clase == ClasePieza.Trabe)
+        {
+            Nivelar(doc, inst, b);
+        }
+
         return inst;
+    }
+
+    /// <summary>
+    /// La trabe como se modela a mano: en su nivel, con su cara de arriba en la cota de la linea
+    /// y el <b>Valor de desfase Z en cero</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidio: «a todas las vigas les das ese offset en z que no debe ir, deben ir normales».
+    /// Las trabes salian con un desfase Z (0.60 m en el modelo del usuario), y con la
+    /// justificacion arriba eso las dejaba fuera de su sitio y con un dato que nadie pone.
+    /// </para>
+    /// <para>
+    /// Se ata al nivel MAS CERCANO a su linea -ETABS la asigna a otro piso a veces- y la altura
+    /// se le da con los desfases de nivel de sus dos puntas, que es lo normal en Revit. Por
+    /// nombre en texto, como las propiedades de tipo.
+    /// </para>
+    /// </remarks>
+    private static void Nivelar(Document doc, FamilyInstance inst, BarraJson b)
+    {
+        try
+        {
+            var deRevit = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().ToList();
+            var comoJson = deRevit
+                .Select(n => new NivelJson { Nombre = n.Name ?? string.Empty, ElevacionM = Unidades.AMetros(n.Elevation) })
+                .ToList();
+
+            var (nombre, _) = Colocacion.NivelDePano(Math.Min(b.P1.Z, b.P2.Z), comoJson);
+
+            if (deRevit.FirstOrDefault(n => n.Name == nombre) is not { } nivel)
+            {
+                return;
+            }
+
+            var elev = Unidades.AMetros(nivel.Elevation);
+
+            Despiece.Parametro(inst, new[] { "INSTANCE_REFERENCE_LEVEL_PARAM" },
+                new[] { "Nivel de referencia", "Reference Level" })?.Set(nivel.Id);
+
+            Poner(inst, "Z_OFFSET_VALUE", new[] { "Valor de desfase Z", "z Offset Value", "Z Offset Value" }, 0);
+            Poner(inst, "STRUCTURAL_BEAM_END0_ELEVATION",
+                new[] { "Desfase de nivel inicial", "Start Level Offset" }, b.P1.Z - elev);
+            Poner(inst, "STRUCTURAL_BEAM_END1_ELEVATION",
+                new[] { "Desfase de nivel final", "End Level Offset" }, b.P2.Z - elev);
+        }
+        catch (Exception)
+        {
+            // Una familia que no tenga estos parametros se queda como la puso Revit.
+        }
+    }
+
+    private static void Poner(Element e, string interno, string[] nombres, double metros)
+    {
+        var p = Despiece.Parametro(e, new[] { interno }, nombres);
+
+        if (p is not null && !p.IsReadOnly && p.StorageType == StorageType.Double)
+        {
+            p.Set(Unidades.AInternas(metros));
+        }
     }
 
     /// <summary>

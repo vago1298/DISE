@@ -187,6 +187,21 @@ public static class Orientacion
         };
     }
 
+    /// <summary>
+    /// El espesor con que se va a modelar cada muro: el de su tipo de Revit elegido, o null si
+    /// el tipo no lo dice. Es el <see cref="Medidor"/> de los paños.
+    /// </summary>
+    public static EspesorModelado MedidorDeMuros(ModeloJson modelo, Mapeo mapeo, CatalogoRevit catalogo)
+    {
+        var secciones = Inventario.De(modelo)
+            .ToDictionary(s => s.Clave, StringComparer.Ordinal);
+
+        return p => secciones.TryGetValue(Inventario.Clave(p.Clase, p.Seccion), out var s)
+                    && mapeo.TipoDe(s, catalogo)?.EspesorM is > 0 and var e
+            ? e
+            : null;
+    }
+
     /// <summary>Por debajo de esto una seccion se considera cuadrada.</summary>
     /// <remarks>
     /// En una seccion cuadrada el giro de noventa grados no se nota, asi que no se aplica: se

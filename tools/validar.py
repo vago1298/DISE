@@ -15942,6 +15942,20 @@ def v30_armado_por_tipo() -> None:
           "cota.TextPosition = Punto(t);" in des)
     check("tiene pruebas", "PlanDespiece.Llamadas(t01)" in leer(ruta("tools/prueba-revit/Program.cs")))
 
+    # Se pidio al importar de ETABS: solo anunciar los ERRORES, los ejes con burbuja en los
+    # dos extremos y las losas a paño.
+    imp = leer(ruta("client/src/CadLink.Revit/ComandoImportar.cs"))
+    mod = leer(ruta("client/src/CadLink.Revit/Modelador.cs"))
+    check("al importar, en pantalla solo los errores; el informe completo, a un archivo",
+          "if (completo && r.Avisos.Count > 0)" in imp and '+ ".cadlink-informe.txt"' in imp
+          and "Informe(modo, plan, r, rutaMapeo, completo: false, rutaInforme)" in imp)
+    check("los ejes llevan burbuja en los dos extremos desde su TIPO",
+          '"GRID_BUBBLE_END_1"' in mod and '"GRID_BUBBLE_END_2"' in mod and "rejilla.ShowBubbleInView(DatumEnds.End1, vista);" in mod)
+    check("las losas se dibujan a paño de sus muros y trabes de orilla",
+          "public static List<string> AplicarATodos(" in leer(ruta("client/src/CadLink.Revit.Nucleo/LosasAPano.cs"))
+          and "LosasAPano.AplicarATodos(" in imp and "Orientacion.MedidorDeMuros(modelo, mapeo, catalogo)" in imp
+          and "LosasAPanoDeOrilla();" in leer(ruta("tools/prueba-revit/Program.cs")))
+
     # CS0104 en la maquina del usuario: WPF y la Revit API comparten nombres de tipo. Con los
     # dos usings, el de WPF tiene que ir con alias o no compila.
     ambiguos = []
@@ -16553,9 +16567,16 @@ def v26_plugin_revit() -> None:
           "mover segun la caja envolvente daba un desplazamiento impredecible, porque la caja "
           "de una viga estructural incluye mas que su solido")
 
-    check("ni se le fuerza el desfase de nivel",
-          "STRUCTURAL_BEAM_END0_ELEVATION" not in modelador,
+    # El desfase de nivel NO se fuerza a un valor: se le da el que dice la cota de la linea
+    # respecto de su nivel, que es lo que la deja donde la trae el calculo. Lo que si va en
+    # cero es el «Valor de desfase Z»: se pidio, las trabes salian con 0.60 m que nadie pone.
+    check("ni se le fuerza el desfase de nivel: sale de la cota de su linea",
+          '"STRUCTURAL_BEAM_END0_ELEVATION",\n                new[] { "Desfase de nivel inicial", "Start Level Offset" }, b.P1.Z - elev);' in modelador.replace("\r\n", "\n")
+          and '"STRUCTURAL_BEAM_END1_ELEVATION",\n                new[] { "Desfase de nivel final", "End Level Offset" }, b.P2.Z - elev);' in modelador.replace("\r\n", "\n"),
           "la cota de la linea es la que trae el calculo; la cara la pone la justificacion")
+    check("y el Valor de desfase Z de las trabes va en cero, en su nivel mas cercano",
+          'Poner(inst, "Z_OFFSET_VALUE", new[] { "Valor de desfase Z", "z Offset Value", "Z Offset Value" }, 0);' in modelador
+          and "Colocacion.NivelDePano(Math.Min(b.P1.Z, b.P2.Z), comoJson)" in modelador)
 
     check("tambien se escriben los justificados de cada extremo",
           "START_Z_JUSTIFICATION" in modelador and "END_Z_JUSTIFICATION" in modelador,
