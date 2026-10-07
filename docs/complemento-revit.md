@@ -252,8 +252,12 @@ sistemas.
 
 **La trabe va «normal», como a mano**: atada al nivel más cercano a su línea, con el
 *Valor de desfase Z* en **cero** y la altura en sus desfases de nivel inicial y final (los que
-salen de la cota de su línea). Antes salían con un desfase Z que nadie pone (0.60 m en un
-modelo de prueba).
+salen de la cota de su línea; a menos de 2 cm del nivel, en cero). Antes salían con un
+desfase Z que nadie pone (0.60 m en un modelo de prueba): el *Nivel de referencia* de una viga
+ya colocada es de solo lectura, su escritura fallaba y arrastraba la del desfase Z. Ahora cada
+parámetro va por su cuenta, también el desfase Z inicial y final, se repite al final con todo
+regenerado, se aplica también al **actualizar**, y si alguna viga se queda con desfase sale
+como error.
 
 **Las losas, a paño.** ETABS modela losas, muros y trabes por su eje, así que la losa llegaba al
 centro del muro de fachada. Ahora cada lado de **orilla** de una losa plana que tiene debajo un

@@ -110,6 +110,9 @@ public sealed class Parameter
 
     public string? AsString() => null;
 
+    /// <summary>Revit API: Parameter.AsElementId().</summary>
+    public ElementId AsElementId() => ElementId.InvalidElementId;
+
     public bool Set(double v) => true;
 
     public bool Set(int v) => true;

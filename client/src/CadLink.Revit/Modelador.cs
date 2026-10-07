@@ -22,6 +22,9 @@ public sealed class ResultadoModelado
     public List<string> Errores { get; } = new();
 
     public List<string> Avisos { get; } = new();
+
+    /// <summary>Las vigas creadas o actualizadas, para dejarlas en su nivel al final.</summary>
+    internal List<(FamilyInstance Viga, BarraJson Barra)> Vigas { get; } = new();
 }
 
 /// <summary>
@@ -91,6 +94,31 @@ internal static class Modelador
                         // DejarIgual, SinMapeo y Sobra no tocan nada.
                         r.Saltadas++;
                         break;
+                }
+            }
+
+            // ---- Las vigas en su nivel, con el desfase Z en cero ----
+            //
+            // Otra vez al final, ya con todo regenerado: las uniones con columnas y muros que
+            // hace Revit al regenerar pueden volver a tocar la viga. Y se comprueba: si alguna
+            // se queda con desfase, se dice como error, que es lo unico que sale en pantalla.
+            if (r.Vigas.Count > 0)
+            {
+                doc.Regenerate();
+
+                foreach (var (viga, barra) in r.Vigas)
+                {
+                    Nivelar(doc, viga, barra);
+                }
+
+                doc.Regenerate();
+
+                var conDesfase = r.Vigas.Count(v => v.Viga.IsValidObject && Math.Abs(DesfaseZ(v.Viga)) > 1e-4);
+
+                if (conDesfase > 0)
+                {
+                    r.Errores.Add($"«desfase Z»: {conDesfase} viga(s) se quedaron con Valor de desfase Z "
+                                  + "distinto de cero; su familia no deja cambiarlo");
                 }
             }
 
@@ -558,6 +586,7 @@ internal static class Modelador
         if (b.Clase == ClasePieza.Trabe)
         {
             Nivelar(doc, inst, b);
+            r.Vigas.Add((inst, b));
         }
 
         return inst;
@@ -581,6 +610,11 @@ internal static class Modelador
     /// </remarks>
     private static void Nivelar(Document doc, FamilyInstance inst, BarraJson b)
     {
+        // CADA PARAMETRO EN SU PROPIO TRY. Aqui estaba el «aun pones ese desfase»: el Nivel de
+        // referencia de una viga ya colocada es de SOLO LECTURA en Revit, su Set lanzaba, el try
+        // unico se lo tragaba y el Valor de desfase Z -que iba despues- no se llegaba a escribir.
+        Level? nivel = null;
+
         try
         {
             var deRevit = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().ToList();
@@ -589,36 +623,104 @@ internal static class Modelador
                 .ToList();
 
             var (nombre, _) = Colocacion.NivelDePano(Math.Min(b.P1.Z, b.P2.Z), comoJson);
+            nivel = deRevit.FirstOrDefault(n => n.Name == nombre);
+        }
+        catch (Exception)
+        {
+            // Sin niveles que leer se deja el que le puso Revit.
+        }
 
-            if (deRevit.FirstOrDefault(n => n.Name == nombre) is not { } nivel)
+        if (nivel is not null)
+        {
+            try
+            {
+                if (Despiece.Parametro(inst, new[] { "INSTANCE_REFERENCE_LEVEL_PARAM" },
+                        new[] { "Nivel de referencia", "Reference Level" }) is { IsReadOnly: false } pn)
+                {
+                    pn.Set(nivel.Id);
+                }
+            }
+            catch (Exception)
+            {
+                // Se queda en el nivel con que se creo, que es el del piso de ETABS.
+            }
+        }
+
+        // El desfase Z, SIEMPRE en cero: el uniforme y el de cada punta, por si la familia tiene
+        // la justificacion yz independiente. Y la justificacion yz, uniforme.
+        Poner(inst, "YZ_JUSTIFICATION", new[] { "Justificación yz", "yz Justification" }, 0, entero: true);
+        Poner(inst, "Z_OFFSET_VALUE", new[] { "Valor de desfase Z", "z Offset Value", "Z Offset Value" }, 0);
+        Poner(inst, "START_Z_OFFSET_VALUE", new[] { "Valor de desfase Z inicial", "Start z Offset Value" }, 0);
+        Poner(inst, "END_Z_OFFSET_VALUE", new[] { "Valor de desfase Z final", "End z Offset Value" }, 0);
+
+        // La altura, con los desfases de nivel de las puntas, medidos contra el nivel que de
+        // verdad tiene la viga. Lo que esta a menos de 2 cm del nivel, EN el nivel.
+        var elev = 0.0;
+
+        try
+        {
+            var idNivel = Despiece.Parametro(inst, new[] { "INSTANCE_REFERENCE_LEVEL_PARAM" },
+                new[] { "Nivel de referencia", "Reference Level" })?.AsElementId();
+            var nivelReal = (idNivel is null ? null : doc.GetElement(idNivel) as Level) ?? nivel;
+
+            if (nivelReal is null)
             {
                 return;
             }
 
-            var elev = Unidades.AMetros(nivel.Elevation);
-
-            Despiece.Parametro(inst, new[] { "INSTANCE_REFERENCE_LEVEL_PARAM" },
-                new[] { "Nivel de referencia", "Reference Level" })?.Set(nivel.Id);
-
-            Poner(inst, "Z_OFFSET_VALUE", new[] { "Valor de desfase Z", "z Offset Value", "Z Offset Value" }, 0);
-            Poner(inst, "STRUCTURAL_BEAM_END0_ELEVATION",
-                new[] { "Desfase de nivel inicial", "Start Level Offset" }, b.P1.Z - elev);
-            Poner(inst, "STRUCTURAL_BEAM_END1_ELEVATION",
-                new[] { "Desfase de nivel final", "End Level Offset" }, b.P2.Z - elev);
+            elev = Unidades.AMetros(nivelReal.Elevation);
         }
         catch (Exception)
         {
-            // Una familia que no tenga estos parametros se queda como la puso Revit.
+            return;
+        }
+
+        Poner(inst, "STRUCTURAL_BEAM_END0_ELEVATION",
+            new[] { "Desfase de nivel inicial", "Start Level Offset" }, AlNivel(b.P1.Z - elev));
+        Poner(inst, "STRUCTURAL_BEAM_END1_ELEVATION",
+            new[] { "Desfase de nivel final", "End Level Offset" }, AlNivel(b.P2.Z - elev));
+    }
+
+    /// <summary>Un desfase de menos de 2 cm es ruido del calculo: la viga va en el nivel.</summary>
+    internal static double AlNivel(double desfaseM) => Math.Abs(desfaseM) < 0.02 ? 0 : desfaseM;
+
+    /// <summary>Lo que quedo en el Valor de desfase Z, en m; 0 si la familia no lo tiene.</summary>
+    private static double DesfaseZ(FamilyInstance inst)
+    {
+        try
+        {
+            var p = Despiece.Parametro(inst, new[] { "Z_OFFSET_VALUE" }, new[] { "Valor de desfase Z", "z Offset Value" });
+            return p is not null && p.StorageType == StorageType.Double ? Unidades.AMetros(p.AsDouble()) : 0;
+        }
+        catch (Exception)
+        {
+            return 0;
         }
     }
 
-    private static void Poner(Element e, string interno, string[] nombres, double metros)
+    private static void Poner(Element e, string interno, string[] nombres, double metros, bool entero = false)
     {
-        var p = Despiece.Parametro(e, new[] { interno }, nombres);
-
-        if (p is not null && !p.IsReadOnly && p.StorageType == StorageType.Double)
+        try
         {
-            p.Set(Unidades.AInternas(metros));
+            var p = Despiece.Parametro(e, new[] { interno }, nombres);
+
+            if (p is null || p.IsReadOnly)
+            {
+                return;
+            }
+
+            if (entero && p.StorageType == StorageType.Integer)
+            {
+                p.Set((int)metros);
+            }
+            else if (!entero && p.StorageType == StorageType.Double)
+            {
+                p.Set(Unidades.AInternas(metros));
+            }
+        }
+        catch (Exception)
+        {
+            // Uno que no se deja no impide los demas.
         }
     }
 
@@ -939,6 +1041,11 @@ internal static class Modelador
                         $"«{paso.Llave}» cambio de sitio en el calculo, pero Revit no dejo "
                         + "moverla. Revisa si esta unida a otra pieza.");
                 }
+            }
+
+            if (paso.Barra is { Clase: ClasePieza.Trabe } barra && e is FamilyInstance viga)
+            {
+                r.Vigas.Add((viga, barra));
             }
 
             r.Actualizadas++;

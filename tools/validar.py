@@ -16571,12 +16571,19 @@ def v26_plugin_revit() -> None:
     # respecto de su nivel, que es lo que la deja donde la trae el calculo. Lo que si va en
     # cero es el «Valor de desfase Z»: se pidio, las trabes salian con 0.60 m que nadie pone.
     check("ni se le fuerza el desfase de nivel: sale de la cota de su linea",
-          '"STRUCTURAL_BEAM_END0_ELEVATION",\n                new[] { "Desfase de nivel inicial", "Start Level Offset" }, b.P1.Z - elev);' in modelador.replace("\r\n", "\n")
-          and '"STRUCTURAL_BEAM_END1_ELEVATION",\n                new[] { "Desfase de nivel final", "End Level Offset" }, b.P2.Z - elev);' in modelador.replace("\r\n", "\n"),
+          '"STRUCTURAL_BEAM_END0_ELEVATION",\n            new[] { "Desfase de nivel inicial", "Start Level Offset" }, AlNivel(b.P1.Z - elev));' in modelador.replace("\r\n", "\n")
+          and '"STRUCTURAL_BEAM_END1_ELEVATION",\n            new[] { "Desfase de nivel final", "End Level Offset" }, AlNivel(b.P2.Z - elev));' in modelador.replace("\r\n", "\n"),
           "la cota de la linea es la que trae el calculo; la cara la pone la justificacion")
     check("y el Valor de desfase Z de las trabes va en cero, en su nivel mas cercano",
           'Poner(inst, "Z_OFFSET_VALUE", new[] { "Valor de desfase Z", "z Offset Value", "Z Offset Value" }, 0);' in modelador
           and "Colocacion.NivelDePano(Math.Min(b.P1.Z, b.P2.Z), comoJson)" in modelador)
+    # Y SIGUIO SALIENDO: el Nivel de referencia de una viga ya colocada es de solo lectura, su
+    # Set lanzaba y el try unico se tragaba el resto, desfase Z incluido. Cada parametro va por
+    # su cuenta, se repite al final con todo regenerado y se COMPRUEBA.
+    check("el desfase Z se escribe aunque falle el nivel, y se comprueba al final",
+          "is { IsReadOnly: false } pn" in modelador and '"START_Z_OFFSET_VALUE"' in modelador
+          and '"END_Z_OFFSET_VALUE"' in modelador and "foreach (var (viga, barra) in r.Vigas)" in modelador
+          and "«desfase Z»:" in modelador and "r.Vigas.Add((viga, barra));" in modelador)
 
     check("tambien se escriben los justificados de cada extremo",
           "START_Z_JUSTIFICATION" in modelador and "END_Z_JUSTIFICATION" in modelador,
