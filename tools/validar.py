@@ -15925,7 +15925,8 @@ def v30_armado_por_tipo() -> None:
     # dentro de la columna. Se arma con lo que mide el solido, de cara a cara.
     check("la trabe se arma de cara a cara de columna, con lo que mide su solido",
           "public MarcoPieza AlLargoDe(IEnumerable<V3> puntosDelSolido)" in leer(ruta("client/src/CadLink.Revit.Nucleo/PlanDeArmado.cs"))
-          and ".AlLargoDe(PuntosDelSolido(inst).Select(P));" in arm and "gi.GetInstanceGeometry()" in arm
+          and ".AlLargoDe(Geometria.PuntosDelSolido(inst).Select(P));" in arm
+          and "gi.GetInstanceGeometry()" in leer(ruta("client/src/CadLink.Revit/Geometria.cs"))
           and "linea.AlLargoDe(solido)" in leer(ruta("tools/prueba-revit/Program.cs")))
 
     # Se pidio: en el corte, FLECHAS a las varillas a un costado como en AutoCAD, y el rotulado
@@ -15955,6 +15956,15 @@ def v30_armado_por_tipo() -> None:
           "public static List<string> AplicarATodos(" in leer(ruta("client/src/CadLink.Revit.Nucleo/LosasAPano.cs"))
           and "LosasAPano.AplicarATodos(" in imp and "Orientacion.MedidorDeMuros(modelo, mapeo, catalogo)" in imp
           and "LosasAPanoDeOrilla();" in leer(ruta("tools/prueba-revit/Program.cs")))
+
+    # Se pidio: los muros SIEMPRE a paño de las columnas, ni separados ni metidos en ellas. Se
+    # miden las columnas ya dibujadas en Revit en vez de calcular medio castillo.
+    check("los muros van al paño de las columnas MEDIDAS en Revit: se recortan o se alargan",
+          "public static APano? APanoDeColumnas(" in leer(ruta("client/src/CadLink.Revit.Nucleo/AjusteDeMuros.cs"))
+          and "plan.Pasos.OrderBy(p => p.Pano is null ? 0 : 1)" in mod and "Geometria.PuntosDelSolido(e)" in mod
+          and "new OpcionesMuro { RecortarEnCastillos = false }" in imp
+          and "CadLink.Revit\\Geometria.cs" in leer(ruta("tools/prueba-revit-compila/Prueba.csproj"))
+          and "AjusteDeMuros.APanoDeColumnas(deEje" in leer(ruta("tools/prueba-revit/Program.cs")))
 
     # CS0104 en la maquina del usuario: WPF y la Revit API comparten nombres de tipo. Con los
     # dos usings, el de WPF tiene que ir con alias o no compila.

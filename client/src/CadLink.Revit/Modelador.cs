@@ -23,6 +23,11 @@ public sealed class ResultadoModelado
 
     public List<string> Avisos { get; } = new();
 
+    /// <summary>Muros llevados al paño de las columnas modeladas, y puntas sin columna.</summary>
+    internal int MurosAPano { get; set; }
+
+    internal int PuntasSinColumna { get; set; }
+
     /// <summary>Las vigas creadas o actualizadas, para dejarlas en su nivel al final.</summary>
     internal List<(FamilyInstance Viga, BarraJson Barra)> Vigas { get; } = new();
 }
@@ -78,8 +83,19 @@ internal static class Modelador
 
             CrearEjes(doc, plan, r);
 
-            foreach (var paso in plan.Pasos)
+            // LAS BARRAS PRIMERO y despues los paños: los muros se llevan al paño de las
+            // columnas que Revit YA dibujo, medidas, no de las que se suponen.
+            List<AjusteDeMuros.HuellaColumna>? huellas = null;
+
+            foreach (var paso in plan.Pasos.OrderBy(p => p.Pano is null ? 0 : 1))
             {
+                if (paso.Pano is { Clase: ClasePieza.Muro } muro && paso.Accion == Accion.Crear
+                    && paso.Tipo?.Categoria == CategoriaRevit.Muro)
+                {
+                    huellas ??= Huellas(doc);
+                    APanoDeColumnas(muro, huellas, r);
+                }
+
                 switch (paso.Accion)
                 {
                     case Accion.Crear:
@@ -120,6 +136,12 @@ internal static class Modelador
                     r.Errores.Add($"«desfase Z»: {conDesfase} viga(s) se quedaron con Valor de desfase Z "
                                   + "distinto de cero; su familia no deja cambiarlo");
                 }
+            }
+
+            if (r.MurosAPano + r.PuntasSinColumna > 0)
+            {
+                r.Avisos.Add($"{r.MurosAPano} muro(s) se llevaron al paño de las columnas modeladas"
+                             + (r.PuntasSinColumna > 0 ? $"; {r.PuntasSinColumna} punta(s) de muro no tienen columna y se quedaron en su sitio" : string.Empty));
             }
 
             t.Commit();
@@ -439,6 +461,57 @@ internal static class Modelador
                     // burbuja. Con el tipo ya encendido no es un problema.
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Lo que ocupa cada columna del proyecto -las de CadLink y las que ya estaban-, medido sobre
+    /// su solido, en metros.
+    /// </summary>
+    private static List<AjusteDeMuros.HuellaColumna> Huellas(Document doc)
+    {
+        var res = new List<AjusteDeMuros.HuellaColumna>();
+
+        // Las columnas recien creadas no tienen geometria hasta que Revit regenera.
+        doc.Regenerate();
+
+        foreach (var e in new FilteredElementCollector(doc)
+                     .OfCategory(BuiltInCategory.OST_StructuralColumns)
+                     .WhereElementIsNotElementType())
+        {
+            var puntos = Geometria.PuntosDelSolido(e);
+
+            if (puntos.Count == 0)
+            {
+                continue;
+            }
+
+            res.Add(new AjusteDeMuros.HuellaColumna(
+                puntos.Select(p => (Unidades.AMetros(p.X), Unidades.AMetros(p.Y))).ToList(),
+                Unidades.AMetros(puntos.Min(p => p.Z)),
+                Unidades.AMetros(puntos.Max(p => p.Z))));
+        }
+
+        return res;
+    }
+
+    /// <summary>El muro, al paño de las columnas que tiene en sus puntas. Se cambia en su sitio.</summary>
+    private static void APanoDeColumnas(PanoJson muro, List<AjusteDeMuros.HuellaColumna> huellas, ResultadoModelado r)
+    {
+        var a = AjusteDeMuros.APanoDeColumnas(muro.Vertices, huellas);
+
+        if (a is null)
+        {
+            return;
+        }
+
+        r.PuntasSinColumna += 2 - a.Puntas;
+
+        if (a.Cambio)
+        {
+            muro.Vertices.Clear();
+            muro.Vertices.AddRange(a.Contorno);
+            r.MurosAPano++;
         }
     }
 

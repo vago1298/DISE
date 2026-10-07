@@ -2086,6 +2086,31 @@ internal static partial class Programa
         lejos.Panos.AddRange(new[] { ll, Muro(0, 0.5, 4, 0.5, 0.15) });
         Check("un muro que no va por la orilla no la mueve", LosasAPano.AplicarATodos(lejos).Count == 0);
 
+        // ---------- Los muros al paño de las columnas YA MODELADAS ----------
+        // Muro de eje a eje entre dos castillos de 20x20 en x=0 y x=4; altura 0 a 2.4.
+        AjusteDeMuros.HuellaColumna Castillo(double cx, double cy, double lado) => new(
+            new List<(double X, double Y)> { (cx - (lado / 2), cy - (lado / 2)), (cx + (lado / 2), cy - (lado / 2)),
+                                             (cx + (lado / 2), cy + (lado / 2)), (cx - (lado / 2), cy + (lado / 2)) }, 0, 2.7);
+        var deEje = new List<PuntoJson> { P(0, 0, 0), P(4, 0, 0), P(4, 0, 2.4), P(0, 0, 2.4) };
+        var ap = AjusteDeMuros.APanoDeColumnas(deEje, new[] { Castillo(0, 0, 0.20), Castillo(4, 0, 0.20) })!;
+        Check("de eje a eje, el muro muere en el paño de los dos castillos",
+            ap.Puntas == 2 && Math.Abs(ap.Contorno.Min(v => v.X) - 0.10) < 1e-9 && Math.Abs(ap.Contorno.Max(v => v.X) - 3.90) < 1e-9);
+        var corto = new List<PuntoJson> { P(0.15, 0, 0), P(3.80, 0, 0), P(3.80, 0, 2.4), P(0.15, 0, 2.4) };
+        var ac = AjusteDeMuros.APanoDeColumnas(corto, new[] { Castillo(0, 0, 0.20), Castillo(4, 0, 0.20) })!;
+        Check("si quedaba separado de la columna, se ALARGA hasta su paño",
+            Math.Abs(ac.Contorno.Min(v => v.X) - 0.10) < 1e-9 && Math.Abs(ac.Contorno.Max(v => v.X) - 3.90) < 1e-9);
+        var girado = new AjusteDeMuros.HuellaColumna(new List<(double X, double Y)> { (3.85, -0.15), (4.15, -0.15), (4.15, 0.15), (3.85, 0.15) }, 0, 2.7);
+        var ag = AjusteDeMuros.APanoDeColumnas(deEje, new[] { Castillo(0, 0, 0.20), girado })!;
+        Casi("con la columna como de verdad quedo -30 cm, no 20-, al paño de esa", ag.Contorno.Max(v => v.X), 3.85, 1e-9);
+        var sinColumna = AjusteDeMuros.APanoDeColumnas(deEje, new[] { Castillo(0, 0, 0.20) })!;
+        Check("una punta sin columna se queda donde esta, y se cuenta",
+            sinColumna.Puntas == 1 && Math.Abs(sinColumna.Contorno.Max(v => v.X) - 4) < 1e-9);
+        var deOtroPiso = new AjusteDeMuros.HuellaColumna(Castillo(4, 0, 0.2).Puntos, 2.7, 5.4);
+        Check("una columna de otro piso no cuenta",
+            AjusteDeMuros.APanoDeColumnas(deEje, new[] { Castillo(0, 0, 0.20), deOtroPiso })!.Puntas == 1);
+        var aMedia = new AjusteDeMuros.HuellaColumna(Castillo(2, 0, 0.2).Puntos, 0, 2.7);
+        Check("ni una a media pared", AjusteDeMuros.APanoDeColumnas(deEje, new[] { aMedia })!.Puntas == 0);
+
         var conTipo = new ModeloJson();
         var lt = Losa((0, 0), (4, 0), (4, 5), (0, 5));
         conTipo.Panos.AddRange(new[] { lt, Muro(0, 0, 4, 0, 0.15) });

@@ -163,7 +163,11 @@ public sealed class ComandoImportar : IExternalCommand
         // van a existir de verdad.
         var medidor = Orientacion.Medidor(modelo, mapeo, catalogo);
 
-        var avisosMuros = AjusteDeMuros.AplicarATodos(modelo, null, medidor);
+        // Aqui solo se BAJAN bajo su cadena. El recorte al paño de las columnas lo hace el
+        // modelador con las columnas ya dibujadas en Revit, medidas: con medio castillo
+        // calculado algunos muros quedaban cortos o metidos en la columna.
+        var avisosMuros = AjusteDeMuros.AplicarATodos(
+            modelo, new OpcionesMuro { RecortarEnCastillos = false }, medidor);
 
         // Cuantas barras pudieron dar sus medidas REALES. Se dice porque es la diferencia entre
         // recortar el muro al pano del castillo que va a existir y recortarlo al de la seccion

@@ -518,6 +518,113 @@ public static class AjusteDeMuros
         return avisos;
     }
 
+    // ==================================================================
+    //  A PAÑO DE LAS COLUMNAS QUE DE VERDAD ESTAN EN REVIT
+    // ==================================================================
+
+    /// <summary>
+    /// Lo que ocupa una columna YA MODELADA: los vertices de su solido en planta y entre que
+    /// cotas esta. Se mide en Revit, despues de crearla.
+    /// </summary>
+    public sealed record HuellaColumna(List<(double X, double Y)> Puntos, double ZMin, double ZMax);
+
+    /// <summary>Lo que hizo <see cref="APanoDeColumnas"/> con un muro.</summary>
+    /// <param name="Puntas">Cuantas de sus dos puntas quedaron en el paño de una columna.</param>
+    public sealed record APano(List<PuntoJson> Contorno, int Puntas, bool Cambio);
+
+    /// <summary>
+    /// Lleva cada punta del muro al PAÑO de la columna que tiene ahi, medida en Revit: la recorta
+    /// si se mete en la columna y la ALARGA si se queda corta, para que nunca quede separado ni
+    /// dentro de su seccion.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidio: «algunos muros no los modelas a paño de las columnas; que no queden separados y
+    /// que no queden dentro de la seccion de la columna». Recortar con medio castillo calculado
+    /// -la seccion, su angulo y el giro del tipo de Revit- fallaba en algunos: con la cuenta
+    /// mal, el muro quedaba corto o metido. Medido sobre la columna que Revit dibujo, el paño es
+    /// el de verdad.
+    /// </para>
+    /// <para>
+    /// Una columna cuenta en esa punta si cruza la altura del muro, si su huella toca la franja
+    /// del eje del muro y si llega a menos de <paramref name="tolEjeM"/> de la punta. Se toma la
+    /// cara de la columna que da hacia el muro. Un muro que no es un rectangulo vertical, o que
+    /// se quedaria de menos de 5 cm, se deja como esta.
+    /// </para>
+    /// </remarks>
+    public static APano? APanoDeColumnas(
+        IReadOnlyList<PuntoJson> vertices, IReadOnlyList<HuellaColumna> columnas,
+        double tolZM = 0.15, double tolEjeM = 0.30)
+    {
+        var recto = ComoRecto(vertices);
+
+        if (recto is null)
+        {
+            return null;
+        }
+
+        var largo = Distancia(recto.X1, recto.Y1, recto.X2, recto.Y2);
+
+        if (largo < 1e-6)
+        {
+            return null;
+        }
+
+        var ux = (recto.X2 - recto.X1) / largo;
+        var uy = (recto.Y2 - recto.Y1) / largo;
+
+        // Desde la punta, hacia DENTRO del muro: lo que hay que mover esa punta. Positivo, se
+        // recorta; negativo, se alarga. Null si no hay columna en esa punta.
+        double? Cara(double ex, double ey, double dx, double dy)
+        {
+            double? cara = null;
+
+            foreach (var c in columnas)
+            {
+                if (c.Puntos.Count == 0 || c.ZMax < recto.ZBase + tolZM || c.ZMin > recto.ZAlta - tolZM)
+                {
+                    continue;
+                }
+
+                var s = c.Puntos.Select(p => ((p.X - ex) * dx) + ((p.Y - ey) * dy)).ToList();
+                var n = c.Puntos.Select(p => ((p.X - ex) * -dy) + ((p.Y - ey) * dx)).ToList();
+
+                // Que toque el eje del muro y que este en la punta, no a media pared.
+                if (n.Min() > 0.05 || n.Max() < -0.05 || s.Min() > tolEjeM || s.Max() < -tolEjeM)
+                {
+                    continue;
+                }
+
+                // La cara que da hacia el muro es la mas metida en el.
+                var hacia = s.Max();
+                cara = cara is null ? hacia : Math.Max(cara.Value, hacia);
+            }
+
+            return cara;
+        }
+
+        var a = Cara(recto.X1, recto.Y1, ux, uy);
+        var b = Cara(recto.X2, recto.Y2, -ux, -uy);
+
+        var da = a ?? 0;
+        var db = b ?? 0;
+
+        if (largo - da - db < 0.05)
+        {
+            return new APano(vertices.ToList(), 0, false);
+        }
+
+        var contorno = new List<PuntoJson>
+        {
+            new() { X = recto.X1 + (ux * da), Y = recto.Y1 + (uy * da), Z = recto.ZBase },
+            new() { X = recto.X2 - (ux * db), Y = recto.Y2 - (uy * db), Z = recto.ZBase },
+            new() { X = recto.X2 - (ux * db), Y = recto.Y2 - (uy * db), Z = recto.ZAlta },
+            new() { X = recto.X1 + (ux * da), Y = recto.Y1 + (uy * da), Z = recto.ZAlta }
+        };
+
+        return new APano(contorno, (a is null ? 0 : 1) + (b is null ? 0 : 1), Math.Abs(da) + Math.Abs(db) > 1e-6);
+    }
+
     /// <summary>Para los mensajes.</summary>
     public static string Cm(double metros) =>
         (metros * 100).ToString("0.#", CultureInfo.InvariantCulture);
