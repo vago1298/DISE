@@ -87,6 +87,57 @@ public static class Contornos
         return salida;
     }
 
+    /// <summary>
+    /// Quita los vertices que caen EN MEDIO de un lado recto: los que deja la malla de ETABS
+    /// donde otro paño toca a este.
+    /// </summary>
+    /// <remarks>
+    /// El muro junto a una puerta trae un vertice de mas a la altura del dintel, en su canto:
+    /// ahi se une con el paño del dintel. Con cinco vertices ya no se reconocia como
+    /// rectangulo, asi que no se llevaba al paño de sus columnas -se metia en ellas- ni se
+    /// bajaba bajo su cadena.
+    /// </remarks>
+    public static List<PuntoJson> SinColineales(IReadOnlyList<PuntoJson>? v, double tolM = 0.005)
+    {
+        var lista = SinRepetidos(v, 0.001);
+        var quitado = true;
+
+        while (quitado && lista.Count > 3)
+        {
+            quitado = false;
+
+            for (var i = 0; i < lista.Count && lista.Count > 3; i++)
+            {
+                var a = lista[(i - 1 + lista.Count) % lista.Count];
+                var p = lista[i];
+                var b = lista[(i + 1) % lista.Count];
+
+                var (ux, uy, uz) = (b.X - a.X, b.Y - a.Y, b.Z - a.Z);
+                var (wx, wy, wz) = (p.X - a.X, p.Y - a.Y, p.Z - a.Z);
+                var l2 = (ux * ux) + (uy * uy) + (uz * uz);
+
+                if (l2 < 1e-12)
+                {
+                    continue;
+                }
+
+                // Que este sobre la recta de sus vecinos Y entre ellos.
+                var t = ((wx * ux) + (wy * uy) + (wz * uz)) / l2;
+                var (cx, cy, cz) = ((wy * uz) - (wz * uy), (wz * ux) - (wx * uz), (wx * uy) - (wy * ux));
+                var distancia = Math.Sqrt(((cx * cx) + (cy * cy) + (cz * cz)) / l2);
+
+                if (t > 0 && t < 1 && distancia <= tolM)
+                {
+                    lista.RemoveAt(i);
+                    quitado = true;
+                    i--;
+                }
+            }
+        }
+
+        return lista;
+    }
+
     private static bool Cerca(PuntoJson a, PuntoJson b, double tol) =>
         Math.Abs(a.X - b.X) <= tol && Math.Abs(a.Y - b.Y) <= tol && Math.Abs(a.Z - b.Z) <= tol;
 

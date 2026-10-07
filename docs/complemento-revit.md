@@ -284,6 +284,10 @@ tiene ahí: se recorta si se metía y se **alarga** si quedaba separada. Antes s
 castillo calculado con la sección y su giro, y en algunos muros la cuenta no coincidía con la
 columna dibujada. En CadLink los muros ya solo se bajan bajo su cadena.
 
+Un muro junto a una puerta trae, de la malla de ETABS, un vértice de más en su canto a la
+altura del dintel. Esos vértices en medio de un lado recto se quitan antes de ver si el muro es
+un rectángulo; si no, no se llevaba al paño de sus columnas y se metía en ellas.
+
 **Las losas, a paño.** ETABS modela losas, muros y trabes por su eje, así que la losa llegaba al
 centro del muro de fachada. Ahora cada lado de **orilla** de una losa plana que tiene debajo un
 muro o una trabe que corre a lo largo de él se corre hacia fuera medio espesor (el del tipo de

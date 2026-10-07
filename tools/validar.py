@@ -15977,6 +15977,10 @@ def v30_armado_por_tipo() -> None:
     check("el muro rectangular se crea con su altura y su desfase de base, no con su contorno",
           "Unidades.AInternas(recto.ZAlta - recto.ZBase)," in mod
           and "Unidades.AInternas(recto.ZBase) - elev," in mod and "false, true);" in mod)
+    check("el muro junto a un dintel -con un vertice de malla en su canto- sigue siendo rectangulo",
+          "public static List<PuntoJson> SinColineales(" in leer(ruta("client/src/CadLink.Revit.Nucleo/Contornos.cs"))
+          and "Contornos.SinColineales(Contornos.SinRepetidos(v, tolM))" in leer(ruta("client/src/CadLink.Revit.Nucleo/AjusteDeMuros.cs"))
+          and "el muro junto al dintel se reconoce como rectangulo" in leer(ruta("tools/prueba-revit/Program.cs")))
     check("los dinteles van en el nivel en que se apoyan y a la cota de su base",
           "public static (string Nombre, double DesfaseM) NivelDeApoyo(" in leer(ruta("client/src/CadLink.Revit.Nucleo/Colocacion.cs"))
           and "Colocacion.NivelDeApoyo(zBase, comoJson)" in mod and "r.Muros.Add((hecho, pano.Vertices.Min(v => v.Z)));" in mod

@@ -2110,6 +2110,17 @@ internal static partial class Programa
         var girado = new AjusteDeMuros.HuellaColumna(new List<(double X, double Y)> { (3.85, -0.15), (4.15, -0.15), (4.15, 0.15), (3.85, 0.15) }, 0, 2.7);
         var ag = AjusteDeMuros.APanoDeColumnas(deEje, new[] { Castillo(0, 0, 0.20), girado })!;
         Casi("con la columna como de verdad quedo -30 cm, no 20-, al paño de esa", ag.Contorno.Max(v => v.X), 3.85, 1e-9);
+        // El muro junto a una puerta: la malla le deja un vertice a la altura del dintel (2.10)
+        // en su canto. Con el, ya no era un rectangulo y se metia en la columna.
+        var junto = new List<PuntoJson> { P(0, 0, 0), P(4, 0, 0), P(4, 0, 2.1), P(4, 0, 2.4), P(0, 0, 2.4) };
+        Check("el muro junto al dintel se reconoce como rectangulo",
+            AjusteDeMuros.ComoRecto(junto) is { ZBase: 0, ZAlta: 2.4 });
+        var aj = AjusteDeMuros.APanoDeColumnas(junto, new[] { Castillo(0, 0, 0.20), Castillo(4, 0, 0.20) })!;
+        Check("y se lleva al paño de sus dos columnas",
+            aj.Puntas == 2 && aj.Contorno.Count == 4 && Math.Abs(aj.Contorno.Max(v => v.X) - 3.90) < 1e-9);
+        Check("un muro con hueco de verdad no es rectangulo",
+            AjusteDeMuros.ComoRecto(new List<PuntoJson> { P(0, 0, 0), P(1, 0, 0), P(1, 0, 2.1), P(2, 0, 2.1), P(2, 0, 0), P(4, 0, 0), P(4, 0, 2.4), P(0, 0, 2.4) }) is null);
+
         var sinColumna = AjusteDeMuros.APanoDeColumnas(deEje, new[] { Castillo(0, 0, 0.20) })!;
         Check("una punta sin columna se queda donde esta, y se cuenta",
             sinColumna.Puntas == 1 && Math.Abs(sinColumna.Contorno.Max(v => v.X) - 4) < 1e-9);

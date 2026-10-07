@@ -89,7 +89,8 @@ public static class AjusteDeMuros
     /// </remarks>
     public static MuroRecto? ComoRecto(IReadOnlyList<PuntoJson>? v, double tolM = 0.02)
     {
-        var limpio = Contornos.SinRepetidos(v, tolM);
+        // Sin los vertices de malla en medio de un lado: el muro junto a un dintel trae uno.
+        var limpio = Contornos.SinColineales(Contornos.SinRepetidos(v, tolM));
 
         if (limpio.Count != 4)
         {
