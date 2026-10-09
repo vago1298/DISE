@@ -15782,6 +15782,19 @@ def v29_paquete_oficina() -> None:
           "## Las PCs de tu oficina: la forma fácil" in leer(ruta("EMPIEZA-AQUI.md")))
 
 
+    # Se pidio: el archivo del trabajo (.clk) con el icono del programa, pero distinto.
+    csp = leer(ruta("client/src/CadLink.App/CadLink.App.csproj"))
+    check("los trabajos .clk llevan su icono: el del programa sobre una hoja",
+          os.path.exists(ruta("client/src/CadLink.App/Assets/archivo.ico"))
+          and os.path.exists(ruta("tools/make_icono_archivo.py"))
+          and '<None Include="Assets\\archivo.ico"' in csp and "<ExcludeFromSingleFile>true</ExcludeFromSingleFile>" in csp
+          and 'Subkey: "Software\\Classes\\CadLink.Trabajo\\DefaultIcon"' in iss
+          and 'ValueData: "{app}\\archivo.ico,0"' in iss and "ChangesAssociations=yes" in iss)
+    check("y con doble clic se abre el trabajo en CadLink",
+          '"Software\\Classes\\.clk"' in iss and '""%1""' in iss
+          and "main.AbrirTrabajo(_trabajoAlAbrir);" in leer(ruta("client/src/CadLink.App/App.xaml.cs"))
+          and "public void AbrirTrabajo(string ruta)" in leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs")))
+
 # Los iconos de la cinta de Revit, uno por boton (tools/make_iconos_cinta.py).
 ICONOS_CINTA = ("importar-etabs", "armar-modelo", "columna-acero", "columna-corte",
                 "viga-acero", "viga-corte", "armar-tipo", "corte-seccion")

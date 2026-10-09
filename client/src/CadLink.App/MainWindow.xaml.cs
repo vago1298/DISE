@@ -2346,16 +2346,25 @@ public partial class MainWindow : Window
             return;
         }
 
+        AbrirTrabajo(dialogo.FileName);
+    }
+
+    /// <summary>
+    /// Abre un trabajo por su ruta. Lo usa tambien el arranque: con doble clic en un .clk,
+    /// Windows abre CadLink con la ruta del archivo.
+    /// </summary>
+    public void AbrirTrabajo(string ruta)
+    {
         try
         {
-            AplicarProyecto(ArchivoProyecto.Leer(dialogo.FileName));
+            AplicarProyecto(ArchivoProyecto.Leer(ruta));
 
             // Se abrió OTRO trabajo: lo de antes ya no es «el último cambio».
             OlvidarHistorial();
 
-            _archivoActual = dialogo.FileName;
-            ArchivoText.Text = "Abierto: " + Path.GetFileName(dialogo.FileName);
-            StatusText.Text = $"Trabajo abierto: {Path.GetFileName(dialogo.FileName)}.";
+            _archivoActual = ruta;
+            ArchivoText.Text = "Abierto: " + Path.GetFileName(ruta);
+            StatusText.Text = $"Trabajo abierto: {Path.GetFileName(ruta)}.";
         }
         catch (Exception ex)
         {

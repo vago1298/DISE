@@ -108,6 +108,10 @@ UninstallDisplayIcon={app}\{#Ejecutable}
 CloseApplications=yes
 RestartApplications=no
 
+;  Se registra el tipo de archivo .clk: Windows tiene que volver a leer los
+;  iconos para que los trabajos ensenen el suyo sin reiniciar.
+ChangesAssociations=yes
+
 LicenseFile=LICENCIA.txt
 
 #ifdef HayIcono
@@ -171,6 +175,27 @@ Source: "{#Publicado}\perfiles-acero.csv"; DestDir: "{app}"; Flags: onlyifdoesnt
 Source: "{#Publicado}\cadlink.oficina.json"; DestDir: "{app}"; \
     Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Publicado}\aceros.csv";         DestDir: "{app}"; Flags: onlyifdoesntexist
+
+[Registry]
+;  ===========================================================================
+;  LOS TRABAJOS .clk: SU ICONO Y CON QUE SE ABREN.
+;
+;  El icono es archivo.ico -el del programa sobre una hoja con la esquina
+;  doblada-, para que en el Explorador se distinga el trabajo del programa. Con
+;  doble clic se abre CadLink con ese trabajo.
+;
+;  HKA es HKCU cuando se instala sin administrador y HKLM cuando se instala
+;  para todos: el mismo modo que el resto de la instalacion. Al desinstalar se
+;  quita la asociacion; los .clk del cliente no se tocan.
+;  ===========================================================================
+Root: HKA; Subkey: "Software\Classes\.clk"; ValueType: string; ValueName: ""; \
+    ValueData: "CadLink.Trabajo"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\CadLink.Trabajo"; ValueType: string; ValueName: ""; \
+    ValueData: "Trabajo de {#Nombre}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\CadLink.Trabajo\DefaultIcon"; ValueType: string; ValueName: ""; \
+    ValueData: "{app}\archivo.ico,0"
+Root: HKA; Subkey: "Software\Classes\CadLink.Trabajo\shell\open\command"; ValueType: string; ValueName: ""; \
+    ValueData: """{app}\{#Ejecutable}"" ""%1"""
 
 [Icons]
 Name: "{group}\{#Nombre}";       Filename: "{app}\{#Ejecutable}"

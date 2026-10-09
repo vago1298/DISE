@@ -75,6 +75,15 @@
     <None Update="aceros.csv">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+
+    <!-- El icono de los TRABAJOS (.clk): la hoja con el icono del programa. SUELTO junto al
+         ejecutable, porque es Windows -no el programa- quien lo lee, desde el registro que
+         escribe el instalador. Se genera con tools/make_icono_archivo.py a partir de app.ico. -->
+    <None Include="Assets\archivo.ico" Condition="Exists('Assets\archivo.ico')">
+      <Link>archivo.ico</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
