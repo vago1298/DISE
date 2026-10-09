@@ -18,6 +18,12 @@ public sealed class LicensingOptions
     public string AppFolderName { get; init; } = "CadLink";
 
     /// <summary>
+    /// El código de oficina del instalador DE OFICINA, o vacío. Con él, el servidor deja este
+    /// equipo con licencia INTERNA sin que nadie copie huellas.
+    /// </summary>
+    public string OfficeCode { get; init; } = string.Empty;
+
+    /// <summary>
     /// Cuántos días antes de que expire el token se intenta renovar en segundo plano.
     /// Un margen amplio evita que un equipo que se va a obra por dos semanas
     /// regrese con la licencia ya vencida.

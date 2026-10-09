@@ -267,4 +267,109 @@ public static class AlzadoLayout
             XSiguiente = x0 + anchoSeccion + SepSecAlz + largo + HookDimOff2 + SepSecciones
         };
     }
+
+    // ==================================================================
+    //  La línea de corte A-A' sobre el alzado
+    // ==================================================================
+
+    /// <summary>
+    /// Lo que se corre el corte A-A' pasando el primer cuarto: <b>5 cm</b>.
+    /// </summary>
+    public const double CorrimientoCorte = 0.05;
+
+    /// <summary>
+    /// Dónde cae el corte A-A', medido desde el arranque de la pieza: <b>L/4 + 5 cm</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El alzado trae al lado su <c>CORTE A-A'</c>, pero sobre el alzado no había nada que
+    /// dijera <b>por dónde</b> se cortó. Una línea recta cruza la pieza y lleva
+    /// <c>A</c> en un extremo y <c>A'</c> en el otro.
+    /// </para>
+    /// <para>
+    /// <b>Lo pidió el usuario así:</b> el primer L/4 más 5 cm hacia la derecha —hacia arriba
+    /// en la columna—. Los 5 cm la apartan de la línea de extensión de la cota de zona que
+    /// cae justo en L/4, con la que se confundiría.
+    /// </para>
+    /// <para>
+    /// En una pieza tan corta que L/4 + 5 cm no quepa, el corte se queda a media pieza.
+    /// </para>
+    /// </remarks>
+    public static double PosicionCorte(double largo)
+    {
+        var p = (largo / 4) + CorrimientoCorte;
+        return p < largo ? p : largo / 2;
+    }
+
+    // ==================================================================
+    //  El símbolo de cada extremo de la línea de corte
+    // ==================================================================
+    //
+    //  Como lo pidió el usuario con su imagen:
+    //
+    //          A <-----+\            la línea pasa de la pieza, y a un cateto de su
+    //                  |  \          punta la cruza una raya: hacia el lado desde el
+    //                  +---+         que se mira, una FLECHA abierta con la letra
+    //                  |             detrás; hacia el otro, un TRIÁNGULO rectángulo
+    //                  |             entre la raya y la punta de la línea.
+    //
+    //  Las cuentas van en coordenadas (s, t): s a lo largo de la línea de corte, t de
+    //  través, con t NEGATIVO hacia donde se mira. Quien dibuja las pasa a sus ejes: en la
+    //  trabe t es la X, en la columna la Y.
+
+    /// <summary>Cateto del triángulo, y lo que hay entre la raya y la punta de la línea.</summary>
+    public const double CatetoCorte = 0.025;
+
+    /// <summary>Largo de la flecha, de la línea a su punta.</summary>
+    public const double LargoFlechaCorte = 0.05;
+
+    /// <summary>Largo de las alas de la punta abierta, a lo largo de la flecha.</summary>
+    public const double LargoPuntaCorte = 0.015;
+
+    /// <summary>Lo que se abre cada ala de la punta, de través.</summary>
+    public const double AnchoPuntaCorte = 0.012;
+
+    /// <summary>Aire entre la cara de la pieza y la raya de la flecha.</summary>
+    public const double AireCorte = 0.01;
+
+    /// <summary>Aire entre la punta de la flecha y su letra.</summary>
+    public const double AireLetraCorte = 0.008;
+
+    /// <summary>Cuánto sobresale la línea de corte de cada cara de la pieza.</summary>
+    public const double SalidaCorte = AireCorte + CatetoCorte;
+
+    /// <summary>Las piezas del símbolo de un extremo, en (s, t) aplanados.</summary>
+    /// <param name="Raya">La raya de través: de la punta de la flecha al vértice del triángulo.</param>
+    /// <param name="Punta">La punta abierta: ala, vértice, ala.</param>
+    /// <param name="Triangulo">Los tres vértices del triángulo.</param>
+    /// <param name="SLetra">Dónde va la letra, a lo largo.</param>
+    /// <param name="TLetra">Y de través: pasada la punta de la flecha.</param>
+    public readonly record struct ExtremoCorte(
+        double[] Raya, double[] Punta, double[] Triangulo, double SLetra, double TLetra);
+
+    /// <summary>
+    /// El símbolo del extremo de la línea de corte cuya punta está en <paramref name="sPunta"/>.
+    /// </summary>
+    /// <param name="haciaDentro">
+    /// <c>+1</c> si la pieza queda hacia s crecientes desde esta punta, <c>-1</c> si al revés.
+    /// </param>
+    /// <param name="escala">Para la vista previa, que lo pinta en píxeles; 1 en AutoCAD.</param>
+    public static ExtremoCorte Extremo(double sPunta, int haciaDentro, double escala = 1)
+    {
+        var k = Math.Sign(haciaDentro);
+        var cat = CatetoCorte * escala;
+        var fle = LargoFlechaCorte * escala;
+        var lp = LargoPuntaCorte * escala;
+        var ap = AnchoPuntaCorte * escala;
+
+        var sRaya = sPunta + (k * cat);
+
+        return new ExtremoCorte(
+            Raya: new[] { sRaya, -fle, sRaya, cat },
+            Punta: new[] { sRaya - ap, -fle + lp, sRaya, -fle, sRaya + ap, -fle + lp },
+            Triangulo: new[] { sPunta, 0, sRaya, 0, sRaya, cat },
+            SLetra: sRaya,
+            TLetra: -fle - (AireLetraCorte * escala));
+    }
+
 }

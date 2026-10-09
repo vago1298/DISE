@@ -30,7 +30,7 @@ public partial class SplashWindow : Window
         TaglineText.Text = AppInfo.Tagline;
 
         LogoImage.Source = Branding.Logo;
-        Icon = Branding.Logo;
+        Icon = Branding.Icono;
     }
 
     private static string GetVersion()

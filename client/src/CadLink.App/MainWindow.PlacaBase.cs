@@ -1032,76 +1032,44 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Mete una poligonal con arcos en el grupo, muestreando los arcos.
+    /// Mete una poligonal con arcos en el grupo, muestreando los arcos con
+    /// <see cref="TrazoAcero.Muestrear"/>: la MISMA cuenta que usan los perfiles.
     /// </summary>
     /// <remarks>
-    /// El bulge de una polilínea es <c>tan(ángulo / 4)</c>, así que el ángulo que barre el arco sale
-    /// de <c>4·atan(bulge)</c> y el radio, de la cuerda. Se muestrea con veinte tramos, que a este
-    /// tamaño es de sobra para que un doblez se vea curvo.
+    /// <para>
+    /// <b>Aquí estaba el doblez del ancla mal dibujado.</b> Los arcos iban como
+    /// <c>ArcSegment</c> con el sentido «antihorario» para un bulge positivo. Pero estos puntos
+    /// están en coordenadas del DIBUJO -Y hacia arriba- y el volteo a la pantalla lo hace la
+    /// transformación del grupo, mientras que el sentido de WPF se mide con la Y hacia abajo. El
+    /// resultado eran los dos arcos del codo girando al revés: el de fuera se metía hacia dentro y
+    /// el codo salía con un pico y una muesca en lugar de la curva que dibuja AutoCAD.
+    /// </para>
+    /// <para>
+    /// Muestreando con la cuenta del bulge -centro a la izquierda de la cuerda si es positivo, la
+    /// regla de AutoCAD- no hay sentido que interpretar: los puntos salen donde los pone AutoCAD.
+    /// </para>
     /// </remarks>
     private static void AgregarPoligonal(
         GeometryGroup grupo, double[] puntos, (int Indice, double Bulge)[]? dobleces)
     {
-        var n = puntos.Length / 2;
-
-        if (n < 3)
+        if (puntos.Length / 2 < 3)
         {
             return;
         }
 
-        var bulge = new double[n];
-
-        if (dobleces is not null)
-        {
-            foreach (var (indice, b) in dobleces)
-            {
-                if (indice >= 0 && indice < n)
-                {
-                    bulge[indice] = b;
-                }
-            }
-        }
+        var pts = TrazoAcero.Muestrear(
+            new TrazoAcero.Contorno(puntos, dobleces ?? Array.Empty<(int, double)>()), 20);
 
         var figura = new PathFigure
         {
-            StartPoint = new Point(puntos[0], puntos[1]),
+            StartPoint = new Point(pts[0].X, pts[0].Y),
             IsClosed = true,
             IsFilled = true
         };
 
-        for (var i = 0; i < n; i++)
+        for (var i = 1; i < pts.Count; i++)
         {
-            var j = (i + 1) % n;
-
-            var x1 = puntos[2 * i];
-            var y1 = puntos[(2 * i) + 1];
-            var x2 = puntos[2 * j];
-            var y2 = puntos[(2 * j) + 1];
-
-            if (Math.Abs(bulge[i]) < 1e-9)
-            {
-                figura.Segments.Add(new LineSegment(new Point(x2, y2), true));
-                continue;
-            }
-
-            var angulo = 4 * Math.Atan(bulge[i]);
-            var cuerda = Math.Sqrt(((x2 - x1) * (x2 - x1)) + ((y2 - y1) * (y2 - y1)));
-
-            if (cuerda < 1e-12 || Math.Abs(Math.Sin(angulo / 2)) < 1e-12)
-            {
-                figura.Segments.Add(new LineSegment(new Point(x2, y2), true));
-                continue;
-            }
-
-            var radio = cuerda / (2 * Math.Sin(angulo / 2));
-
-            figura.Segments.Add(new ArcSegment(
-                new Point(x2, y2),
-                new Size(Math.Abs(radio), Math.Abs(radio)),
-                0,
-                Math.Abs(angulo) > Math.PI,
-                angulo > 0 ? SweepDirection.Counterclockwise : SweepDirection.Clockwise,
-                true));
+            figura.Segments.Add(new LineSegment(new Point(pts[i].X, pts[i].Y), true));
         }
 
         var geo = new PathGeometry();

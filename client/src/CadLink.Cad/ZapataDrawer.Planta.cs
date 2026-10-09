@@ -34,8 +34,8 @@ public sealed partial class ZapataDrawer
     private const double PlantaMinBarra = 0.03;
     private const double PlantaMinSeg = 0.004;
     private const double PlantaHuecoMargen = 0.003;
-    private const double PlantaAltoIdDado = 0.03;
-    private const double PlantaAltoMtexto = 0.03;
+    private static double PlantaAltoIdDado => EstiloZapatas.Numero("alto.planta.id");
+    private static double PlantaAltoMtexto => EstiloZapatas.Numero("alto.planta.rotulos");
     private const double PlantaBreaklineAncho = 0.001;
     private const int PlantaBreaklineColor = 250;
 
@@ -969,15 +969,15 @@ public sealed partial class ZapataDrawer
         {
             (CapaConcreto, CapasCad.ColorDeCapa(CapaConcreto)),
             (CapaEstribos, CapasCad.ColorDeCapa(CapaEstribos)),
-            (CapaCotas, 0),
+            (CapaCotas, EstiloZapatas.ColorAci("capa.COTAS")),
             // Los leaders van en ROTULOS, la misma capa del texto: CapaLeader ES CapaRotulos, así
             // que no hay una segunda entrada que crear.
             (CapaRotulos, CapasCad.ColorDeCapa(CapaTextos)),
-            (CapaTerreno, 140),
-            (CapaTerrenoHatch, 8),
-            (CapaPlantilla, 8),
-            (CapaBloqueDado, 7),
-            (CapaBloqueZapata, 7)
+            (CapaTerreno, EstiloZapatas.ColorAci("capa.TERRENO_LINEA")),
+            (CapaTerrenoHatch, EstiloZapatas.ColorAci("capa.TERRENO_HATCH")),
+            (CapaPlantilla, EstiloZapatas.ColorAci("capa.PLANTILLA")),
+            (CapaBloqueDado, EstiloZapatas.ColorAci("capa.BLOQUE_DADO")),
+            (CapaBloqueZapata, EstiloZapatas.ColorAci("capa.BLOQUE_ZAPATA"))
         };
 
         foreach (var (nombre, color) in capas)
@@ -987,7 +987,10 @@ public sealed partial class ZapataDrawer
                 continue;
             }
 
-            CrearCapa(nombre, color, forzarColor: CapasCad.EsDeLaMacro(nombre));
+            // Si el usuario le cambio el color en «Estilo de dibujo», se le pone aunque ya exista:
+            // es lo que pidio. Sin cambiar, la regla de siempre.
+            CrearCapa(nombre, color, forzarColor: CapasCad.EsDeLaMacro(nombre)
+                                                  || EstiloZapatas.Cambiado("capa." + nombre));
         }
     }
 
@@ -1047,7 +1050,7 @@ public sealed partial class ZapataDrawer
                 catch (Exception)
                 {
                     dynamic nuevo = estilos.Add(EstiloTexto);
-                    nuevo.SetFont("Arial", false, false, 0, 0);
+                    nuevo.SetFont(EstiloZapatas.Texto("fuente"), false, false, 0, 0);
                 }
             });
         }
@@ -1078,8 +1081,9 @@ public sealed partial class ZapataDrawer
     {
         // Geometría de la cota.
         Dimvar("DIMSCALE", 1d);
-        Dimvar("DIMTXT", 0.025);      // alto del número
-        Dimvar("DIMASZ", 0.025);      // tamaño de la marca
+        // El alto del numero y la marca, del estilo «Zapatas»: 0.025 y 0.025 por defecto.
+        Dimvar("DIMTXT", EstiloZapatas.Numero("cota.alto"));      // alto del número
+        Dimvar("DIMASZ", EstiloZapatas.Numero("cota.marca.tam")); // tamaño de la marca
         Dimvar("DIMEXO", 0.02);       // separación de la pieza
         Dimvar("DIMEXE", 0.035);      // remate de la línea de extensión
         Dimvar("DIMGAP", 0.008);      // hueco alrededor del número
@@ -1093,7 +1097,7 @@ public sealed partial class ZapataDrawer
         // Marcas abiertas en lugar de flechas rellenas. DIMSAH va primero: dice que las dos
         // puntas usan el mismo bloque, y con DIMSAH en 1 la asignación de DIMBLK se rechaza.
         Dimvar("DIMSAH", 0);
-        Dimvar("DIMBLK", "_OPEN90");
+        Dimvar("DIMBLK", EstiloZapatas.Texto("cota.marca"));
 
         try
         {

@@ -63,6 +63,21 @@
   "rutaLibreriaEtabs": "",
 
   // ===================================================================
+  //  ICONO DE LA APLICACION
+  //
+  //  El del ejecutable, el acceso directo, la ventana y la barra de
+  //  tareas. Es APARTE del logo: el logo sale en la pantalla de inicio.
+  //
+  //  VACIO = el perfil I que trae el programa.
+  //
+  //  Si quieres otro, la ruta a un .ico de verdad (no un .png
+  //  renombrado), con las diagonales como en el logo:
+  //
+  //     "C:/Users/PC/OneDrive/Escritorio/GIPC/LOGOS/MI_ICONO.ico"
+  // ===================================================================
+  "icono": "",
+
+  // ===================================================================
   //  LOGO DE LA EMPRESA
   //
   //  Ruta al archivo del logo. Acepta .ico, .png, .jpg y .bmp.

@@ -43,7 +43,7 @@ Lo que **falta** es el empaquetado y el cobro:
 Eso hace todo: publica la aplicación autocontenida, comprueba lo que no debe salir mal, y
 empaqueta.
 
-Resultado: **`dist\CadLink-Setup-1.0.0.exe`**, un solo archivo de unos 80 MB. Es lo único que le
+Resultado: **`dist\CadLink-Setup-1.1.0.exe`**, un solo archivo de unos 80 MB. Es lo único que le
 mandas al cliente. Él le da doble clic y ya: **no necesita .NET, ni Python, ni la consola, ni
 permisos de administrador.**
 
@@ -87,9 +87,14 @@ servidor público, o **`2`** para el cliente. Desde la consola también se acept
 
 ### El icono
 
-**No hay que hacer nada: se toma de la ruta que ya está en `cadlink.config.json`.** La clave `logo`
-apunta a tu `CADLINK.ico` y el script la lee de ahí. Con eso quedan los tres iconos de golpe: el del
-ejecutable, el del acceso directo del escritorio y el del propio instalador.
+**Sin tocar nada, el icono es el perfil I** (`client\src\CadLink.App\Assets\app.ico`). Va en el
+ejecutable, el acceso directo, el instalador **y la ventana abierta** (barra de título y barra de
+tareas).
+
+**El icono y el logo son dos cosas distintas.** El logo (clave `logo` de `cadlink.config.json`) es
+la marca de la pantalla de inicio y de la de activación. El icono tiene su propia clave, `icono`.
+Antes el script tomaba el icono de la clave `logo`, y como ahí estaba el `CADLINK.ico`, la
+aplicación salía con el logo de CadLink en lugar del perfil I.
 
 Se busca en cuatro sitios y gana el primero que aparezca:
 
@@ -97,18 +102,11 @@ Se busca en cuatro sitios y gana el primero que aparezca:
 |---|---|---|
 | 1 | un `.ico` en la carpeta `installer` | para forzar uno distinto |
 | 2 | un `.ico` junto a los `.bat` | el más rápido: arrastrarlo ahí y ya |
-| 3 | la ruta de la clave `logo` de `cadlink.config.json` | **el que no cuesta nada** |
-| 4 | el `Assets\app.ico` de muestra del repositorio | si no hay ninguno de los otros |
+| 3 | la ruta de la clave **`icono`** de `cadlink.config.json` | otro icono que sobreviva a volver a descargar el ZIP |
+| 4 | el `Assets\app.ico` del repositorio: **el perfil I** | **el de siempre, vacía la clave y listo** |
 
-El 3 es el único que **sobrevive a volver a descargar el ZIP**, porque la ruta viaja dentro del
-proyecto. Un archivo copiado a mano en `installer` se pierde en cuanto extraes una versión nueva.
-
-El script te dice cuál usó:
-
-```
-Icono tomado de:
-   C:\Users\PC\OneDrive\Escritorio\GIPC\Oficina GIPC\LOGOS\CADLINK.ico
-```
+El script te dice cuál usó y avisa si `Assets\app.ico` no es el perfil I (una versión anterior lo
+pisaba con el logo; se arregla volviendo a extraer el ZIP encima).
 
 Tiene que ser un **`.ico` de verdad**, no un `.png` renombrado: el icono va incrustado en el `.exe`
 como recurso de Windows y el compilador rechaza cualquier otra cosa.
@@ -155,7 +153,7 @@ versiones, de cuando se creyó que el programa hablaba con ETAP) y **106,770 es 
 Cualquier otro tamaño es tu propio icono. `6-crear-instalador.bat` **se niega a armar el paquete**
 si detecta el del rayo, en lugar de avisar entre veinte renglones de compilación.
 
-**El truco para saber si es la caché:** mira el icono del propio `dist\CadLink-Setup-1.0.0.exe`.
+**El truco para saber si es la caché:** mira el icono del propio `dist\CadLink-Setup-1.1.0.exe`.
 Lleva el mismo icono que la aplicación y es un archivo nuevo, así que Windows no lo tiene guardado
 de antes. Si el instalador se ve bien y el acceso directo del escritorio no, lo que estás viendo es
 una imagen guardada: borra el acceso directo, o cierra sesión de Windows y vuelve a entrar. El

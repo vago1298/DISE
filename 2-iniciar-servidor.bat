@@ -58,6 +58,10 @@ REM ==========================================================
 ".venv\Scripts\python.exe" "scripts\mi_direccion.py" --puerto 8000
 
 echo.
+echo   Para APROBAR las PCs de la oficina que instalaron el paquete
+echo   de oficina: doble clic en  8-aprobar-equipos.bat
+echo   (o abre  http://localhost:8000/oficina  en esta computadora)
+echo.
 
 REM ==========================================================
 REM  --host 0.0.0.0  ES LO QUE PERMITE QUE LA OFICINA ENTRE.

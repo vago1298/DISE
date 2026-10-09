@@ -100,6 +100,35 @@ class Machine(Base):
     note: Mapped[str | None] = mapped_column(Text, default=None)
 
 
+class EstadoSolicitud(str, enum.Enum):
+    PENDIENTE = "PENDIENTE"
+    APROBADA = "APROBADA"
+    RECHAZADA = "RECHAZADA"
+
+
+class SolicitudOficina(Base):
+    """Una PC que llegó con el código de oficina y espera que el dueño la apruebe.
+
+    Es una TABLA NUEVA y no una columna de ``machines`` a propósito: ``create_all`` crea
+    las tablas que faltan en una base que ya existe, pero no le agrega columnas a una
+    tabla vieja. Así los servidores ya instalados la reciben solos al reiniciar.
+    """
+
+    __tablename__ = "solicitudes_oficina"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    machine_id: Mapped[int] = mapped_column(ForeignKey("machines.id"), unique=True, index=True)
+    estado: Mapped[str] = mapped_column(
+        String(12), default=EstadoSolicitud.PENDIENTE.value, index=True
+    )
+    hostname: Mapped[str | None] = mapped_column(String(200), default=None)
+    os_user: Mapped[str | None] = mapped_column(String(200), default=None)
+    client_ip: Mapped[str | None] = mapped_column(String(64), default=None)
+    creada: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ultima_vez: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    decidida: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+
 class AuditLog(Base):
     """Bitácora de eventos. Indispensable para diagnosticar y detectar abuso."""
 

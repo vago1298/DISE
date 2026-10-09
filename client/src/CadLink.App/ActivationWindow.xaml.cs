@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using CadLink.Licensing;
 
 namespace CadLink.App;
@@ -26,6 +27,16 @@ public partial class ActivationWindow : Window
 {
     private readonly LicenseService _service;
 
+    /// <summary>
+    /// Mientras el equipo espera a que el dueño lo apruebe -paquete de oficina-, se vuelve a
+    /// preguntar solo cada pocos segundos: en cuanto lo aprueba, esta ventana entra sola y el
+    /// trabajador no tiene que pulsar nada.
+    /// </summary>
+    private readonly DispatcherTimer _espera = new() { Interval = TimeSpan.FromSeconds(15) };
+
+    /// <summary>Lo que dice el servidor de una PC del paquete de oficina que espera aprobación.</summary>
+    private const string SenalDeEspera = "ESPERANDO APROBACIÓN";
+
     /// <summary>Licencia obtenida si la activación tuvo éxito.</summary>
     public LicenseInfo? Result { get; private set; }
 
@@ -39,12 +50,21 @@ public partial class ActivationWindow : Window
         SupportText.Text = AppInfo.SupportEmail;
 
         LogoImage.Source = Branding.Logo;
-        Icon = Branding.Logo;
+        Icon = Branding.Icono;
 
         if (!string.IsNullOrWhiteSpace(current.Message))
         {
             ReasonText.Text = current.Message;
         }
+
+        _espera.Tick += async (_, _) =>
+        {
+            _espera.Stop();
+            await RunActivationAsync(licenseKey: null).ConfigureAwait(true);
+        };
+        Closed += (_, _) => _espera.Stop();
+
+        EsperarSiToca(current.Message);
 
         // Si la suscripción venció, el camino correcto es la clave, no el reintento.
         if (current.State == LicenseState.Expired)
@@ -107,14 +127,32 @@ public partial class ActivationWindow : Window
                 return;
             }
 
+            var texto = string.IsNullOrWhiteSpace(info.Message) ? info.StatusLine : info.Message;
+            var esperando = EsperarSiToca(info.Message);
+
             ShowMessage(
-                string.IsNullOrWhiteSpace(info.Message) ? info.StatusLine : info.Message,
-                isError: true);
+                esperando ? texto + "\n\nSe vuelve a preguntar solo cada 15 segundos." : texto,
+                isError: !esperando);
         }
         finally
         {
             SetBusy(false);
         }
+    }
+
+    /// <summary>Si el servidor dijo que este equipo espera aprobación, vuelve a preguntar solo.</summary>
+    private bool EsperarSiToca(string? mensaje)
+    {
+        var esperando = !string.IsNullOrWhiteSpace(mensaje)
+                        && mensaje.Contains(SenalDeEspera, StringComparison.OrdinalIgnoreCase);
+
+        if (esperando)
+        {
+            _espera.Stop();
+            _espera.Start();
+        }
+
+        return esperando;
     }
 
     private void SetBusy(bool busy)

@@ -39,6 +39,15 @@ public sealed partial class SeccionDrawer
     /// </remarks>
     private const string EstiloTextoAcero = "ACERO";
 
+    /// <summary>El factor del rotulo del perfil, del estilo «Perfiles de acero» (1 = el de siempre).</summary>
+    private static double FactorRotuloAcero => EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).Numero("factor.rotulo");
+
+    /// <summary>El estilo «Perfiles de acero»: fuente, factores y los hatch de cada material.</summary>
+    private static PerfilEstilo EstiloAcero => EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero);
+
+    /// <summary>La fuente de ACERO: la del estilo «Perfiles de acero».</summary>
+    private static string FuenteAcero => EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).Texto("fuente");
+
     /// <summary>Capa de los perfiles de acero, la de las cuatro macros.</summary>
     /// <remarks>
     /// <b>Una sola capa para las doce familias</b>, como en las macros. Se probó a darle una
@@ -96,9 +105,9 @@ public sealed partial class SeccionDrawer
     /// </remarks>
     public void AsegurarCapasAcero()
     {
-        Capa(CapaPerfiles, 7);
-        Capa("COTAS", 253);
-        Capa("ROTULOS", 3);
+        Capa(CapaPerfiles, EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).ColorAci("capa.PERFILES"));
+        Capa("COTAS", EstiloSecciones.ColorAci("capa.COTAS"));
+        Capa("ROTULOS", CapasCad.ColorDeCapa("TEXTOS"));   // ROTULOS sigue a TEXTOS: 3 por defecto
 
         // Los DOS estilos de texto, que es lo que faltaba. Las macros usan uno para los
         // rótulos —SECCIONES— y otro para las cotas —ACERO—, y se lo ponen a cada cota a
@@ -158,7 +167,7 @@ public sealed partial class SeccionDrawer
                     estilo = estilos.Add(EstiloTextoAcero);
                 }
 
-                estilo.SetFont(FuenteTexto, false, false, 0, 0);
+                estilo.SetFont(FuenteAcero, false, false, 0, 0);
 
                 // Altura 0 = variable. Ver el remarks: es lo que permite que cada cota
                 // fije la suya, que es lo que hacen las cuatro macros.
@@ -170,7 +179,7 @@ public sealed partial class SeccionDrawer
         {
             // Si la fuente no está instalada AutoCAD la sustituye y el texto sale igual;
             // solo cambia el tipo de letra.
-            Fallo($"Estilo de texto '{EstiloTextoAcero}' con la fuente '{FuenteTexto}'", ex);
+            Fallo($"Estilo de texto '{EstiloTextoAcero}' con la fuente '{FuenteAcero}'", ex);
         }
     }
 
@@ -206,8 +215,11 @@ public sealed partial class SeccionDrawer
         var referencia = p.PeralteCm * _escala;
 
         _gapAcero = Acotar(referencia / 5, 0.8 * Cm, 6 * Cm);
-        _flechaAcero = Acotar(referencia / 15, 0.4 * Cm, 2 * Cm);
-        _textoCotaAcero = Acotar(referencia / 10, 0.4 * Cm, 1.5 * Cm);
+        // El tamano sale del perfil; el factor de «Estilo de dibujo» lo agranda o lo achica (1 = el
+        // de siempre).
+        var factorCotas = EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).Numero("factor.cotas");
+        _flechaAcero = Acotar(referencia / 15, 0.4 * Cm, 2 * Cm) * factorCotas;
+        _textoCotaAcero = Acotar(referencia / 10, 0.4 * Cm, 1.5 * Cm) * factorCotas;
         _extOffsetAcero = Acotar(referencia / 15, 0.3 * Cm, 2 * Cm);
         _extExtiendeAcero = Acotar(referencia / 8, 0.5 * Cm, 3.5 * Cm);
     }
@@ -324,6 +336,10 @@ public sealed partial class SeccionDrawer
                 CotasI(xIzquierda, yAbajo, h, b, t, tf, p.Doble, true);
                 break;
 
+            case FormaAcero.Cruz:
+                CotasCruz(xIzquierda, yAbajo, h, b, t, tf);
+                break;
+
             case FormaAcero.Canal:
                 CotasCanal(xIzquierda, yAbajo, h, b, t, tf, p.Doble);
                 break;
@@ -420,6 +436,35 @@ public sealed partial class SeccionDrawer
             var cx2 = cx + bf;
             CotaAcero(cx2 - (tw / 2), yAlma, cx2 + (tw / 2), yAlma, cx2, yAlma - gap);
         }
+    }
+
+    /// <summary>
+    /// Las cotas de la <b>cruz de dos I</b>: el patín y la cruz completa arriba, el peralte y el
+    /// patín del brazo a la derecha, el espesor del patín a la izquierda y el del alma.
+    /// </summary>
+    private void CotasCruz(double xIzq, double cy, double d, double bf, double tw, double tf)
+    {
+        var gap = _gapAcero;
+        var escalon = _textoCotaAcero + _flechaAcero;
+        var cx = xIzq + (d / 2);
+        var yc = cy + (d / 2);
+
+        // Arriba: el patín de la I de pie y, más arriba, la cruz de brazo a brazo.
+        CotaAcero(cx - (bf / 2), cy + d, cx + (bf / 2), cy + d, cx, cy + d + gap);
+        CotaAcero(xIzq, yc + (bf / 2), xIzq + d, yc + (bf / 2), cx, cy + d + gap + escalon);
+
+        // A la derecha: el patín del brazo y, más afuera, la cruz de arriba abajo.
+        CotaAcero(xIzq + d, yc - (bf / 2), xIzq + d, yc + (bf / 2), xIzq + d + gap, yc);
+        CotaAcero(cx + (bf / 2), cy, cx + (bf / 2), cy + d, xIzq + d + gap + escalon, yc);
+
+        // El espesor del patín de arriba, a su izquierda.
+        CotaAcero(
+            cx - (bf / 2), cy + d, cx - (bf / 2), cy + d - tf,
+            cx - (bf / 2) - gap, cy + d - (tf / 2));
+
+        // Y el del alma, entre el patín de arriba y el brazo, donde va sola.
+        var yAlma = yc + (bf / 2) + ((d / 2 - (bf / 2) - tf) / 2);
+        CotaAcero(cx - (tw / 2), yAlma, cx + (tw / 2), yAlma, cx, yAlma - gap);
     }
 
     // ==================================================================
@@ -790,7 +835,7 @@ public sealed partial class SeccionDrawer
     private void PeditDeLaForma(object pl, PerfilAceroCad p)
     {
         if (p.Forma is FormaAcero.I or FormaAcero.Te or FormaAcero.Canal
-            or FormaAcero.Angulo)
+            or FormaAcero.Angulo or FormaAcero.Cruz)
         {
             AnchoConstante(pl, 0.1 * Cm);
         }
@@ -837,21 +882,25 @@ public sealed partial class SeccionDrawer
             case FormaAcero.Te:
             case FormaAcero.Canal:
             case FormaAcero.Angulo:
-                Hatch("ANSI32", 0.0009 * _f, contorno, islas, CapaPerfiles, 252);
+            case FormaAcero.Cruz:
+                Hatch(EstiloAcero.Texto("hatch.laminados"), EstiloAcero.Numero("hatch.laminados.escala") * _f,
+                    contorno, islas, CapaPerfiles, 252);
                 break;
 
             // Formados en frío: el de la macro del CF.
             case FormaAcero.CanalConLabios:
             case FormaAcero.Zeta:
                 Hatch("SOLID", 1, contorno, islas, CapaPerfiles, 4);
-                Hatch("ANSI31", 0.0008 * _f, contorno, islas, CapaPerfiles, 142);
+                Hatch(EstiloAcero.Texto("hatch.frio"), EstiloAcero.Numero("hatch.frio.escala") * _f,
+                    contorno, islas, CapaPerfiles, 142);
                 break;
 
             // Redondos: el de la macro del OC.
             case FormaAcero.TuboRedondo:
             case FormaAcero.RedondoMacizo:
                 Hatch("SOLID", 1, contorno, islas, CapaPerfiles, 162);
-                Hatch("ANSI31", 0.002 * _f, contorno, islas, CapaPerfiles, 162);
+                Hatch(EstiloAcero.Texto("hatch.redondos"), EstiloAcero.Numero("hatch.redondos.escala") * _f,
+                    contorno, islas, CapaPerfiles, 162);
                 break;
 
             // Tubo rectangular: el de la macro del HSS, con su corte de las 5 pulgadas.
@@ -869,8 +918,8 @@ public sealed partial class SeccionDrawer
                 }
 
                 var trama = Hatch(
-                    "ANSI31",
-                    (menorDe5 ? 0.001 : 0.002) * _f,
+                    EstiloAcero.Texto("hatch.tubo"),
+                    EstiloAcero.Numero(menorDe5 ? "hatch.tubo.escala.chico" : "hatch.tubo.escala.grande") * _f,
                     contorno, islas, CapaPerfiles,
                     menorDe5 ? 142 : 144);
 
@@ -918,9 +967,9 @@ public sealed partial class SeccionDrawer
             string.Join("\\P", p.LineasRotulo),
             xCentro,
             yBase,
-            p.AlturaRotuloCm * _escala,
+            p.AlturaRotuloCm * _escala * FactorRotuloAcero,
             "ROTULOS",
-            p.AnchoRotuloCm * _escala);
+            p.AnchoRotuloCm * _escala * FactorRotuloAcero);
     }
 
     // ==================================================================

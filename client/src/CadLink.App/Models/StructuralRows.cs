@@ -1229,6 +1229,30 @@ public sealed class SeccionConcretoRow : Row
     /// </remarks>
     public void CargarGrapa(GrapaSeccion g) => _grapas.Add(g);
 
+    // ======================================================================
+    //  Bastones: varillas adicionales que no corren de paño a paño
+    // ======================================================================
+
+    private readonly List<BastonSeccion> _bastones = new();
+
+    /// <summary>Los bastones de esta fila. Solo cuentan en trabes y contratrabes.</summary>
+    /// <remarks>
+    /// De solo lectura por lo mismo que <see cref="Grapas"/>: los cambios pasan por
+    /// <see cref="ReemplazarBastones"/> para que el aviso salga siempre.
+    /// </remarks>
+    public IReadOnlyList<BastonSeccion> Bastones => _bastones;
+
+    /// <summary>Cambia todos los bastones de una vez, que es como los entrega su cuadro.</summary>
+    public void ReemplazarBastones(IEnumerable<BastonSeccion> nuevos)
+    {
+        _bastones.Clear();
+        _bastones.AddRange(nuevos);
+        Raise(nameof(Bastones));
+    }
+
+    /// <summary>Mete un bastón <b>sin</b> avisar, para cargar el proyecto.</summary>
+    public void CargarBaston(BastonSeccion b) => _bastones.Add(b);
+
     protected override void RaiseCalculadas()
     {
         Raise(nameof(DiamIntSupEfectivo));
@@ -1271,6 +1295,12 @@ public sealed class DatosProyecto
     /// lo dice la columna de tipo.
     /// </remarks>
     public ObservableCollection<ZapataCorridaRow> ZapatasCorridas { get; } = new();
+
+    /// <summary>Los muros de contencion de concreto armado.</summary>
+    public ObservableCollection<MuroArmadoRow> MurosArmados { get; } = new();
+
+    /// <summary>Los muros de contencion de concreto ciclopeo.</summary>
+    public ObservableCollection<MuroCiclopeoRow> MurosCiclopeos { get; } = new();
 
     /// <summary>Las placas base, con sus anclas, sus cartabones y su dado.</summary>
     /// <remarks>
@@ -1606,6 +1636,12 @@ public sealed class DatosProyecto
             AltoCartabonXCm = 20, AltoCartabonYCm = 20,
             Escala = 10
         });
+
+        // Los muros de contencion: el de concreto armado es el de la imagen del muro con
+        // espolon; el ciclopeo, el de la imagen de las letras. Los valores por omision de cada
+        // fila son esos mismos.
+        d.MurosArmados.Add(new MuroArmadoRow { Id = "MC-01" });
+        d.MurosCiclopeos.Add(new MuroCiclopeoRow { Id = "MCC-01" });
 
         return d;
     }

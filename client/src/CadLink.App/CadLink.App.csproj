@@ -28,7 +28,7 @@
 
     <RootNamespace>CadLink.App</RootNamespace>
     <AssemblyName>CadLink</AssemblyName>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Company>MiEmpresa</Company>
     <Product>CadLink</Product>
 
@@ -47,6 +47,9 @@
     <!-- Resource (no Content): el logo queda EMBEBIDO en el ejecutable, así que
          nadie puede sustituir el archivo para cambiar la marca del programa. -->
     <Resource Include="Assets\logo.png" />
+    <!-- El icono, tambien como recurso: es el de la ventana y la barra de tareas mientras la
+         aplicacion esta abierta. Asi la ventana ensena el MISMO icono que el ejecutable. -->
+    <Resource Include="Assets\app.ico" Condition="Exists('Assets\app.ico')" />
   </ItemGroup>
 
   <ItemGroup>
@@ -72,6 +75,15 @@
     <None Update="aceros.csv">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+
+    <!-- El icono de los TRABAJOS (.clk): la hoja con el icono del programa. SUELTO junto al
+         ejecutable, porque es Windows -no el programa- quien lo lee, desde el registro que
+         escribe el instalador. Se genera con tools/make_icono_archivo.py a partir de app.ico. -->
+    <None Include="Assets\archivo.ico" Condition="Exists('Assets\archivo.ico')">
+      <Link>archivo.ico</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
@@ -93,6 +105,13 @@
          El motivo de que sea net8.0 esta explicado en su propio .csproj: es lo que permite
          compilarlo y PROBARLO en cualquier maquina. -->
     <ProjectReference Include="..\CadLink.Ifc\CadLink.Ifc.csproj" />
+
+    <!-- El nucleo del complemento de Revit. La aplicacion lo usa SOLO para escribir el
+         archivo de intercambio .cadlink-modelo.json; el complemento en si (CadLink.Revit)
+         NO se referencia desde aqui y no entra en esta solucion, porque necesita
+         RevitAPI.dll y no compilaria en una maquina sin Revit. Tambien es net8.0, asi que
+         no ata esta aplicacion a nada. -->
+    <ProjectReference Include="..\CadLink.Revit.Nucleo\CadLink.Revit.Nucleo.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -146,7 +146,36 @@ Si viste todo eso, **ya tienes el sistema de cobro funcionando**.
 
 ---
 
-## Las PCs de los trabajadores: qué se instala y qué NO
+## Las PCs de tu oficina: la forma fácil
+
+**En TU computadora** (la del servidor), una sola vez por versión:
+
+1. Doble clic en **`6-crear-instalador.bat`** y escribe **3** (*PARA LAS PCs DE TU OFICINA*).
+2. Si al final dice *"CIERRA Y VUELVE A ABRIR 2-iniciar-servidor.bat"*, hazlo. Solo pasa la
+   primera vez, cuando se crea el código de oficina.
+3. En la carpeta `dist` queda **`CadLink-Setup-<versión>-OFICINA.exe`**.
+
+**En cada PC de la oficina:** instala ese `.exe` y abre CadLink. La PC **te pide permiso**:
+su pantalla dice *"ESPERANDO APROBACIÓN"*.
+
+**En TU computadora:** doble clic en **`8-aprobar-equipos.bat`**. Se abre una página con las PCs
+que pidieron acceso —nombre del equipo, usuario de Windows, desde dónde y cuándo— y pulsas
+**Aprobar**. En unos segundos la otra PC entra sola con *"Licencia interna"*: nadie copia huellas
+ni edita archivos, y **nada entra sin que tú lo apruebes**. Si una PC ya tenía CadLink en
+prueba, instalar el de oficina encima también la manda a pedir permiso.
+
+La página solo se abre en la computadora del servidor. Si rechazas una PC que ya estaba
+aprobada, deja de funcionar en su siguiente renovación.
+
+Lo único que tiene que pasar es que esa PC **alcance tu servidor**: deja abierto
+`2-iniciar-servidor.bat` en tu computadora, y si no conecta, abre el firewall con el comando que
+ese mismo `.bat` imprime.
+
+> Aunque alguien copie el instalador de oficina o la carpeta instalada a otra PC, esa PC solo
+> **pide** permiso: aparece en tu página y tú decides. Fuera de tu red ni siquiera encuentra tu
+> servidor.
+
+## Las PCs de los trabajadores, a mano: qué se instala y qué NO
 
 **El servidor de licencias es UNO, y va en tu computadora.** En las PCs de los
 trabajadores **no se instala el servidor**: no ejecutes ahí `1-instalar-servidor.bat`. Esas

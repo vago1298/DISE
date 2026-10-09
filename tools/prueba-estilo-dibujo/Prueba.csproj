@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba del ESTILO DE DIBUJO, SIN AutoCAD ni WPF.
+
+       Compila el estilo, la tabla de colores de la macro y la hoja CONFIG de la planta en
+       net8.0 pelado, asi que corre en cualquier maquina:
+
+           cd tools/prueba-estilo-dibujo
+           dotnet run
+
+       Comprueba que los valores por defecto son los de siempre, que lo guardado se lee bien y
+       que lo que no sirve se ignora. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-estilo-dibujo</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\client\src\CadLink.Cad\EstiloDibujo.cs" />
+    <Compile Include="..\..\client\src\CadLink.Cad\CapasCad.cs" />
+    <Compile Include="..\..\client\src\CadLink.Cad\PlanoEstructural\ConfigPlano.cs" />
+  </ItemGroup>
+
+</Project>

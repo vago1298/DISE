@@ -371,6 +371,15 @@ public sealed partial class PlantaDrawer
     public PlantaDrawer(dynamic doc)
     {
         _doc = doc;
+
+        // Lo que se eligio en «Estilo de dibujo» -perfil «Planta estructural»- entra como
+        // parametros de la hoja CONFIG: sus claves SON los parametros. Solo lo cambiado; lo demas
+        // se queda con el valor de la hoja. Va ANTES de las capas, que leen sus colores de aqui.
+        foreach (var a in EstiloDibujo.Actual.Perfil(EstiloDibujo.PlantaEtabs).Ajustes.Where(x => x.Cambiado))
+        {
+            _cfg.Poner(a.Clave, a.Valor.Trim());
+        }
+
         _capas = new PlanoEstructural.CapasPlano(_cfg);
         _ms = AcadConnection.Retry(() => doc.ModelSpace);
 

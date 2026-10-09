@@ -1147,6 +1147,16 @@ public sealed partial class SeccionDrawer
                     LeaderVarilla(xDer, y, 2, s.Lateral.Clave, xIzquierda);
                 }
             }
+
+            // Y las de los bastones, que tampoco viajan en el bloque.
+            foreach (var (bas, pos, _) in
+                     PosicionesDeBastones(s, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf))
+            {
+                if (pos.Count > 0)
+                {
+                    LeaderBaston(pos, bas, xIzquierda);
+                }
+            }
         }
         catch (Exception ex)
         {

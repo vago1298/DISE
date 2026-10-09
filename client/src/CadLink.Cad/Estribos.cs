@@ -7,8 +7,18 @@ namespace CadLink.Cad;
 /// Port de <c>BuildStirrupCenters</c> y sus auxiliares. Se deja en su propia clase,
 /// sin nada de COM, porque es aritmética pura y así se puede razonar y comprobar
 /// aparte del dibujo.
+/// <para>
+/// <b>Este MISMO archivo se compila también dentro de CadLink.Revit.Nucleo</b> -enlazado desde
+/// su .csproj-, para que el armado por tipo de Revit reparta los estribos con la misma regla
+/// que el alzado de AutoCAD. Allí va como <c>internal</c> (CADLINK_NUCLEO), para que la
+/// aplicación, que ve los dos ensamblados, no tenga dos <c>Estribos</c> públicos.
+/// </para>
 /// </remarks>
+#if CADLINK_NUCLEO
+internal static class Estribos
+#else
 public static class Estribos
+#endif
 {
     /// <summary>Retiro del primer y último estribo respecto al extremo.</summary>
     public const double BordeM = 0.05;

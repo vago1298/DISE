@@ -41,8 +41,12 @@ REM  Desde la consola tambien se acepta:  6-crear-instalador.bat prueba
 REM ============================================================
 
 set "PRUEBA="
+set "OFICINA="
+set "REINICIAR="
 if /i "%~1"=="prueba" set "PRUEBA=1"
+if /i "%~1"=="oficina" set "OFICINA=1"
 if defined PRUEBA goto :modo_elegido
+if defined OFICINA goto :modo_elegido
 
 echo   ----------------------------------------------------------
 echo    QUE PAQUETE QUIERES ARMAR
@@ -56,22 +60,32 @@ echo      2 = PARA EL CLIENTE, el de verdad.
 echo          Exige que la configuracion ya apunte a tu
 echo          servidor de licencias, con https.
 echo.
+echo      3 = PARA LAS PCs DE TU OFICINA. El facil.
+echo          Se arma en ESTA computadora, la del servidor.
+echo          La PC que lo instala te PIDE PERMISO sola: tu la
+echo          apruebas con un clic en 8-aprobar-equipos.bat.
+echo          Sin huellas y sin editar nada.
+echo.
 
 set "OPCION="
-set /p "OPCION=Escribe 1 o 2 y pulsa Enter: "
+set /p "OPCION=Escribe 1, 2 o 3 y pulsa Enter: "
 
 if "%OPCION%"=="1" set "PRUEBA=1"
 if "%OPCION%"=="1" goto :modo_elegido
 if "%OPCION%"=="2" goto :modo_elegido
+if "%OPCION%"=="3" set "OFICINA=1"
+if "%OPCION%"=="3" goto :modo_elegido
 
 echo.
-echo   No entendi "%OPCION%". Hay que escribir 1 o 2.
+echo   No entendi "%OPCION%". Hay que escribir 1, 2 o 3.
 goto :error
 
 :modo_elegido
 echo.
 if defined PRUEBA echo   *** MODO PRUEBA: no se lo mandes a un cliente. ***
 if defined PRUEBA echo.
+if defined OFICINA echo   *** PAQUETE DE OFICINA: solo para las PCs de tu oficina. ***
+if defined OFICINA echo.
 
 
 REM ============================================================
@@ -109,13 +123,16 @@ REM  Se busca en cuatro sitios y gana el primero que aparezca:
 REM
 REM    1. Un .ico en la carpeta  installer
 REM    2. Un .ico junto a estos .bat
-REM    3. La ruta que YA trae cadlink.config.json en su clave
-REM       "logo", si apunta a un .ico
-REM    4. El de muestra que viene en el repositorio
+REM    3. La ruta de la clave "icono" de cadlink.config.json, si
+REM       apunta a un .ico
+REM    4. El del repositorio: la seccion del PERFIL I
 REM
-REM  EL 3 ES EL QUE NO CUESTA NADA. Esa ruta ya esta escrita y
-REM  viaja con el proyecto, asi que sigue funcionando cada vez que
-REM  se vuelve a descargar el zip, sin volver a copiar nada.
+REM  OJO: YA NO SE TOMA LA CLAVE "logo". El logo es la marca de la
+REM  pantalla de inicio; el icono es otra cosa. Antes el 3 leia el
+REM  logo, y como ahi estaba el CADLINK.ico, el ejecutable salia con
+REM  el logo de CadLink en lugar del perfil I que se queria.
+REM
+REM  Con "icono" vacio -como viene- sale el perfil I.
 REM
 REM  Tiene que ser un .ico de verdad, no un .png renombrado: el
 REM  icono va incrustado en el .exe como recurso de Windows, y el
@@ -143,10 +160,10 @@ REM  LOS COMENTARIOS SE DESCARTAN. El bloque de ayuda de esa clave trae rutas de
 REM  EJEMPLO iguales a la de verdad, y sin este filtro se tomaria una de ellas y el
 REM  aviso senalaria un archivo que nunca existio.
 set "LINEA="
-for /f "usebackq delims=" %%l in (`findstr /c:"logo" "%CFGFUENTE%" ^| findstr /v /c:"//"`) do if not defined LINEA set "LINEA=%%l"
+for /f "usebackq delims=" %%l in (`findstr /c:"icono" "%CFGFUENTE%" ^| findstr /v /c:"//"`) do if not defined LINEA set "LINEA=%%l"
 if not defined LINEA goto :icono_del_repo
 
-REM  De     "logo": "C:/ruta/CADLINK.ico"     a     C:\ruta\CADLINK.ico
+REM  De     "icono": "C:/ruta/MI_ICONO.ico"     a     C:\ruta\MI_ICONO.ico
 REM  Se corta hasta los dos puntos de la clave, se quita la coma final si la hay, y
 REM  las comillas las quita el propio for -que es la manera segura, sin un set sin
 REM  comillas que se rompa con un caracter raro en la ruta-.
@@ -161,11 +178,10 @@ if not exist "%ICONOTUYO%" goto :icono_no_esta
 goto :icono_copiar
 
 :icono_no_es_ico
-echo   AVISO: la clave "logo" de cadlink.config.json no apunta a un .ico:
+echo   AVISO: la clave "icono" de cadlink.config.json no apunta a un .ico:
 echo      %ICONOTUYO%
-echo          Ese archivo si sirve para el logo de la pantalla de inicio, pero
-echo          para el icono del ejecutable hace falta un .ico. Copia el tuyo
-echo          en la carpeta  installer
+echo          Para el icono del ejecutable hace falta un .ico de verdad.
+echo          Se usa el perfil I del repositorio.
 echo.
 set "ICONOTUYO="
 goto :icono_del_repo
@@ -188,8 +204,20 @@ goto :icono_medida
 
 :icono_del_repo
 if not exist "%ICONOAPP%" goto :sin_icono
-echo Icono: el de muestra del repositorio.
-echo    Para usar el tuyo, copia tu .ico en la carpeta  installer
+REM  Una version anterior copiaba el LOGO encima de este archivo. Si no mide lo que mide
+REM  el perfil I, se avisa: con volver a descargar el zip queda el bueno.
+set "TAMREPO="
+for %%a in ("%ICONOAPP%") do set "TAMREPO=%%~za"
+if not "%TAMREPO%"=="106770" goto :icono_pisado
+echo Icono: el del repositorio, la seccion del perfil I.
+echo    Para usar otro, pon su ruta en la clave "icono" de cadlink.config.json
+goto :icono_medida
+
+:icono_pisado
+echo   AVISO: client\src\CadLink.App\Assets\app.ico NO es el perfil I.
+echo          Lo piso una version anterior de este .bat con tu logo. Vuelve a
+echo          descargar el zip y extraelo encima de esta carpeta: trae el bueno.
+echo          Se arma con el que hay.
 goto :icono_medida
 
 REM  SE DICE QUE TAMANO Y QUE FECHA TIENE EL ICONO QUE SE VA A INCRUSTAR. Parece un
@@ -268,6 +296,12 @@ REM  LA CONFIGURACION QUE SE VA A REPARTIR
 REM ============================================================
 
 if not exist "%CFG%" goto :sin_config
+
+REM  EL DE OFICINA no mira la direccion de la configuracion: lleva la de
+REM  ESTA computadora y el codigo de oficina en su propio archivo,
+REM  cadlink.oficina.json, que manda sobre cadlink.config.json. Lo escribe
+REM  el servidor, que es el que sabe su direccion y su codigo.
+if defined OFICINA goto :preparar_oficina
 
 REM  Sigue apuntando a tu computadora? Entonces el cliente no podria activar:
 REM  su localhost es SU maquina, no la tuya.
@@ -353,10 +387,15 @@ if not defined ISCC goto :sin_inno
 echo Empaquetando el instalador...
 echo.
 
-"%ISCC%" /DVersion=%VER% "%GUION%"
+REM  El de oficina se llama distinto, para no mandarle a un cliente por
+REM  error el que autoriza solo.
+set "NOMBRESETUP=CadLink-Setup-%VER%"
+if defined OFICINA set "NOMBRESETUP=CadLink-Setup-%VER%-OFICINA"
+
+"%ISCC%" /DVersion=%VER% /F%NOMBRESETUP% "%GUION%"
 if errorlevel 1 goto :error_iscc
 
-set "SETUPEXE=%RAIZ%dist\CadLink-Setup-%VER%.exe"
+set "SETUPEXE=%RAIZ%dist\%NOMBRESETUP%.exe"
 if not exist "%SETUPEXE%" goto :sin_setup
 
 if not defined HAYFIRMA goto :listo
@@ -380,8 +419,45 @@ echo   tuya y que NO tenga .NET instalado.
 echo.
 if defined PRUEBA echo   *** ES UN PAQUETE DE PRUEBA: apunta a localhost. ***
 if defined PRUEBA echo.
+if defined OFICINA echo   ES EL DE OFICINA: instalalo en cada PC de tu oficina y abre
+if defined OFICINA echo   CadLink. La PC te pide permiso: apruebala con un clic en
+if defined OFICINA echo   8-aprobar-equipos.bat, aqui. Deja encendido
+if defined OFICINA echo   2-iniciar-servidor.bat en esta computadora.
+if defined OFICINA echo.
+if defined REINICIAR echo   *** IMPORTANTE: CIERRA Y VUELVE A ABRIR 2-iniciar-servidor.bat ***
+if defined REINICIAR echo   *** para que el servidor use el codigo de oficina nuevo.        ***
+if defined REINICIAR echo.
 pause
 exit /b 0
+
+
+REM ============================================================
+REM  EL PAQUETE DE OFICINA
+REM  Escribe cadlink.oficina.json junto al ejecutable publicado y
+REM  vuelve a donde se quedo: el aviso del logo y la firma.
+REM ============================================================
+
+:preparar_oficina
+set "PYSERVIDOR=%RAIZ%server\.venv\Scripts\python.exe"
+if not exist "%PYSERVIDOR%" goto :oficina_sin_servidor
+
+echo Preparando el paquete de oficina...
+"%PYSERVIDOR%" "%RAIZ%server\scripts\paquete_oficina.py" --salida "%PUBLICADO%\cadlink.oficina.json"
+set "RCOFICINA=%errorlevel%"
+if "%RCOFICINA%"=="1" goto :error
+if not exist "%PUBLICADO%\cadlink.oficina.json" goto :error
+if "%RCOFICINA%"=="3" set "REINICIAR=1"
+echo.
+goto :config_ok
+
+:oficina_sin_servidor
+echo.
+echo   ERROR: el paquete de oficina se arma en la computadora del SERVIDOR.
+echo.
+echo   No encuentro  server\.venv  en esta carpeta. Si el servidor de
+echo   licencias corre en ESTA computadora, ejecuta antes
+echo   1-instalar-servidor.bat.
+goto :error
 
 
 REM ==========================================================

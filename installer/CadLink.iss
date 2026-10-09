@@ -2,7 +2,7 @@
 ;  CADLINK - GUION DEL INSTALADOR                          Inno Setup 6
 ; ============================================================================
 ;
-;  Esto produce UN SOLO ARCHIVO -CadLink-Setup-1.0.0.exe- que el cliente abre
+;  Esto produce UN SOLO ARCHIVO -CadLink-Setup-1.1.0.exe- que el cliente abre
 ;  con doble clic. Nada de consola, nada de instalar .NET, nada de Python:
 ;  la aplicacion se publica AUTOCONTENIDA, o sea con su propio motor de .NET
 ;  metido dentro del ejecutable.
@@ -22,7 +22,7 @@
 ;  ============================================================================
 
 #ifndef Version
-  #define Version "1.0.0"
+  #define Version "1.1.0"
 #endif
 
 #define Nombre       "CadLink"
@@ -108,6 +108,10 @@ UninstallDisplayIcon={app}\{#Ejecutable}
 CloseApplications=yes
 RestartApplications=no
 
+;  Se registra el tipo de archivo .clk: Windows tiene que volver a leer los
+;  iconos para que los trabajos ensenen el suyo sin reiniciar.
+ChangesAssociations=yes
+
 LicenseFile=LICENCIA.txt
 
 #ifdef HayIcono
@@ -137,7 +141,7 @@ Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 ;                   informe de error, pero se quedan en tu maquina.
 ;  ===========================================================================
 Source: "{#Publicado}\*"; DestDir: "{app}"; \
-    Excludes: "*.pdb,*.pem,*.key,*.db,*.sqlite,*.env,cadlink.config.json,perfiles-acero.csv,aceros.csv"; \
+    Excludes: "*.pdb,*.pem,*.key,*.db,*.sqlite,*.env,cadlink.config.json,cadlink.oficina.json,perfiles-acero.csv,aceros.csv"; \
     Flags: ignoreversion recursesubdirs createallsubdirs
 
 ;  ===========================================================================
@@ -158,7 +162,40 @@ Source: "{#Publicado}\*"; DestDir: "{app}"; \
 Source: "{#Publicado}\cadlink.config.json"; DestDir: "{app}"; \
     Flags: onlyifdoesntexist uninsneveruninstall
 Source: "{#Publicado}\perfiles-acero.csv"; DestDir: "{app}"; Flags: onlyifdoesntexist
+
+;  ===========================================================================
+;  3. EL ARCHIVO DEL PAQUETE DE OFICINA, SOLO SI LO HAY: SIEMPRE ENCIMA.
+;
+;  Lo escribe 6-crear-instalador.bat en la opcion 3: la direccion del servidor
+;  de la oficina y su codigo. Con el, la PC queda autorizada sola. Se copia
+;  SIEMPRE -ignoreversion- para que instalarlo encima de una version de prueba
+;  la arregle, aunque su cadlink.config.json diga localhost. En los paquetes 1
+;  y 2 no existe, y skipifsourcedoesntexist hace que no se eche de menos.
+;  ===========================================================================
+Source: "{#Publicado}\cadlink.oficina.json"; DestDir: "{app}"; \
+    Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Publicado}\aceros.csv";         DestDir: "{app}"; Flags: onlyifdoesntexist
+
+[Registry]
+;  ===========================================================================
+;  LOS TRABAJOS .clk: SU ICONO Y CON QUE SE ABREN.
+;
+;  El icono es archivo.ico -el del programa sobre una hoja con la esquina
+;  doblada-, para que en el Explorador se distinga el trabajo del programa. Con
+;  doble clic se abre CadLink con ese trabajo.
+;
+;  HKA es HKCU cuando se instala sin administrador y HKLM cuando se instala
+;  para todos: el mismo modo que el resto de la instalacion. Al desinstalar se
+;  quita la asociacion; los .clk del cliente no se tocan.
+;  ===========================================================================
+Root: HKA; Subkey: "Software\Classes\.clk"; ValueType: string; ValueName: ""; \
+    ValueData: "CadLink.Trabajo"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\CadLink.Trabajo"; ValueType: string; ValueName: ""; \
+    ValueData: "Trabajo de {#Nombre}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\CadLink.Trabajo\DefaultIcon"; ValueType: string; ValueName: ""; \
+    ValueData: "{app}\archivo.ico,0"
+Root: HKA; Subkey: "Software\Classes\CadLink.Trabajo\shell\open\command"; ValueType: string; ValueName: ""; \
+    ValueData: """{app}\{#Ejecutable}"" ""%1"""
 
 [Icons]
 Name: "{group}\{#Nombre}";       Filename: "{app}\{#Ejecutable}"

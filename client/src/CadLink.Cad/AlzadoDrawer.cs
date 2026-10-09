@@ -28,7 +28,8 @@ namespace CadLink.Cad;
 /// </remarks>
 public sealed class AlzadoDrawer
 {
-    private const string PatronConcreto = "AR-CONC";
+    // El patrón del concreto, del estilo «Secciones y alzados» (AR-CONC por defecto).
+    private static string PatronConcreto => EstiloDibujo.Actual.Perfil(EstiloDibujo.Secciones).Texto("hatch.concreto");
     private const string PatronRespaldo = "ANSI31";
     private const int ColorPatron = 251;
     private const int ColorFondo = 9;
@@ -36,7 +37,7 @@ public sealed class AlzadoDrawer
     private const int PorCapa = 256;
 
     /// <summary>El gris de las cotas, el mismo que usa el dibujante de secciones.</summary>
-    private const int ColorCotas = 253;
+    private static int ColorCotas => EstiloAlzado.ColorAci("capa.COTAS");
 
     // ======================================================================
     //  POR QUE AQUI YA NO HAY UN «ColorVerde»
@@ -94,8 +95,12 @@ public sealed class AlzadoDrawer
     private const double HookClearV = 0.01;
     private const double HookClearEst = 0.005;
 
-    private const double AlturaTitulo = 0.03;
-    private const double AlturaEscala = 0.0225;
+    // Las alturas salen del estilo «Secciones y alzados» de la ventana «Estilo de dibujo»; sus
+    // valores por defecto son los que estaban aqui escritos.
+    private static PerfilEstilo EstiloAlzado => EstiloDibujo.Actual.Perfil(EstiloDibujo.Secciones);
+
+    private static double AlturaTitulo => EstiloAlzado.Numero("alto.titulo.alzado");
+    private static double AlturaEscala => EstiloAlzado.Numero("alto.escala.alzado");
 
     private readonly dynamic _doc;
     private readonly dynamic _ms;
@@ -187,6 +192,9 @@ public sealed class AlzadoDrawer
     /// </remarks>
     private double YDeLaFila => AlzadoLayout.YArranque(AltoMaximoSeccion);
 
+    /// <summary>La Y de fila con la que se dibujó el último elemento.</summary>
+    public double UltimaYFila { get; private set; }
+
     public IReadOnlyList<string> Fallos => _log;
 
     public IReadOnlyList<string> Notas
@@ -250,7 +258,12 @@ public sealed class AlzadoDrawer
     ///   </item>
     /// </list>
     /// </remarks>
-    public double DibujarElemento(AlzadoCad a, double x0)
+    /// <param name="yFila">
+    /// La Y de la fila. Vacía, la de siempre (<see cref="YDeLaFila"/>). Se da al
+    /// <b>redibujar un solo elemento</b> en el sitio que ya tenía: si la sección más alta
+    /// cambió desde entonces, la fila calculada ya no es la de ese alzado.
+    /// </param>
+    public double DibujarElemento(AlzadoCad a, double x0, double? yFila = null)
     {
         var largo = LargoDe(a);
 
@@ -264,7 +277,10 @@ public sealed class AlzadoDrawer
         // MARGEN_COL de la columna.
         var xSec = AlzadoLayout.XSeccion(x0, a.EsVertical);
 
-        var y = YDeLaFila;
+        var y = yFila ?? YDeLaFila;
+
+        // Para quien quiera guardar dónde quedó y volver aquí.
+        UltimaYFila = y;
 
         var sec = InsertarSeccion(a.Id, xSec, y);
 
@@ -298,6 +314,160 @@ public sealed class AlzadoDrawer
         }
 
         return p.XSiguiente;
+    }
+
+    /// <summary>
+    /// Ancho y alto de cada bloque de sección insertado en el dibujo, por nombre.
+    /// </summary>
+    /// <remarks>
+    /// Una sola pasada por el modelo para todas: preguntarlo sección por sección recorrería
+    /// el plano entero una vez por fila. Es la misma caja que mide
+    /// <see cref="InsertarSeccion"/>, así que da el mismo avance.
+    /// </remarks>
+    public Dictionary<string, (double Ancho, double Alto)> MedidasDeSecciones()
+    {
+        var res = new Dictionary<string, (double, double)>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                res.Clear();
+                var total = (int)_ms.Count;
+
+                for (var i = 0; i < total; i++)
+                {
+                    try
+                    {
+                        dynamic ent = _ms.Item(i);
+
+                        string clase = ent.ObjectName;
+                        if (!clase.Contains("BlockReference", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        string nombre = ent.Name;
+                        if (res.ContainsKey(nombre))
+                        {
+                            continue;
+                        }
+
+                        var caja = Caja((object)ent);
+                        if (caja is not null)
+                        {
+                            res[nombre] = (caja.Value.Max[0] - caja.Value.Min[0],
+                                           caja.Value.Max[1] - caja.Value.Min[1]);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Una entidad que no contesta no es una sección.
+                    }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Medir las secciones del dibujo", ex);
+        }
+
+        return res;
+    }
+
+    /// <summary>
+    /// La X donde empieza el elemento siguiente, <b>sin dibujar nada</b>: la misma que
+    /// devolvería <see cref="DibujarElemento"/>.
+    /// </summary>
+    /// <remarks>
+    /// Sirve para saber dónde va un alzado por su <b>lugar en la tabla</b>: se recorren las
+    /// filas anteriores sumando lo que avanzó cada una, con la misma aritmética de
+    /// <see cref="AlzadoLayout"/> y el ancho real de su bloque de sección.
+    /// </remarks>
+    public double XSiguienteSinDibujar(
+        AlzadoCad a, double x0, IReadOnlyDictionary<string, (double Ancho, double Alto)> medidas)
+    {
+        var largo = LargoDe(a);
+        if (largo <= 0)
+        {
+            return x0;
+        }
+
+        var y = YDeLaFila;
+
+        var (ancho, alto) = medidas.TryGetValue((a.Id ?? string.Empty).Trim(), out var m)
+            ? m
+            : (AlzadoLayout.AnchoSeccionSupuesto, AlzadoLayout.AltoSeccionSupuesto);
+
+        var dosCaras = a.EsVertical
+                       && !a.Circular
+                       && a.BaseCm > 0
+                       && Math.Abs(a.BaseCm - a.AlturaCm) > 1e-4;
+
+        return AlzadoLayout.Colocar(x0, a.EsVertical, ancho, y + alto, largo, dosCaras, y).XSiguiente;
+    }
+
+    /// <summary>
+    /// Borra las inserciones del alzado de <paramref name="id"/> (<c>ALZ-</c>, <c>ALZX-</c>,
+    /// <c>ALZY-</c>). Es para el alzado dibujado con una versión que no lo marcaba.
+    /// </summary>
+    /// <returns>Cuántas se borraron.</returns>
+    public int BorrarInsercionesDeAlzado(string id)
+    {
+        var nombres = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "ALZ-" + id, "ALZX-" + id, "ALZY-" + id
+        };
+
+        var borrar = new List<object>();
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                borrar.Clear();
+                var total = (int)_ms.Count;
+
+                for (var i = 0; i < total; i++)
+                {
+                    try
+                    {
+                        dynamic ent = _ms.Item(i);
+
+                        string clase = ent.ObjectName;
+                        if (clase.Contains("BlockReference", StringComparison.OrdinalIgnoreCase)
+                            && nombres.Contains((string)ent.Name))
+                        {
+                            borrar.Add((object)ent);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Se sigue con la siguiente.
+                    }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Buscar el alzado viejo de '{id}'", ex);
+        }
+
+        var n = 0;
+        foreach (var b in borrar)
+        {
+            try
+            {
+                AcadConnection.Retry(() => { ((dynamic)b).Delete(); });
+                n++;
+            }
+            catch (Exception)
+            {
+                // Uno que no se borra queda encimado, y el aviso lo dice.
+            }
+        }
+
+        return n;
     }
 
     /// <summary>Ancho y paño superior de una sección ya insertada.</summary>
@@ -486,7 +656,7 @@ public sealed class AlzadoDrawer
             {
                 var punto = new[] { xCentro, yTope + (0.15 * _f), 0d };
 
-                dynamic t = _ms.AddText("CORTE A-A'", punto, 0.025 * _f);
+                dynamic t = _ms.AddText("CORTE A-A'", punto, EstiloAlzado.Numero("alto.corte.alzado") * _f);
                 t.StyleName = "SECCIONES";
                 t.Alignment = 10;              // acAlignmentBottomCenter
                 t.TextAlignmentPoint = punto;
@@ -502,7 +672,11 @@ public sealed class AlzadoDrawer
     }
 
     /// <summary>Longitud del elemento: la columna W o, si viene vacía, la calculada.</summary>
-    private static double LargoDe(AlzadoCad a)
+    /// <remarks>
+    /// Pública porque el corte la necesita para saber qué bastones cruza: con otra cuenta,
+    /// el corte y el alzado discutirían sobre dónde está la línea A-A'.
+    /// </remarks>
+    public static double LargoDe(AlzadoCad a)
     {
         if (a.LongitudM > 0)
         {
@@ -604,6 +778,9 @@ public sealed class AlzadoDrawer
         public double GanchoSup;
         public double GanchoInf;
         public List<double> Centros = new();
+
+        /// <summary>Cada tramo de bastón dibujado, con la Y de su eje, para acotarlo.</summary>
+        public List<(BastonCad B, Bastones.Tramo T, double Yc)> Bastones = new();
     }
 
     /// <summary>
@@ -661,6 +838,13 @@ public sealed class AlzadoDrawer
         for (var i = 0; i < centros.Count; i++)
         {
             centros[i] += x0;
+        }
+
+        // Con bastones, un estribo menos al inicio y al final: ahí coinciden los ganchos de
+        // la corrida y del bastón, y el extremo se veía saturado. Solo en el horizontal.
+        if (!girar && a.Bastones.Any(Bastones.EsValido))
+        {
+            Bastones.QuitarEstribosExtremos(centros);
         }
 
         var dEst = a.EstriboDibujo.Cm * _escala;
@@ -786,6 +970,14 @@ public sealed class AlzadoDrawer
                 dSup, dInf, gSup, gInf, centros, dEst, relleno);
         }
 
+        // ---------- Bastones ----------
+        // Solo en el alzado HORIZONTAL: trabes y contratrabes. Van antes del color y del
+        // orden para que se rellenen y se ordenen como cualquier otra varilla.
+        var bastones = girar
+            ? new List<(BastonCad B, Bastones.Tramo T, double Yc)>()
+            : DibujarBastones(bloque, a, largo, y0, y1, rec, ycSup, ycInf, dSup, dInf,
+                centros, dEst, relleno, xa, xb, xaInf, xbInf, gSup, gInf);
+
         // ---------- Color y orden ----------
         if (relleno)
         {
@@ -828,7 +1020,8 @@ public sealed class AlzadoDrawer
             YcSup = ycSup, YcInf = ycInf,
             Xa = xa, Xb = xb, XaInf = xaInf, XbInf = xbInf,
             GanchoSup = gSup, GanchoInf = gInf,
-            Centros = centros
+            Centros = centros,
+            Bastones = bastones
         };
     }
 
@@ -876,6 +1069,20 @@ public sealed class AlzadoDrawer
             if (sup != "---") { lineas.Add(sup); }
             if (lat != "---") { lineas.Add(lat); }
             if (inf != "---") { lineas.Add(inf); }
+
+            // Los bastones, solo en trabes y contratrabes.
+            if (!a.EsVertical)
+            {
+                foreach (var b in a.Bastones.Where(Bastones.EsValido))
+                {
+                    lineas.Add(Bastones.Texto(b) + b.Posicion switch
+                    {
+                        PosicionBaston.Superior => " sup.",
+                        PosicionBaston.Medio => " en medio",
+                        _ => " inf."
+                    });
+                }
+            }
         }
 
         // Acero transversal. Se usa la separación TAL COMO se capturó —«10-20-20»— y no
@@ -977,7 +1184,7 @@ public sealed class AlzadoDrawer
     /// El mismo <c>H_TX_ROTULO</c> de la macro, para que el rótulo del alzado y el de la
     /// sección se lean del mismo tamaño cuando quedan uno al lado del otro.
     /// </remarks>
-    private const double AlturaRotulo = 0.025;
+    private static double AlturaRotulo => EstiloAlzado.Numero("alto.rotulos.alzado");
 
     /// <summary>
     /// El texto del rótulo, en la capa ROTULOS y anclado por <b>arriba y al centro</b>.
@@ -1910,9 +2117,12 @@ public sealed class AlzadoDrawer
     /// los extremos si lleva gancho.
     /// </summary>
     /// <param name="hacia">Hacia dónde dobla el gancho: <c>true</c> arriba.</param>
+    /// <param name="ganchoIzq">Si lleva gancho en la punta izquierda. Las corridas, siempre.</param>
+    /// <param name="ganchoDer">Y en la derecha. Un bastón de extremo lo lleva solo en la del paño.</param>
     private void VarillaConGanchos(
         object bloque, double xL, double xR, double yc, double dBar, string capa,
-        List<double> centros, double dEst, double gancho, bool hacia, bool relleno)
+        List<double> centros, double dEst, double gancho, bool hacia, bool relleno,
+        bool ganchoIzq = true, bool ganchoDer = true)
     {
         if (dBar <= 0 || xR <= xL + 1e-6)
         {
@@ -1923,12 +2133,14 @@ public sealed class AlzadoDrawer
         var hueco = dEst / 2;
 
         var conGancho = gancho > r && xR - dBar - r > xL + dBar + r;
+        var gI = conGancho && ganchoIzq;
+        var gD = conGancho && ganchoDer;
 
         // Relleno sólido de la varilla, con el color de su capa. El contorno cerrado
         // es temporal: el hatch no es asociativo, así que se puede borrar.
         if (relleno)
         {
-            var borde = BordeDeVarilla(bloque, xL, xR, yc, dBar, conGancho ? gancho : 0, hacia);
+            var borde = BordeDeVarilla(bloque, xL, xR, yc, dBar, conGancho ? gancho : 0, hacia, gI, gD);
 
             if (borde is not null)
             {
@@ -1942,7 +2154,7 @@ public sealed class AlzadoDrawer
             }
         }
 
-        if (!conGancho)
+        if (!gI && !gD)
         {
             CaraSegmentada(bloque, yc + r, capa, centros, hueco, xL, xR);
             CaraSegmentada(bloque, yc - r, capa, centros, hueco, xL, xR);
@@ -1956,33 +2168,56 @@ public sealed class AlzadoDrawer
         var yInterior = yc + (u * r);
         var yPunta = yc + (u * (r + gancho));
 
-        CaraSegmentada(bloque, yExterior, capa, centros, hueco, xL + dBar, xR - dBar);
-        CaraSegmentada(bloque, yInterior, capa, centros, hueco, xL + dBar + r, xR - dBar - r);
+        CaraSegmentada(bloque, yExterior, capa, centros, hueco,
+            gI ? xL + dBar : xL, gD ? xR - dBar : xR);
+        CaraSegmentada(bloque, yInterior, capa, centros, hueco,
+            gI ? xL + dBar + r : xL, gD ? xR - dBar - r : xR);
 
         var pi = Math.PI;
 
-        if (hacia)
+        if (gI)
         {
-            Arco(bloque, xL + dBar, yc + r, dBar, pi, 1.5 * pi, capa);
-            Arco(bloque, xL + dBar + r, yc + dBar, r, pi, 1.5 * pi, capa);
-            Arco(bloque, xR - dBar, yc + r, dBar, 1.5 * pi, 2 * pi, capa);
-            Arco(bloque, xR - dBar - r, yc + dBar, r, 1.5 * pi, 2 * pi, capa);
+            if (hacia)
+            {
+                Arco(bloque, xL + dBar, yc + r, dBar, pi, 1.5 * pi, capa);
+                Arco(bloque, xL + dBar + r, yc + dBar, r, pi, 1.5 * pi, capa);
+            }
+            else
+            {
+                Arco(bloque, xL + dBar, yc - r, dBar, pi / 2, pi, capa);
+                Arco(bloque, xL + dBar + r, yc - dBar, r, pi / 2, pi, capa);
+            }
+
+            Linea(bloque, xL, yc + (u * r), xL, yPunta, capa);
+            Linea(bloque, xL + dBar, yc + (u * dBar), xL + dBar, yPunta, capa);
+            Linea(bloque, xL, yPunta, xL + dBar, yPunta, capa);
         }
         else
         {
-            Arco(bloque, xL + dBar, yc - r, dBar, pi / 2, pi, capa);
-            Arco(bloque, xL + dBar + r, yc - dBar, r, pi / 2, pi, capa);
-            Arco(bloque, xR - dBar, yc - r, dBar, 0, pi / 2, capa);
-            Arco(bloque, xR - dBar - r, yc - dBar, r, 0, pi / 2, capa);
+            Linea(bloque, xL, yc - r, xL, yc + r, capa);
         }
 
-        Linea(bloque, xL, yc + (u * r), xL, yPunta, capa);
-        Linea(bloque, xL + dBar, yc + (u * dBar), xL + dBar, yPunta, capa);
-        Linea(bloque, xL, yPunta, xL + dBar, yPunta, capa);
+        if (gD)
+        {
+            if (hacia)
+            {
+                Arco(bloque, xR - dBar, yc + r, dBar, 1.5 * pi, 2 * pi, capa);
+                Arco(bloque, xR - dBar - r, yc + dBar, r, 1.5 * pi, 2 * pi, capa);
+            }
+            else
+            {
+                Arco(bloque, xR - dBar, yc - r, dBar, 0, pi / 2, capa);
+                Arco(bloque, xR - dBar - r, yc - dBar, r, 0, pi / 2, capa);
+            }
 
-        Linea(bloque, xR, yc + (u * r), xR, yPunta, capa);
-        Linea(bloque, xR - dBar, yc + (u * dBar), xR - dBar, yPunta, capa);
-        Linea(bloque, xR, yPunta, xR - dBar, yPunta, capa);
+            Linea(bloque, xR, yc + (u * r), xR, yPunta, capa);
+            Linea(bloque, xR - dBar, yc + (u * dBar), xR - dBar, yPunta, capa);
+            Linea(bloque, xR, yPunta, xR - dBar, yPunta, capa);
+        }
+        else
+        {
+            Linea(bloque, xR, yc - r, xR, yc + r, capa);
+        }
     }
 
     /// <summary>
@@ -2031,45 +2266,78 @@ public sealed class AlzadoDrawer
     }
 
     /// <summary>Contorno cerrado de la varilla, para su relleno sólido.</summary>
+    /// <remarks>
+    /// Se arma por lados: la cara de dentro de izquierda a derecha y la de fuera de vuelta,
+    /// con cada punta en gancho o recta según lleve. Así sirve igual para la corrida, con
+    /// dos ganchos, que para el bastón, con uno.
+    /// </remarks>
     private object? BordeDeVarilla(
-        object bloque, double xL, double xR, double yc, double dBar, double gancho, bool hacia)
+        object bloque, double xL, double xR, double yc, double dBar, double gancho, bool hacia,
+        bool ganchoIzq = true, bool ganchoDer = true)
     {
         var r = dBar / 2;
         var conGancho = gancho > r && xR - dBar - r > xL + dBar + r;
-
-        if (!conGancho)
-        {
-            return Poli(bloque, new[]
-            {
-                xL, yc - r,
-                xR, yc - r,
-                xR, yc + r,
-                xL, yc + r
-            }, "CONCRETO", cerrada: true, bulges: null);
-        }
+        var gI = conGancho && ganchoIzq;
+        var gD = conGancho && ganchoDer;
 
         var u = hacia ? 1d : -1d;
         var yPunta = yc + (u * (r + gancho));
         const double b90 = 0.414213562373095;
 
-        return Poli(bloque, new[]
+        var pts = new List<double>();
+        var bulges = new List<(int, double)>();
+
+        void P(double x, double y, double bulge = 0)
         {
-            xL,             yc + (u * r),
-            xL,             yPunta,
-            xL + dBar,      yPunta,
-            xL + dBar,      yc + (u * dBar),
-            xL + dBar + r,  yc + (u * r),
-            xR - dBar - r,  yc + (u * r),
-            xR - dBar,      yc + (u * dBar),
-            xR - dBar,      yPunta,
-            xR,             yPunta,
-            xR,             yc + (u * r),
-            xR - dBar,      yc - (u * r),
-            xL + dBar,      yc - (u * r)
-        }, "CONCRETO", cerrada: true, bulges: new (int, double)[]
+            if (bulge != 0)
+            {
+                bulges.Add((pts.Count / 2, bulge));
+            }
+
+            pts.Add(x);
+            pts.Add(y);
+        }
+
+        // La cara del lado del gancho, de izquierda a derecha.
+        if (gI)
         {
-            (3, b90 * u), (5, b90 * u), (9, -b90 * u), (11, -b90 * u)
-        });
+            P(xL, yc + (u * r));
+            P(xL, yPunta);
+            P(xL + dBar, yPunta);
+            P(xL + dBar, yc + (u * dBar), b90 * u);
+            P(xL + dBar + r, yc + (u * r));
+        }
+        else
+        {
+            P(xL, yc + (u * r));
+        }
+
+        if (gD)
+        {
+            P(xR - dBar - r, yc + (u * r), b90 * u);
+            P(xR - dBar, yc + (u * dBar));
+            P(xR - dBar, yPunta);
+            P(xR, yPunta);
+            P(xR, yc + (u * r), -b90 * u);
+            P(xR - dBar, yc - (u * r));
+        }
+        else
+        {
+            P(xR, yc + (u * r));
+            P(xR, yc - (u * r));
+        }
+
+        // La de fuera, de vuelta.
+        if (gI)
+        {
+            P(xL + dBar, yc - (u * r), -b90 * u);
+        }
+        else
+        {
+            P(xL, yc - (u * r));
+        }
+
+        return Poli(bloque, pts.ToArray(), "CONCRETO", cerrada: true, bulges: bulges.ToArray());
     }
 
     private void Intermedias(
@@ -2124,6 +2392,197 @@ public sealed class AlzadoDrawer
             VarillaConGanchos(bloque, xIni, xFin, yBot + (paso * k), dInt, capa,
                 centros, dEst, 0, hacia: true, relleno);
         }
+    }
+
+    /// <summary>
+    /// Los <b>bastones</b> del alzado: tres como mucho —arriba, en medio y abajo—, cada
+    /// uno dibujado con la <b>misma rutina que las varillas corridas</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El de arriba y el de abajo van a <see cref="Bastones.SeparacionCamaCm"/> libres por
+    /// dentro de su lecho, con gancho en la punta que llega al paño; el de en medio, a
+    /// media altura y recto, como las intermedias. Son las mismas alturas que usa el
+    /// corte, así que la varilla que se ve en la sección es la que pasa por el alzado.
+    /// </para>
+    /// <para>
+    /// El gancho es el de la trabe —12 diámetros, <see cref="Estribos.GanchoNominal"/>—
+    /// topado a lo que cabe, y dobla hacia dentro de la pieza como el de su lecho.
+    /// </para>
+    /// </remarks>
+    /// <returns>Cada tramo dibujado, con la Y de su eje, para acotarlo después.</returns>
+    private List<(BastonCad B, Bastones.Tramo T, double Yc)> DibujarBastones(
+        object bloque, AlzadoCad a, double largo, double y0, double y1, double rec,
+        double ycSup, double ycInf, double dSup, double dInf,
+        List<double> centros, double dEst, bool relleno,
+        double xa, double xb, double xaInf, double xbInf, double gSup, double gInf)
+    {
+        var res = new List<(BastonCad B, Bastones.Tramo T, double Yc)>();
+
+        if (a.Circular || a.Bastones.Count == 0)
+        {
+            return res;
+        }
+
+        var sep = Bastones.SeparacionCamaCm * _escala;
+
+        // Uno por posición, y tres como mucho: arriba, en medio y abajo. Si llegara un
+        // archivo con más, manda el primero de cada posición.
+        //
+        // PRIMERA PASADA: dónde va cada uno. Hace falta tenerlos todos antes de dibujar,
+        // porque el gancho de uno se topa contra los otros.
+        var usados = new HashSet<PosicionBaston>();
+        var puestos = new Dictionary<PosicionBaston, (BastonCad B, double DB, double Yc, List<Bastones.Tramo> T, double M)>();
+
+        foreach (var b in a.Bastones)
+        {
+            if (!usados.Add(b.Posicion))
+            {
+                _notas.Add($"Alzado '{a.Id}': sobra un bastón {b.Posicion.ToString().ToLowerInvariant()}; solo va uno por posición.");
+                continue;
+            }
+
+            var dB = b.Var.Cm * _escala;
+
+            // EL DOBLEZ DEL BASTÓN VA ANTES QUE EL DE LA CORRIDA, por dentro: arranca pasado
+            // el gancho de la corrida y su holgura. Ese es el margen de los extremos.
+            var (limIzq, _) = LimitesDelBaston(b.Posicion, rec, largo,
+                xa, xb, xaInf, xbInf, dSup, dInf, gSup, gInf);
+
+            var tramos = Bastones.Tramos(b, largo, limIzq);
+
+            if (dB <= 0 || tramos.Count == 0)
+            {
+                continue;
+            }
+
+            var yc = b.Posicion switch
+            {
+                PosicionBaston.Superior => ycSup - (dSup / 2) - sep - (dB / 2),
+                PosicionBaston.Inferior => ycInf + (dInf / 2) + sep + (dB / 2),
+                _ => Bastones.YMedio(ycInf + (dInf / 2), ycSup - (dSup / 2), a.NLateral)
+            };
+
+            // Si la pieza es tan baja que la cama se sale del núcleo, no se dibuja: un
+            // bastón por fuera del estribo no es armado.
+            if (yc - (dB / 2) < y0 + rec || yc + (dB / 2) > y1 - rec)
+            {
+                _notas.Add($"Alzado '{a.Id}': el bastón {Bastones.Texto(b)} no cabe en el peralte y no se dibujó.");
+                continue;
+            }
+
+            puestos[b.Posicion] = (b, dB, yc, tramos, limIzq);
+        }
+
+        // SEGUNDA PASADA: dibujarlos, con cada gancho topado para no chocar.
+        foreach (var (pos, (b, dB, yc, tramos, _)) in puestos)
+        {
+            var arriba = pos == PosicionBaston.Superior;
+            var capa = CapaVar(b.Var.Clave);
+
+            // EL GANCHO MIDE LO QUE EL DE LA CORRIDA DE SU LECHO: la misma cuenta de
+            // Estribos.GanchoNominal con el diámetro de esa corrida.
+            // 12 DIÁMETROS DEL PROPIO BASTÓN.
+            var nominal = Bastones.GanchoDiametros * dB;
+
+            foreach (var t in tramos)
+            {
+                // Los tramos ya vienen con su LONGITUD REAL y en su sitio.
+                var xL = t.Ini;
+                var xR = t.Fin;
+
+                if (xR <= xL + dB)
+                {
+                    continue;
+                }
+
+                var g = 0d;
+
+                if (pos != PosicionBaston.Medio && (t.GanchoIzq || t.GanchoDer))
+                {
+                    var cara = arriba ? yc - (dB / 2) : yc + (dB / 2);
+
+                    // El hueco libre en una punta. Las dos puntas del de centro se miran por
+                    // separado y se queda el menor, porque la varilla lleva un solo largo.
+                    double LibreEn(double xG)
+                    {
+                        double? Hasta(PosicionBaston otra, out bool conGancho)
+                        {
+                            conGancho = false;
+
+                            if (!puestos.TryGetValue(otra, out var o)
+                                || !Bastones.PasaPor(o.B, largo, xG, dB + HookClearH, o.M))
+                            {
+                                return null;
+                            }
+
+                            conGancho = Bastones.GanchoEn(o.B, largo, o.M, xG, dB + HookClearH);
+
+                            return arriba
+                                ? cara - (o.Yc + (o.DB / 2))
+                                : (o.Yc - (o.DB / 2)) - cara;
+                        }
+
+                        var hastaLecho = arriba
+                            ? cara - (ycInf + (dInf / 2))
+                            : (ycSup - (dSup / 2)) - cara;
+
+                        var opuesto = Hasta(
+                            arriba ? PosicionBaston.Inferior : PosicionBaston.Superior, out var conG);
+
+                        return Bastones.LibreParaGancho(
+                            hastaLecho, Hasta(PosicionBaston.Medio, out _), opuesto,
+                            HookClearV, conG);
+                    }
+
+                    var libre = double.MaxValue;
+                    if (t.GanchoIzq) { libre = Math.Min(libre, LibreEn(xL)); }
+                    if (t.GanchoDer) { libre = Math.Min(libre, LibreEn(xR)); }
+
+                    g = Estribos.GanchoEfectivo(nominal, libre, dB);
+                }
+
+                // LA MISMA RUTINA QUE LAS CORRIDAS: mismas caras, mismos cortes en los
+                // estribos, mismo doblez y mismo relleno.
+                VarillaConGanchos(bloque, xL, xR, yc, dB, capa, centros, dEst, g,
+                    hacia: !arriba, relleno, ganchoIzq: t.GanchoIzq, ganchoDer: t.GanchoDer);
+
+                res.Add((b, t, yc));
+            }
+        }
+
+        return res;
+    }
+
+    /// <summary>
+    /// Desde dónde y hasta dónde puede ir un bastón sin encimarse con los ganchos de las
+    /// corridas: pasado el gancho de su lecho más una holgura. El de en medio esquiva los
+    /// dos, como las intermedias.
+    /// </summary>
+    private static (double Izq, double Der) LimitesDelBaston(
+        PosicionBaston pos, double rec, double largo,
+        double xa, double xb, double xaInf, double xbInf,
+        double dSup, double dInf, double gSup, double gInf)
+    {
+        var izq = rec;
+        var der = largo - rec;
+
+        // LOS DOS GANCHOS DE LAS CORRIDAS, sea cual sea el lecho del bastón: el gancho del
+        // bastón baja (o sube) casi todo el peralte y se cruzaba con el de la corrida del
+        // OTRO lecho, que además puede ir corrido hacia dentro (xaInf).
+        if (gSup > 0)
+        {
+            izq = Math.Max(izq, xa + dSup + HookClearH);
+            der = Math.Min(der, xb - dSup - HookClearH);
+        }
+
+        if (gInf > 0)
+        {
+            izq = Math.Max(izq, xaInf + dInf + HookClearH);
+            der = Math.Min(der, xbInf - dInf - HookClearH);
+        }
+
+        return (izq, der);
     }
 
     private static double CorrerADerecha(
@@ -2426,6 +2885,12 @@ public sealed class AlzadoDrawer
             Cota(q[i], y, q[i + 1], y, medio, yZona, etiquetas[i], false);
         }
 
+        // Los bastones: su longitud y su varilla.
+        CotasDeBastones(x, y, y1, geo);
+
+        // El corte A-A': línea vertical que cruza la trabe, A arriba y A' abajo.
+        LineaDeCorte(x + AlzadoLayout.PosicionCorte(largo), y, y1, vertical: true);
+
         Titulo(a, x, y, largo);
     }
 
@@ -2497,6 +2962,167 @@ public sealed class AlzadoDrawer
         }
     }
 
+    /// <summary>Alto de las letras A y A' del corte, antes de la escala.</summary>
+    private static double AlturaLetraCorte => EstiloAlzado.Numero("alto.letra.corte");
+
+    /// <summary>
+    /// La <b>línea de corte A-A'</b> sobre el alzado: una línea recta que cruza la pieza
+    /// por donde se tomó el <c>CORTE A-A'</c> de al lado. En cada punta lleva el símbolo
+    /// que pidió el usuario: una raya con una <b>flecha abierta</b> hacia el lado desde el
+    /// que se mira, la letra detrás de la flecha, y un <b>triángulo</b> del otro lado.
+    /// </summary>
+    /// <param name="posicion">La X del corte en la trabe, o su Y en la columna.</param>
+    /// <param name="desde">Una cara de la pieza: la de abajo en la trabe, la izquierda en la columna.</param>
+    /// <param name="hasta">La cara opuesta.</param>
+    /// <param name="vertical">
+    /// Si la línea corre en vertical, que es el caso de la trabe: ahí se mira hacia la
+    /// izquierda, con la A arriba y la A' abajo. La columna es la trabe girada 90°, así que
+    /// se mira hacia abajo, con la A en la punta izquierda y la A' en la derecha.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Va en el espacio modelo y en la capa <c>ROTULOS</c>, como el resto del rotulado: así
+    /// sale verde en pantalla y negra al imprimir, y no se queda metida en el bloque del
+    /// alzado, donde no se podría mover ni borrar sin explotarlo.
+    /// </para>
+    /// <para>
+    /// La forma sale de <see cref="AlzadoLayout.Extremo"/> y la posición de
+    /// <see cref="AlzadoLayout.PosicionCorte"/>, las mismas que usa la vista previa.
+    /// </para>
+    /// </remarks>
+    private void LineaDeCorte(double posicion, double desde, double hasta, bool vertical)
+    {
+        if (hasta < desde)
+        {
+            (desde, hasta) = (hasta, desde);
+        }
+
+        if (hasta - desde <= 0)
+        {
+            return;
+        }
+
+        var salida = AlzadoLayout.SalidaCorte * _f;
+        var ini = desde - salida;
+        var fin = hasta + salida;
+
+        // (s, t) -> (x, y). En la trabe s es la Y y t la X; en la columna, al revés.
+        double[] AXY(double[] st)
+        {
+            var xy = new double[st.Length];
+            for (var i = 0; i < st.Length; i += 2)
+            {
+                xy[i] = vertical ? posicion + st[i + 1] : st[i];
+                xy[i + 1] = vertical ? st[i] : posicion + st[i + 1];
+            }
+
+            return xy;
+        }
+
+        // La línea, recta de punta a punta.
+        Poli((object)_ms, AXY(new[] { ini, 0d, fin, 0d }), "ROTULOS", cerrada: false, bulges: null);
+
+        var h = AlturaLetraCorte * _f;
+
+        // En la trabe la A va arriba (en 'fin'); en la columna, a la izquierda (en 'ini').
+        var extremos = vertical
+            ? new[] { ("A", fin, -1), ("A'", ini, +1) }
+            : new[] { ("A", ini, +1), ("A'", fin, -1) };
+
+        foreach (var (letra, punta, dentro) in extremos)
+        {
+            var e = AlzadoLayout.Extremo(punta, dentro, _f);
+
+            Poli((object)_ms, AXY(e.Raya), "ROTULOS", cerrada: false, bulges: null);
+            Poli((object)_ms, AXY(e.Punta), "ROTULOS", cerrada: false, bulges: null);
+            Poli((object)_ms, AXY(e.Triangulo), "ROTULOS", cerrada: true, bulges: null);
+
+            var l = AXY(new[] { e.SLetra, e.TLetra });
+
+            // La letra DETRÁS de la flecha: a su izquierda en la trabe, debajo en la columna.
+            LetraCorte(letra, l[0], l[1], h, vertical ? AlineaMedioDerecha : AlineaArribaCentro);
+        }
+    }
+
+    /// <summary><c>acAlignmentMiddleRight</c>.</summary>
+    private const int AlineaMedioDerecha = 11;
+
+    /// <summary><c>acAlignmentTopCenter</c>.</summary>
+    private const int AlineaArribaCentro = 7;
+
+    /// <summary>Una letra del corte, anclada en el punto que se le da.</summary>
+    /// <param name="alineacion">
+    /// Por dónde se ancla: así quien llama pone la letra pegada a la flecha sin tener que
+    /// saber cuánto mide.
+    /// </param>
+    private void LetraCorte(string letra, double x, double y, double alto, int alineacion)
+    {
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                var punto = new[] { x, y, 0d };
+
+                dynamic t = _ms.AddText(letra, punto, alto);
+                t.StyleName = EstiloTexto;
+                t.Alignment = alineacion;
+                t.TextAlignmentPoint = punto;
+                t.Layer = "ROTULOS";
+                t.Color = PorCapa;             // el verde lo pone la CAPA, ver arriba
+                t.Update();
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Letra {letra} del corte del alzado", ex);
+        }
+    }
+
+    /// <summary>Donde empieza la primera fila de cotas de bastones, pasadas las del armado.</summary>
+    /// <remarks>
+    /// Arriba, las cotas del armado llegan a 32 cm de la cara; abajo, el título y su escala
+    /// bajan hasta unos 30 cm. Así que los bastones van más allá, en filas de 8 cm, la misma
+    /// separación que las demás cotas del alzado.
+    /// </remarks>
+    private const double PrimeraCotaBaston = 0.40;
+
+    private const double PasoCotaBaston = 0.08;
+
+    /// <summary>
+    /// Una cota por tramo de bastón con <b>su longitud desde el paño</b> y su varilla:
+    /// <c>2 Var. (Bastones) #4C  L = 1.20</c>.
+    /// </summary>
+    /// <remarks>
+    /// Todos ARRIBA del alzado, cada bastón en su propia fila; los dos
+    /// tramos de un bastón de extremos comparten fila, porque no se enciman. La cifra la
+    /// pone AutoCAD —el <c>&lt;&gt;</c> del texto—, así que siempre dice lo que mide.
+    /// </remarks>
+    private void CotasDeBastones(double x, double y, double y1, Geo geo)
+    {
+        // TODAS ARRIBA del alzado, una fila por bastón: abajo se encimaban con las cotas de
+        // estribos y el título. Los dos tramos de un bastón de extremos comparten fila.
+        var filas = new Dictionary<BastonCad, int>();
+
+        foreach (var (b, t, _) in geo.Bastones)
+        {
+            if (!filas.TryGetValue(b, out var fila))
+            {
+                fila = filas.Count;
+                filas[b] = fila;
+            }
+
+            var off = PrimeraCotaBaston + (fila * PasoCotaBaston);
+            var yCara = y1;
+            var yDim = y1 + off;
+
+            var xa = x + t.Ini;
+            var xb = x + t.Fin;
+
+            Cota(xa, yCara, xb, yCara, (xa + xb) / 2, yDim,
+                Bastones.Texto(b) + "  L = <>", false, textoArriba: true);
+        }
+    }
+
     /// <summary>Separación de la primera cota de gancho: <c>HOOK_DIM_OFF_1</c>.</summary>
     private const double HookDimOff1 = 0.06;
 
@@ -2550,6 +3176,11 @@ public sealed class AlzadoDrawer
             Cota(xIzq, y, xIzq, y1, xIzq - 0.28, y + (largo / 2), string.Empty, true);
         }
 
+        // El corte A-A': línea horizontal que cruza la columna, A arriba (en su extremo
+        // izquierdo) y A' abajo (en el derecho). Va en las DOS caras de una columna
+        // rectangular, porque cada alzado se lee solo.
+        LineaDeCorte(y + AlzadoLayout.PosicionCorte(largo), xIzq, xDer, vertical: false);
+
         if (conRotulo)
         {
             TituloVertical(a, xDer + 0.24 + 0.09, y1);
@@ -2558,7 +3189,7 @@ public sealed class AlzadoDrawer
 
     private void Cota(
         double x1, double y1, double x2, double y2,
-        double xt, double yt, string texto, bool vertical)
+        double xt, double yt, string texto, bool vertical, bool textoArriba = false)
     {
         try
         {
@@ -2576,6 +3207,22 @@ public sealed class AlzadoDrawer
                 if (vertical)
                 {
                     d.TextRotation = Math.PI / 2;
+                }
+
+                // El texto ENCIMA de la línea de cota, centrado, y no atravesado por ella.
+                // acAbove = 1. En su propio try: un estilo que no lo admita deja la cota
+                // como estaba, que es mejor que perderla.
+                if (textoArriba)
+                {
+                    try
+                    {
+                        d.VerticalTextPosition = 1;
+                        d.HorizontalTextPosition = 0;   // acHorzCentered
+                    }
+                    catch (Exception)
+                    {
+                        // Se queda con la posición del estilo.
+                    }
                 }
 
                 d.Update();

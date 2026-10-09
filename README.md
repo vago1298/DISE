@@ -71,6 +71,7 @@ Antes de invertir tiempo, ten claro qué está listo y qué no:
 | **Lectura de ETABS (CSI OAPI)** | ✅ Completo — `EtabsConnection` por ProgID `CSI.ETABS.API.ETABSObject` |
 | **Lectura de SAP2000** | 🚧 En proceso — CSI comparte la OAPI, así que es el mismo lector con otro ProgID |
 | **Exportar a Revit por IFC** | ✅ Completo, sin probar en Revit real — ver [`docs/exportar-a-revit.md`](docs/exportar-a-revit.md) |
+| **Complemento propio para Revit**, con cuadro de mapeo sección → familia | ✅ Núcleo completo y probado; la capa de la Revit API sin ejecutar — ver [`docs/complemento-revit.md`](docs/complemento-revit.md) |
 
 Los pendientes están marcados en el código con el comentario
 `PENDIENTE DE IMPLEMENTAR`.
@@ -433,7 +434,7 @@ conexión. Si necesitas efecto más rápido, baja `TOKEN_TTL_INTERNAL_DAYS`.
 ```
 
 Eso publica la aplicación **autocontenida** y la empaqueta en un solo
-**`dist\CadLink-Setup-1.0.0.exe`**. Es lo único que le mandas al cliente: le da
+**`dist\CadLink-Setup-1.1.0.exe`**. Es lo único que le mandas al cliente: le da
 doble clic y ya. No necesita .NET, ni Python, ni la consola, ni permisos de
 administrador.
 

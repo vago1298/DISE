@@ -55,7 +55,7 @@ public partial class MainWindow : Window
 
         // El logo ya no se pinta en un encabezado propio: es el ICONO de la ventana,
         // que es donde Windows lo muestra sin gastar alto de la hoja.
-        Icon = Branding.Logo;
+        Icon = Branding.Icono;
 
         LlenarListas();
 
@@ -80,6 +80,10 @@ public partial class MainWindow : Window
         Tema.Cargar();
         TemaButton.Content = Tema.TextoDelBoton;
 
+        // El estilo de dibujo -letras, cotas y colores- que se dejo guardado. Sin archivo, los
+        // valores de siempre.
+        EstiloDibujoArchivo.Cargar();
+
         PreviewCanvas.SizeChanged += (_, _) => DibujarVistaPrevia();
         SeccionesGrid.SelectionChanged += OnSeccionSeleccionada;
 
@@ -90,6 +94,7 @@ public partial class MainWindow : Window
         EngancharVistaPreviaAcero();
         EngancharVistaPreviaZapata();
         EngancharVistaPreviaZapataCorrida();
+        EngancharVistaPreviaMuros();
         EngancharVistaPreviaPlacaBase();
 
         // La simbología de soldadura: no depende de ninguna fila, así que solo se redibuja al
@@ -248,6 +253,7 @@ public partial class MainWindow : Window
         EnlazarAcero();
         EnlazarZapatas();
         EnlazarZapatasCorridas();
+        EnlazarMuros();
         EnlazarPlacaBase();
 
         DatosCambiaron();
@@ -565,6 +571,7 @@ public partial class MainWindow : Window
         var puedeDibujar = _license.HasFeature("export-dxf");
         ExportButton.IsEnabled = puedeDibujar;
         AlzadosButton.IsEnabled = puedeDibujar;
+        DibujarSeleccionadaButton.IsEnabled = puedeDibujar;
 
         // La planta se dibuja con el MISMO permiso que las secciones y los alzados:
         // es generar dibujo. Dejarla habilitada en la version de prueba seria una
@@ -579,6 +586,7 @@ public partial class MainWindow : Window
 
         // Y las corridas, por lo mismo.
         DibujarZapatasCorridasButton.IsEnabled = puedeDibujar;
+        DibujarMurosButton.IsEnabled = puedeDibujar;
 
         // Y las placas base: dibujar el detalle de una placa es generar dibujo igual que lo
         // demas, asi que lo decide la MISMA licencia.
@@ -1242,40 +1250,14 @@ public partial class MainWindow : Window
 
             dynamic app = AcadConnection.Connect(launchIfMissing: false);
             dynamic doc = AcadConnection.GetOrCreateDocument(app);
+            dynamic ms = AcadConnection.Retry(() => doc.ModelSpace);
 
-            var dibujante = new AlzadoDrawer(doc, escala)
-            {
-                EscalaHatch = LeerEscalaHatch(),
+            // Con el tipo escrito: con 'doc' dynamic, 'var' saldría dynamic también.
+            AlzadoDrawer dibujante = CrearDibujanteDeAlzados(doc, escala);
 
-                // Los bloques y los alzados van 2 m por ENCIMA de la seccion mas
-                // alta, no en la cota fija Y=2 de la macro. Con una contratrabe o un
-                // muro altos, la cota fija dejaba la seccion invadiendo la fila de
-                // alzados.
-                AltoMaximoSeccion = AltoMaximoDeLasSecciones(escala)
-            };
-
-            // Capas de varilla, estilos de texto y de cota: los mismos de la sección
-            var secciones = new SeccionDrawer(doc, escala);
-            secciones.AsegurarCapas(ClavesDeVarillaUsadas());
-
-            // Las llamadas de las varillas NO viajan dentro del bloque de la sección:
-            // Bloquear deja fuera las capas COTAS y ROTULOS a propósito, así que el
-            // corte que se inserta junto al alzado llegaba sin ellas. Se rehacen aquí,
-            // cuando el alzado avisa de dónde dejó el bloque.
-            dibujante.TrasInsertarSeccion = (id, xs, ys) =>
-            {
-                var fila = _datos.SeccionesConcreto.FirstOrDefault(
-                    f => string.Equals((f.Id ?? string.Empty).Trim(), id,
-                        StringComparison.OrdinalIgnoreCase));
-
-                if (fila is not null)
-                {
-                    secciones.LlamadasJuntoAlBloque(AFormatoCad(fila), xs, ys);
-                }
-            };
-
-            // Y la capa ALZADOS, que solo usa el alzado
-            dibujante.AsegurarCapas();
+            // Cada alzado se marca al dibujarlo, para que «Dibujar solo la seleccionada»
+            // lo encuentre después y lo rehaga en este mismo sitio.
+            MarcasCad.Registrar(doc);
 
             var x = 0d;
             var dibujados = 0;
@@ -1296,10 +1278,13 @@ public partial class MainWindow : Window
                 // la X del elemento siguiente. El avance no se calcula aquí a
                 // propósito: depende del tipo de elemento y son cinco constantes de
                 // la macro. Vive en AlzadoLayout, comprobado contra el VBA.
+                var antes = AcadConnection.Retry(() => (int)ms.Count);
                 var siguiente = dibujante.DibujarElemento(a, x);
 
                 if (siguiente > x)
                 {
+                    MarcasCad.Marcar(ms, antes, MarcasCad.ClaveAlzado(r.Id), x, dibujante.UltimaYFila);
+
                     dibujados++;
                     x = siguiente;
                 }
@@ -1347,6 +1332,386 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show("No se pudieron generar los alzados:\n\n" + ex.Message,
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            Cursor = Cursors.Arrow;
+        }
+    }
+
+    /// <summary>
+    /// El dibujante de alzados listo para usar: escala, fila, capas y las llamadas del corte.
+    /// </summary>
+    /// <remarks>
+    /// Lo comparten «Generar alzados» y «Dibujar solo la seleccionada». Si cada uno lo armara
+    /// a su manera, el alzado de un solo elemento acabaría distinto del de la fila completa.
+    /// </remarks>
+    private AlzadoDrawer CrearDibujanteDeAlzados(dynamic doc, double escala)
+    {
+        var dibujante = new AlzadoDrawer(doc, escala)
+        {
+            EscalaHatch = LeerEscalaHatch(),
+
+            // Los bloques y los alzados van 2 m por ENCIMA de la seccion mas
+            // alta, no en la cota fija Y=2 de la macro. Con una contratrabe o un
+            // muro altos, la cota fija dejaba la seccion invadiendo la fila de
+            // alzados.
+            AltoMaximoSeccion = AltoMaximoDeLasSecciones(escala)
+        };
+
+        // Capas de varilla, estilos de texto y de cota: los mismos de la sección
+        var secciones = new SeccionDrawer(doc, escala);
+        secciones.AsegurarCapas(ClavesDeVarillaUsadas());
+
+        // Las llamadas de las varillas NO viajan dentro del bloque de la sección:
+        // Bloquear deja fuera las capas COTAS y ROTULOS a propósito, así que el
+        // corte que se inserta junto al alzado llegaba sin ellas. Se rehacen aquí,
+        // cuando el alzado avisa de dónde dejó el bloque.
+        dibujante.TrasInsertarSeccion = (id, xs, ys) =>
+        {
+            var fila = _datos.SeccionesConcreto.FirstOrDefault(
+                f => string.Equals((f.Id ?? string.Empty).Trim(), id,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (fila is not null)
+            {
+                secciones.LlamadasJuntoAlBloque(AFormatoCad(fila), xs, ys);
+            }
+        };
+
+        // Y la capa ALZADOS, que solo usa el alzado
+        dibujante.AsegurarCapas();
+
+        return dibujante;
+    }
+
+    // ======================================================================
+    // Dibujar SOLO la fila seleccionada
+    // ======================================================================
+
+    /// <summary>
+    /// La X donde va una sección <b>por su lugar en la tabla</b>.
+    /// </summary>
+    /// <remarks>
+    /// Es la misma cuenta que hace «Generar dibujo» sobre un plano vacío: arranca en 0 y
+    /// cada sección avanza su base más 35 cm de aire. Si las dos cuentas se separaran, la
+    /// sección rehecha sola quedaría corrida respecto de donde la puso el dibujo completo.
+    /// </remarks>
+    /// <param name="fila">La fila; con <c>null</c>, el final de la fila completa.</param>
+    private double XEnLaFilaDeSecciones(SeccionConcretoRow? fila, double escala)
+    {
+        var x = 0d;
+
+        foreach (var s in _datos.SeccionesConcreto)
+        {
+            // El aire extra de una sección con bastones va ANTES de ella, igual que al
+            // dibujar la hoja entera.
+            x += AireExtraBastones(s);
+
+            if (ReferenceEquals(s, fila))
+            {
+                return x;
+            }
+
+            x += (s.BaseCm + 35) * escala;
+        }
+
+        return x;
+    }
+
+    /// <summary>
+    /// La X donde va un alzado <b>por su lugar en la tabla</b>: la que le daría «Generar
+    /// alzados» recorriendo la hoja desde 0.
+    /// </summary>
+    /// <remarks>
+    /// Las filas sin alzado —castillos, cadenas— no avanzan, igual que en el dibujo
+    /// completo. El avance de cada una lo calcula el propio dibujante, con el ancho real de
+    /// su bloque de sección.
+    /// </remarks>
+    /// <param name="fila">La fila; con <c>null</c>, el final de la fila completa.</param>
+    private double XEnLaFilaDeAlzados(AlzadoDrawer dibujante, SeccionConcretoRow? fila)
+    {
+        var medidas = dibujante.MedidasDeSecciones();
+        var x = 0d;
+
+        foreach (var s in _datos.SeccionesConcreto)
+        {
+            if (ReferenceEquals(s, fila))
+            {
+                return x;
+            }
+
+            if (TipoDe(s.Elemento, s.Id) is null)
+            {
+                continue;
+            }
+
+            x = dibujante.XSiguienteSinDibujar(AFormatoAlzado(s), x, medidas);
+        }
+
+        return x;
+    }
+
+    /// <summary>
+    /// Rehace en AutoCAD <b>solo la fila seleccionada</b>: su sección y, si lleva, su alzado.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió para no tener que redibujar todo cuando cambian las medidas o el armado de
+    /// un elemento. Lo que hace con cada parte:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     <b>Ya dibujada:</b> vuelve a su mismo sitio —el acomodo hecho a mano no se
+    ///     pierde— y se borran sus cotas y rótulos viejos, que van sueltos en el modelo y
+    ///     sin esto se quedarían midiendo lo que ya no es.
+    ///   </item>
+    ///   <item>
+    ///     <b>Nueva:</b> se dibuja al final de su fila, sin encimarse con nada.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// <b>Las cotas viejas se encuentran por su marca</b> (<see cref="MarcasCad"/>), que se
+    /// pone al dibujar desde esta versión. Lo dibujado con una versión anterior no la lleva:
+    /// entonces la geometría sí se actualiza, pero las cotas y rótulos viejos hay que
+    /// borrarlos a mano, y se avisa con el nombre del elemento.
+    /// </para>
+    /// <para>
+    /// La sección va <b>antes</b> que el alzado a propósito: el alzado inserta el bloque de
+    /// la sección como su <c>CORTE A-A'</c>, así que tiene que encontrarlo ya rehecho.
+    /// </para>
+    /// </remarks>
+    private void OnDibujarSeleccionada(object sender, RoutedEventArgs e)
+    {
+        CerrarEdicionDeLasHojas();
+
+        if (!_license.HasFeature("export-dxf"))
+        {
+            MessageBox.Show("Tu licencia no incluye la generación de dibujos.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var fila = Seleccionada;
+        var id = (fila?.Id ?? string.Empty).Trim();
+
+        if (fila is null || id.Length == 0)
+        {
+            MessageBox.Show(
+                fila is null
+                    ? "Selecciona en la hoja la fila que quieres dibujar."
+                    : "La fila seleccionada no tiene ID, y el ID es el nombre de su bloque en AutoCAD.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // Solo detienen los problemas de ESTA fila: un error en otra no tiene por qué
+        // impedir rehacer la que sí está bien. Revisar los rotula con el ID de su fila.
+        Revisar(out var todos);
+        var problemas = todos
+            .Where(p => p.Contains("'" + id + "'", StringComparison.OrdinalIgnoreCase)
+                        || p.Contains(id + ":", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (problemas.Count > 0)
+        {
+            MessageBox.Show(
+                $"Corrige esto antes de dibujar \"{id}\":\n\n" + string.Join("\n", problemas),
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            Cursor = Cursors.Wait;
+
+            var escala = LeerEscala();
+
+            dynamic app = AcadConnection.Connect(launchIfMissing: false);
+            dynamic doc = AcadConnection.GetOrCreateDocument(app);
+            dynamic ms = AcadConnection.Retry(() => doc.ModelSpace);
+
+            MarcasCad.Registrar(doc);
+
+            var avisos = new List<string>();
+            var hecho = new List<string>();
+            var fallos = new List<string>();
+
+            // ---------- 1. La sección ----------
+            var secciones = new SeccionDrawer(doc, escala)
+            {
+                EscalaHatch = LeerEscalaHatch(),
+
+                // Aquí SIEMPRE se rehace: es justo lo que se pidió. La casilla
+                // «Redibujar las que ya existen» es para el dibujo de toda la hoja.
+                Redibujar = true
+            };
+
+            secciones.AsegurarCapas(ClavesDeVarillaUsadas());
+
+            // TODO va a la X que le toca por su lugar en la tabla, bloque y cotas juntos.
+            // Con el «volver a su sitio» de siempre solo se movía el bloque, y las cotas y
+            // rótulos —que van sueltos— se quedaban en la X que se pasaba: salían en el
+            // origen, encima de la primera sección.
+            secciones.VolverASuSitio = false;
+
+            var yaExistia = secciones.BloqueYaExiste(id);
+
+            // Sus cotas y rótulos viejos. La inserción del bloque NO se borra aquí: el
+            // dibujante la necesita para saber a qué sitio volver, y la borra él.
+            List<MarcasCad.Marcada> viejasSec = MarcasCad.Buscar(doc, ms, MarcasCad.ClaveSeccion(id));
+            MarcasCad.Borrar(viejasSec.Where(m => !MarcasCad.EsBloque(m.Entidad)));
+
+            if (yaExistia && viejasSec.Count == 0)
+            {
+                avisos.Add(
+                    $"La sección \"{id}\" se dibujó con una versión anterior, que no marcaba sus " +
+                    "cotas: la sección ya está rehecha en su lugar de la tabla, pero sus cotas y rótulos " +
+                    "VIEJOS siguen ahí. Bórralos a mano; desde ahora quedan marcados y la " +
+                    "próxima vez se van solos.");
+            }
+
+            // Su lugar es el que le da la TABLA: la hoja se dibuja en su orden, cada sección a
+            // la derecha de la anterior. Así vuelve exactamente a donde la puso el dibujo
+            // completo.
+            var xSec = XEnLaFilaDeSecciones(fila, escala);
+
+            // Una fila NUEVA a media tabla no tiene sitio: el suyo lo ocupa ya la siguiente,
+            // que se dibujó antes de que existiera. Va al final, y se dice.
+            var esLaUltima = ReferenceEquals(_datos.SeccionesConcreto.LastOrDefault(), fila);
+
+            if (!yaExistia && !esLaUltima)
+            {
+                xSec = XEnLaFilaDeSecciones(null, escala);
+                avisos.Add(
+                    $"\"{id}\" es nueva y está a media tabla: su lugar en el plano ya lo ocupa " +
+                    "la sección siguiente, así que la dibujé al final de la fila para no " +
+                    "encimarla. Muévela a mano, o genera el plano completo en un dibujo limpio " +
+                    "para que todas queden en el orden de la tabla.");
+            }
+
+            secciones.Dibujar(AFormatoCad(fila), xSec, 0);
+
+            if (secciones.InicioUltima >= 0)
+            {
+                MarcasCad.Marcar(ms, secciones.InicioUltima, MarcasCad.ClaveSeccion(id), xSec, 0);
+                hecho.Add(ReferenceEquals(fila, _datos.SeccionesConcreto.LastOrDefault()) || yaExistia
+                    ? "la sección, en su lugar de la tabla"
+                    : "la sección, al final de su fila");
+            }
+            else
+            {
+                avisos.Add($"La sección \"{id}\" no se pudo rehacer: su bloque no se dejó borrar.");
+            }
+
+            secciones.RotulosAlFrente();
+            secciones.RevisarColorNegro();
+            fallos.AddRange(secciones.Fallos);
+
+            // ---------- 2. El alzado, si lleva ----------
+            if (TipoDe(fila.Elemento, fila.Id) is not null)
+            {
+                AlzadoDrawer alzados = CrearDibujanteDeAlzados(doc, escala);
+
+                List<MarcasCad.Marcada> viejasAlz = MarcasCad.Buscar(doc, ms, MarcasCad.ClaveAlzado(id));
+
+                // Un alzado de una versión anterior: está su bloque pero no su marca.
+                var alzadoSinMarca = viejasAlz.Count == 0
+                    && (secciones.BloqueYaExiste("ALZ-" + id)
+                        || secciones.BloqueYaExiste("ALZX-" + id));
+
+                // Todo lo del alzado viejo: su bloque, sus cotas, su corte A-A' insertado y la
+                // línea de corte. Lo que la sección ya se llevó al rehacerse simplemente no
+                // está, y Borrar lo pasa por alto.
+                MarcasCad.Borrar(viejasAlz);
+
+                if (alzadoSinMarca)
+                {
+                    // Su bloque sí se puede quitar por nombre; sus cotas sueltas no.
+                    alzados.BorrarInsercionesDeAlzado(id);
+
+                    avisos.Add(
+                        $"El alzado de \"{id}\" se dibujó con una versión anterior, que no " +
+                        "marcaba sus cotas: el alzado nuevo ya está en su lugar y el bloque " +
+                        "viejo se quitó, pero sus cotas y rótulos VIEJOS siguen ahí. Bórralos " +
+                        "a mano; desde ahora quedan marcados y la próxima vez se van solos.");
+                }
+
+                // Su lugar es el que le da la TABLA, igual que a la sección: la fila de
+                // alzados también se dibuja en el orden de la hoja.
+                var x0 = XEnLaFilaDeAlzados(alzados, fila);
+
+                // Un alzado NUEVO a media tabla: su lugar ya lo ocupa el siguiente. Al final.
+                var nuevoAlzado = viejasAlz.Count == 0 && !alzadoSinMarca;
+                var ultimoConAlzado = _datos.SeccionesConcreto
+                    .LastOrDefault(s => TipoDe(s.Elemento, s.Id) is not null);
+
+                // Sin aviso aparte, a pedido del usuario: basta con que el resumen diga que el
+                // alzado se rehízo al final de la fila.
+                if (nuevoAlzado && !ReferenceEquals(ultimoConAlzado, fila))
+                {
+                    x0 = XEnLaFilaDeAlzados(alzados, null);
+                }
+
+                var antes = AcadConnection.Retry(() => (int)ms.Count);
+
+                var siguiente = alzados.DibujarElemento(AFormatoAlzado(fila), x0);
+
+                if (siguiente > x0)
+                {
+                    MarcasCad.Marcar(ms, antes, MarcasCad.ClaveAlzado(id), x0, alzados.UltimaYFila);
+                    hecho.Add(nuevoAlzado && !ReferenceEquals(ultimoConAlzado, fila)
+                        ? "su alzado, hasta el final de la fila"
+                        : "su alzado, en su lugar de la tabla");
+                }
+
+                fallos.AddRange(alzados.Fallos);
+            }
+
+            try
+            {
+                AcadConnection.Retry(() => { doc.Regen(1); });   // acAllViewports
+            }
+            catch (Exception)
+            {
+                // Sin regenerar, el dibujo ya está hecho: se ve al primer zoom.
+            }
+
+            StatusText.Text = $"Dibujado solo \"{id}\": " + string.Join(" y ", hecho) + ".";
+
+            var texto =
+                $"Listo: \"{id}\".\n\nSe rehízo " +
+                (hecho.Count == 0 ? "nada" : string.Join(" y ", hecho)) + "." +
+                (avisos.Count == 0 ? string.Empty : "\n\n" + string.Join("\n\n", avisos));
+
+            if (fallos.Count > 0)
+            {
+                var detalle = string.Join(Environment.NewLine, fallos.Select(f => "  - " + f));
+                MostrarNotas("AVISOS DEL ULTIMO DIBUJO (" + fallos.Count + "):" +
+                             Environment.NewLine + detalle);
+
+                texto += $"\n\nHubo {fallos.Count} fallo(s) que se toleraron:\n\n" + detalle;
+            }
+
+            MessageBox.Show(texto, AppInfo.ProductName, MessageBoxButton.OK,
+                fallos.Count == 0 && avisos.Count == 0
+                    ? MessageBoxImage.Information
+                    : MessageBoxImage.Warning);
+        }
+        catch (AcadNotAvailableException ex)
+        {
+            MessageBox.Show(ex.Message, AppInfo.ProductName,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (AcadBusyException ex)
+        {
+            MessageBox.Show(ex.Message, AppInfo.ProductName,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"No se pudo dibujar \"{id}\":\n\n" + ex.Message,
                 AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
@@ -1855,6 +2220,7 @@ public partial class MainWindow : Window
         DataGrid?[] hojas =
         {
             SeccionesGrid, AceroGrid, ZapatasCorridasGrid, ZapatasGrid, PlacasGrid, PlanosGrid,
+            MurosArmadosGrid, MurosCiclopeosGrid,
         };
 
         foreach (var hoja in hojas)
@@ -1980,16 +2346,25 @@ public partial class MainWindow : Window
             return;
         }
 
+        AbrirTrabajo(dialogo.FileName);
+    }
+
+    /// <summary>
+    /// Abre un trabajo por su ruta. Lo usa tambien el arranque: con doble clic en un .clk,
+    /// Windows abre CadLink con la ruta del archivo.
+    /// </summary>
+    public void AbrirTrabajo(string ruta)
+    {
         try
         {
-            AplicarProyecto(ArchivoProyecto.Leer(dialogo.FileName));
+            AplicarProyecto(ArchivoProyecto.Leer(ruta));
 
             // Se abrió OTRO trabajo: lo de antes ya no es «el último cambio».
             OlvidarHistorial();
 
-            _archivoActual = dialogo.FileName;
-            ArchivoText.Text = "Abierto: " + Path.GetFileName(dialogo.FileName);
-            StatusText.Text = $"Trabajo abierto: {Path.GetFileName(dialogo.FileName)}.";
+            _archivoActual = ruta;
+            ArchivoText.Text = "Abierto: " + Path.GetFileName(ruta);
+            StatusText.Text = $"Trabajo abierto: {Path.GetFileName(ruta)}.";
         }
         catch (Exception ex)
         {
@@ -2066,6 +2441,15 @@ public partial class MainWindow : Window
                 });
             }
 
+            foreach (var b in s.Bastones)
+            {
+                guardada.Bastones.Add(new BastonGuardado
+                {
+                    Posicion = b.Posicion, Ubicacion = b.Ubicacion,
+                    Cantidad = b.Cantidad, Diametro = b.Diametro, DistanciaM = b.DistanciaM
+                });
+            }
+
             p.Secciones.Add(guardada);
         }
 
@@ -2086,6 +2470,16 @@ public partial class MainWindow : Window
         foreach (var z in _datos.ZapatasCorridas)
         {
             p.ZapatasCorridas.Add(FilaSerializable.Leer(z));
+        }
+
+        foreach (var mu in _datos.MurosArmados)
+        {
+            p.MurosArmados.Add(FilaSerializable.Leer(mu));
+        }
+
+        foreach (var mu in _datos.MurosCiclopeos)
+        {
+            p.MurosCiclopeos.Add(FilaSerializable.Leer(mu));
         }
 
         // Y las placas base. Va aquí y no solo en el guardado del archivo porque la instantánea
@@ -2222,6 +2616,29 @@ public partial class MainWindow : Window
                     });
                 }
 
+                // Los bastones. Lo que no se reconozca toma el valor de siempre en lugar de
+                // tumbar la carga, igual que el resto de la fila.
+                foreach (var b in s.Bastones ?? new List<BastonGuardado>())
+                {
+                    // Uno arriba y otro abajo: el de «en medio» de versiones anteriores, o uno
+                    // repetido, se deja fuera.
+                    if (!BastonSeccion.Posiciones.Contains(b.Posicion)
+                        || fila.Bastones.Any(o => o.Posicion == b.Posicion))
+                    {
+                        continue;
+                    }
+
+                    fila.CargarBaston(new BastonSeccion
+                    {
+                        Posicion = b.Posicion,
+                        Ubicacion = BastonSeccion.Ubicaciones.Contains(b.Ubicacion)
+                            ? b.Ubicacion : BastonSeccion.TextoExtremos,
+                        Cantidad = b.Cantidad,
+                        Diametro = string.IsNullOrWhiteSpace(b.Diametro) ? "#4" : b.Diametro,
+                        DistanciaM = b.DistanciaM
+                    });
+                }
+
                 _datos.SeccionesConcreto.Add(fila);
             }
 
@@ -2253,6 +2670,25 @@ public partial class MainWindow : Window
                 var nueva = new ZapataCorridaRow();
                 FilaSerializable.Aplicar(nueva, fila);
                 _datos.ZapatasCorridas.Add(nueva);
+            }
+
+            // ---- Muros de contencion ----
+            _datos.MurosArmados.Clear();
+
+            foreach (var fila in p.MurosArmados ?? new List<FilaGuardada>())
+            {
+                var nueva = new MuroArmadoRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.MurosArmados.Add(nueva);
+            }
+
+            _datos.MurosCiclopeos.Clear();
+
+            foreach (var fila in p.MurosCiclopeos ?? new List<FilaGuardada>())
+            {
+                var nueva = new MuroCiclopeoRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.MurosCiclopeos.Add(nueva);
             }
 
             // ---- Placas Base ----
@@ -3821,6 +4257,11 @@ public partial class MainWindow : Window
 
             dibujante.AsegurarCapas(ClavesDeVarillaUsadas());
 
+            // Cada sección se marca al dibujarla: así sus cotas y rótulos, que van sueltos,
+            // se pueden encontrar y borrar al rehacerla. Ver MarcasCad.
+            MarcasCad.Registrar(doc);
+            dynamic ms = AcadConnection.Retry(() => doc.ModelSpace);
+
             // Se empieza después de lo que ya esté dibujado, para no encimarlo
             var x = dibujante.PosicionInicialX();
             var entidades = 0;
@@ -3831,7 +4272,26 @@ public partial class MainWindow : Window
             {
                 var saltadasAntes = dibujante.Saltadas.Count;
 
-                var n = dibujante.Dibujar(AFormatoCad(s), x, 0);
+                // Si se va a rehacer en su sitio, fuera sus cotas y rótulos viejos: antes se
+                // quedaban debajo de los nuevos, midiendo las medidas de antes. La inserción
+                // del bloque se deja, que el dibujante la necesita para saber a dónde volver.
+                if (dibujante.Redibujar && dibujante.BloqueYaExiste(s.Id))
+                {
+                    List<MarcasCad.Marcada> viejas =
+                        MarcasCad.Buscar(doc, ms, MarcasCad.ClaveSeccion(s.Id));
+                    MarcasCad.Borrar(viejas.Where(m => !MarcasCad.EsBloque(m.Entidad)));
+                }
+
+                // Con bastones, 20 cm más de aire ANTES de la sección: su llamada es larga y
+                // crece hacia la izquierda, encima de la sección anterior.
+                var xSec = x + AireExtraBastones(s);
+
+                var n = dibujante.Dibujar(AFormatoCad(s), xSec, 0);
+
+                if (dibujante.InicioUltima >= 0)
+                {
+                    MarcasCad.Marcar(ms, dibujante.InicioUltima, MarcasCad.ClaveSeccion(s.Id), xSec, 0);
+                }
 
                 // Igual que la macro: la seccion que ya es bloque se SALTA. Quien
                 // decide es el dibujante, no esta linea: aqui solo se detecta que
@@ -3854,7 +4314,7 @@ public partial class MainWindow : Window
                 // plano ya acomodado dejaria la fila llena de huecos.
                 if (!dibujante.UltimaFueASuSitio)
                 {
-                    x += (s.BaseCm + 35) * escala;
+                    x = xSec + ((s.BaseCm + 35) * escala);
                 }
             }
 
@@ -4024,6 +4484,12 @@ public partial class MainWindow : Window
             {
                 yield return Varilla.Normalizar(g.Diametro);
             }
+
+            // Los bastones, para que su capa de varilla exista con su color.
+            foreach (var b in s.Bastones)
+            {
+                yield return Varilla.Normalizar(b.Diametro);
+            }
         }
     }
 
@@ -4103,9 +4569,108 @@ public partial class MainWindow : Window
             // de CAD justamente para que no haya que traducirlas y no puedan divergir.
             Grapas = r.Grapas
                 .Select(g => new GrapaCad { A = g.A, B = g.B, Var = V(g.Diametro) })
-                .ToList()
+                .ToList(),
+
+            // ---------- Bastones ----------
+            // Solo los que CRUZA el corte A-A', que es lo que se ve en la sección. El corte
+            // está donde lo pone el alzado, así que la longitud sale del mismo cálculo.
+            BastonesEnCorte = LlevaBastones(r)
+                ? CadLink.Cad.Bastones.EnElCorte(
+                    BastonesCad(r), AlzadoDrawer.LargoDe(AFormatoAlzado(r)), MargenBastonesM(r))
+                : new List<BastonCad>()
         };
     }
+
+    /// <summary>
+    /// Que cada bastón se pueda dibujar: varillas, diámetro reconocido y una distancia que
+    /// quepa en la trabe.
+    /// </summary>
+    private void RevisarBastones(List<string> problemas, string etiqueta, SeccionConcretoRow s)
+    {
+        var largo = AlzadoDrawer.LargoDe(AFormatoAlzado(s));
+        var n = 0;
+
+        // Dos como mucho: uno arriba y otro abajo.
+        foreach (var g in s.Bastones.GroupBy(b => b.Posicion).Where(g => g.Count() > 1))
+        {
+            problemas.Add(
+                $"• {etiqueta}: lleva {g.Count()} bastones «{g.Key}». Va uno por posición " +
+                "(arriba y abajo).");
+        }
+
+        foreach (var b in s.Bastones)
+        {
+            n++;
+            var ubic = BastonSeccion.UbicacionTexto(b.Posicion, EsContratrabe(s));
+            var cual = $"• {etiqueta}: el bastón {n} ({b.Posicion.ToLowerInvariant()}, {ubic.ToLowerInvariant()})";
+
+            if (b.Cantidad <= 0)
+            {
+                problemas.Add($"{cual} no tiene varillas.");
+            }
+
+            if (!Varilla.TryDiametroCm(b.Diametro, out _))
+            {
+                problemas.Add($"{cual} tiene un diámetro que no reconozco: «{b.Diametro}».");
+            }
+
+            if (b.DistanciaM <= 0)
+            {
+                problemas.Add($"{cual} necesita una longitud mayor que cero.");
+            }
+            else if (ubic == BastonSeccion.TextoCentro && b.DistanciaM >= largo)
+            {
+                problemas.Add(
+                    $"{cual} mide {b.DistanciaM:0.##} m y la trabe {largo:0.##} m: no cabe.");
+            }
+            else if (ubic == BastonSeccion.TextoExtremos && 2 * b.DistanciaM > largo)
+            {
+                problemas.Add(
+                    $"{cual} mide {b.DistanciaM:0.##} m en cada extremo y la trabe " +
+                    $"{largo:0.##} m: los dos se enciman al centro.");
+            }
+        }
+    }
+
+    /// <summary>Los bastones de la fila listos para dibujar, con la regla de su tipo.</summary>
+    private static List<BastonCad> BastonesCad(SeccionConcretoRow r) =>
+        CadLink.Cad.Bastones.Normalizar(r.Bastones.Select(b => b.ACad()), EsContratrabe(r));
+
+    /// <summary>
+    /// Desde dónde arrancan los bastones de extremo, en metros desde el paño: recubrimiento
+    /// más el gancho de la corrida y su holgura. Es el que usa AutoCAD; aquí sirve para saber
+    /// qué bastones cruza el corte sin dibujar el alzado.
+    /// </summary>
+    private static double MargenBastonesM(SeccionConcretoRow r)
+    {
+        var rec = (r.RecubrimientoCm > 0 ? r.RecubrimientoCm : 2.5) / 100.0;
+
+        if (r.GanchoCm <= 0)
+        {
+            return rec;
+        }
+
+        var dSup = Varilla.TryDiametroCm(r.DiamEsqSup, out var a) ? a : 0.95;
+        var dInf = Varilla.TryDiametroCm(r.DiamEsqInfEfectivo, out var b) ? b : 0.95;
+
+        return rec + (Math.Max(dSup, dInf) / 100.0) + 0.015;
+    }
+
+    private static bool EsContratrabe(SeccionConcretoRow r) =>
+        TipoDe(r.Elemento, r.Id) == TipoElemento.Contratrabe;
+
+    /// <summary>
+    /// El aire de más que lleva una sección cuyo corte muestra bastones: <b>0.2</b> sobre la
+    /// separación de siempre. Su llamada «2 Var. (Bastones) #4C» es más larga que las de las
+    /// varillas y chocaba con la sección de al lado. Las que no muestran bastones no cambian.
+    /// </summary>
+    private double AireExtraBastones(SeccionConcretoRow s) =>
+        LlevaBastones(s) && AFormatoCad(s).BastonesEnCorte.Count > 0 ? 0.2 : 0;
+
+    /// <summary>Solo las trabes y las contratrabes llevan bastones.</summary>
+    private static bool LlevaBastones(SeccionConcretoRow r) =>
+        TipoDe(r.Elemento, r.Id) is TipoElemento.Trabe or TipoElemento.Contratrabe
+        && !r.EsCircular;
 
     /// <summary>Convierte una fila de la tabla en datos de alzado.</summary>
     private AlzadoCad AFormatoAlzado(SeccionConcretoRow r)
@@ -4172,7 +4737,11 @@ public partial class MainWindow : Window
             Circular = r.EsCircular,
             NVarTotal = r.NVarTotal,
             VarTotal = V(r.DiamVarTotalEfectivo),
-            ZunchoHelicoidal = r.EsZunchoHelicoidal
+            ZunchoHelicoidal = r.EsZunchoHelicoidal,
+
+            Bastones = LlevaBastones(r)
+                ? BastonesCad(r)
+                : new List<BastonCad>()
         };
     }
 
@@ -4347,6 +4916,11 @@ public partial class MainWindow : Window
             }
 
             RevisarDiametro(problemas, etiqueta, "estribo", s.Estribo, obligatorio: true);
+
+            if (LlevaBastones(s))
+            {
+                RevisarBastones(problemas, etiqueta, s);
+            }
 
             if (s.EsCircular)
             {
@@ -4795,6 +5369,11 @@ public partial class MainWindow : Window
                     negro,
                     radioExtPx));
             }
+            else if (EstriboConGanchoComoAutoCad(s, de, rec, escala, PX, PY,
+                         conFondoSolido ? negro : gris))
+            {
+                // Ya está: la esquina del gancho va como en AutoCAD. Ver el método.
+            }
             else
             {
                 var trazo = conFondoSolido ? negro : gris;
@@ -4817,7 +5396,8 @@ public partial class MainWindow : Window
         // Va antes de los lechos para que la varilla de la esquina quede ENCIMA de su
         // doblez, igual que en AutoCAD: el gancho se dobla alrededor de esa varilla, así
         // que la varilla tapa la parte del doblez que le pasa por debajo.
-        DibujarGanchoPrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris);
+        DibujarGanchoPrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris,
+            conFondoSolido);
 
         var varillas = TodasLasVarillas(s, de, rec);
 
@@ -4833,6 +5413,14 @@ public partial class MainWindow : Window
         foreach (var (x, y, r) in PosicionesLaterales(s, de, rec))
         {
             Barra(PX(x), PY(y), r * escala);
+        }
+
+        // LOS BASTONES QUE CRUZA EL CORTE A-A': arriba, abajo o los dos, según lo que pase
+        // por la línea de corte. Mismas posiciones que en AutoCAD
+        // (SeccionDrawer.PosicionesDeBastones), en verde tenue como en el alzado.
+        foreach (var (x, y, r) in PosicionesDeBastonesPrevia(s, de, rec))
+        {
+            Barra(PX(x), PY(y), r * escala, baston: true);
         }
 
         // EL ESTRIBO DIAMANTE, encima de las varillas.
@@ -5386,6 +5974,11 @@ public partial class MainWindow : Window
     /// </remarks>
     private void DibujarAlzadoPrevio(SeccionConcretoRow s, double izquierda, double alto)
     {
+        // Se olvida dónde estaba el alzado anterior: si este no se dibuja, un clic no debe
+        // poner bastones en un alzado que ya no está.
+        _alzadoPrevio = null;
+        _bastonesEnPrevia.Clear();
+
         // Mismo filtro que al dibujar: si este elemento no lleva alzado, la vista
         // previa lo dice en lugar de mostrar uno que nunca se va a generar.
         if (TipoDe(s.Elemento, s.Id) is null)
@@ -5419,7 +6012,15 @@ public partial class MainWindow : Window
         // limita si de verdad no cabe de alto. Antes el tope era 0.55 del alto y en un
         // elemento de poco peralte era ESE tope el que mandaba, así que el alzado
         // salía corto y apretado con media pantalla vacía a la derecha.
-        var esc = Math.Min(anchoDisp / largo, (alto * 0.92) / peralteM);
+        // Sitio ARRIBA para las cotas de los bastones: una fila de 22 px por bastón, por
+        // encima del título. Se reserva lo mismo abajo para que el alzado siga centrado.
+        var nBastones = !a.EsVertical
+            ? a.Bastones.Select(b => b.Posicion).Distinct().Count()
+            : 0;
+        var reservaBastones = nBastones * FilaCotaBastonPx;
+
+        var esc = Math.Min(anchoDisp / largo,
+            Math.Max((alto * 0.92) - (2 * reservaBastones), alto * 0.3) / peralteM);
         if (esc <= 0 || double.IsInfinity(esc))
         {
             return;
@@ -5428,6 +6029,13 @@ public partial class MainWindow : Window
         var w = largo * esc;
         var h = peralteM * esc;
         var top = (alto - h) / 2;
+
+        // Para los clics: dónde quedó el alzado, a qué escala y de qué fila. Solo en las
+        // piezas que llevan bastones.
+        if (!a.EsVertical && LlevaBastones(s))
+        {
+            _alzadoPrevio = new AlzadoEnPrevia(s, izquierda, top, w, h, esc, largo);
+        }
 
         // El alzado se dibuja SIEMPRE plano, también con el botón en 3D.
         //
@@ -5459,6 +6067,12 @@ public partial class MainWindow : Window
             a.SeparacionesCm[0] / 100, a.SeparacionesCm[1] / 100, a.SeparacionesCm[2] / 100,
             vertical: a.EsVertical,
             esColumna: a.Tipo == TipoElemento.Columna);
+
+        // Con bastones, un estribo menos al inicio y al final, como en AutoCAD.
+        if (!a.EsVertical && a.Bastones.Any(CadLink.Cad.Bastones.EsValido))
+        {
+            CadLink.Cad.Bastones.QuitarEstribosExtremos(centros);
+        }
 
         var brochaEst = new SolidColorBrush(Color.FromRgb(0x1F, 0x6F, 0xB2));
 
@@ -5524,14 +6138,21 @@ public partial class MainWindow : Window
         // el usuario está ajustando en la casilla— era justo lo único que no se veía.
         var ganchoM = a.GanchoCm / 100.0;
 
-        void BarraDeAlzado(double yCentro, double dCm, bool dobleHaciaAbajo, double disponibleM)
+        // xDesde/xHasta y los ganchos por punta son para los BASTONES: así se pintan con
+        // esta misma rutina, igual que las corridas, y no con una raya aparte.
+        void BarraDeAlzado(double yCentro, double dCm, bool dobleHaciaAbajo, double disponibleM,
+            double? xDesde = null, double? xHasta = null,
+            bool ganchoIzq = true, bool ganchoDer = true,
+            double factorGancho = 15, Color? tono = null, bool rellenar = false)
         {
             var dM = dCm / 100.0;
             var grosor = Math.Max(dM * esc, 1.4);
-            var verde = new SolidColorBrush(Color.FromRgb(0x1D, 0x8A, 0x4E));
+            // Los bastones van en un verde TENUE, para distinguirlos de las corridas aquí. En
+            // AutoCAD no: allí van en la capa de su diámetro, como cualquier varilla.
+            var verde = new SolidColorBrush(tono ?? Color.FromRgb(0x1D, 0x8A, 0x4E));
 
-            var xIni = izquierda + rec;
-            var xFin = izquierda + w - rec;
+            var xIni = xDesde ?? izquierda + rec;
+            var xFin = xHasta ?? izquierda + w - rec;
 
             // ===== UNA SOLA POLILINEA, CON LAS UNIONES REDONDEADAS =====
             //
@@ -5571,11 +6192,12 @@ public partial class MainWindow : Window
             // leía como una sola varilla doblada de arriba abajo. El tope deja siempre un
             // hueco entre las dos puntas —disponibleM ya viene descontado en el
             // llamador—, para que se vea que son dos piezas distintas.
-            var gM = Math.Min(15 * dM, disponibleM);
+            // 15 diámetros en las corridas; 12 del propio bastón en los bastones.
+            var gM = Math.Min(factorGancho * dM, disponibleM);
 
-            if (gM < dM)
+            if (gM < dM || (!ganchoIzq && !ganchoDer))
             {
-                gM = 0;   // no cabe ni un diámetro: no hay gancho que dibujar
+                gM = 0;   // no cabe ni un diámetro, o no lleva: no hay gancho que dibujar
             }
 
             if (gM > 0)
@@ -5606,10 +6228,10 @@ public partial class MainWindow : Window
                 {
                     // Sin sitio para el doblez se deja en pico: es mejor que un arco que
                     // se dobla sobre sí mismo.
-                    trazo.Add(new Point(xIni, yCentro + g));
+                    if (ganchoIzq) { trazo.Add(new Point(xIni, yCentro + g)); }
                     trazo.Add(new Point(xIni, yCentro));
                     trazo.Add(new Point(xFin, yCentro));
-                    trazo.Add(new Point(xFin, yCentro + g));
+                    if (ganchoDer) { trazo.Add(new Point(xFin, yCentro + g)); }
                 }
                 else
                 {
@@ -5617,16 +6239,30 @@ public partial class MainWindow : Window
 
                     // La punta de la cola de la izquierda, y el doblez que la entrega al
                     // tramo recto.
-                    trazo.Add(new Point(xIni, yCentro + g));
+                    if (ganchoIzq)
+                    {
+                        trazo.Add(new Point(xIni, yCentro + g));
 
-                    Doblez(xIni + radio, yCentro + (s * radio), radio,
-                           pi, pi + (s * pi / 2));
+                        Doblez(xIni + radio, yCentro + (s * radio), radio,
+                               pi, pi + (s * pi / 2));
+                    }
+                    else
+                    {
+                        trazo.Add(new Point(xIni, yCentro));
+                    }
 
                     // El tramo recto lo pone el propio doblez de la derecha.
-                    Doblez(xFin - radio, yCentro + (s * radio), radio,
-                           (2 * pi) - (s * pi / 2), 2 * pi);
+                    if (ganchoDer)
+                    {
+                        Doblez(xFin - radio, yCentro + (s * radio), radio,
+                               (2 * pi) - (s * pi / 2), 2 * pi);
 
-                    trazo.Add(new Point(xFin, yCentro + g));
+                        trazo.Add(new Point(xFin, yCentro + g));
+                    }
+                    else
+                    {
+                        trazo.Add(new Point(xFin, yCentro));
+                    }
                 }
             }
             else
@@ -5684,7 +6320,9 @@ public partial class MainWindow : Window
 
             // El RELLENO, en el tipo 2, va entero y sin cortar: en AutoCAD el achurado de
             // la varilla es continuo y lo que se corta son sus caras.
-            if (a.Modo == ModoSeccion.Tipo2Rellena)
+            // Los BASTONES van rellenos siempre, con su verde tenue: así se leen como una
+            // pieza aparte y no como una línea más.
+            if (a.Modo == ModoSeccion.Tipo2Rellena || rellenar)
             {
                 PreviaFijaCanvas.Children.Add(new FormaPath
                 {
@@ -5812,8 +6450,197 @@ public partial class MainWindow : Window
                 disponibleM: 0);
         }
 
+        // ---------- Los bastones ----------
+        //
+        // Con la MISMA rutina que las corridas —BarraDeAlzado— pero en verde tenue, para que
+        // aquí se distingan. A las mismas alturas y con los mismos tramos que AutoCAD
+        // (CadLink.Cad.Bastones): LONGITUD REAL, los de extremo pegados afuera pasado el
+        // gancho de la corrida, el del centro centrado. Gancho como el de la corrida.
+        if (!a.EsVertical && a.Bastones.Count > 0)
+        {
+            var sepCama = CadLink.Cad.Bastones.SeparacionCamaCm / 100.0 * esc;
+            var caraSup = top + rec + (dSupCm / 100.0 * esc);       // cara de dentro del lecho de arriba
+            var caraInf = top + h - rec - (dInfCm / 100.0 * esc);   // y del de abajo
+            var usadas = new HashSet<PosicionBaston>();
+            var filaCota = 0;
+            // Verde MUY tenue, casi blanco: que se distinga de las corridas sin competir con
+            // ellas. Solo en el alzado; en la sección se quedan como están.
+            var verdeTenue = Color.FromRgb(0xB9, 0xE0, 0xC8);
+
+            // El ancho del gancho de las corridas, en píxeles: el bastón arranca pasado él y
+            // una holgura, para que su doblez quede ANTES, por dentro, y no encima.
+            var hayGanchoCorrida = ganchoM > 0;
+            var anchoGanchoSup = Math.Max(dSupCm / 100.0 * esc, 1.4);
+            var anchoGanchoInf = Math.Max(dInfCm / 100.0 * esc, 1.4);
+            var holguraPx = Math.Max(0.015 * esc, 2);
+
+            // El margen de cada extremo, en metros: recubrimiento más el gancho de la corrida.
+            // Pasados los DOS ganchos de las corridas, como en AutoCAD: el del bastón baja casi
+            // todo el peralte y chocaba con el de la corrida del otro lecho.
+            double MargenM(PosicionBaston pos) =>
+                (rec + (!hayGanchoCorrida
+                    ? 0
+                    : holguraPx + Math.Max(anchoGanchoSup, anchoGanchoInf))) / esc;
+
+            double YDe(PosicionBaston pos, double dPx) => pos switch
+            {
+                PosicionBaston.Superior => caraSup + sepCama + (dPx / 2),
+                PosicionBaston.Inferior => caraInf - sepCama - (dPx / 2),
+                _ => CadLink.Cad.Bastones.YMedio(caraInf, caraSup, a.NLateral)
+            };
+
+            var puestos = new Dictionary<PosicionBaston, (BastonCad B, double Y, double D, double M)>();
+            foreach (var bp in a.Bastones)
+            {
+                var m = MargenM(bp.Posicion);
+                if (!puestos.ContainsKey(bp.Posicion) && CadLink.Cad.Bastones.Tramos(bp, largo, m).Count > 0)
+                {
+                    var dPx = bp.Var.Cm / 100.0 * esc;
+                    puestos[bp.Posicion] = (bp, YDe(bp.Posicion, dPx), dPx, m);
+                }
+            }
+
+            var holguraGancho = 0.01 * esc;
+
+            for (var iB = 0; iB < a.Bastones.Count; iB++)
+            {
+                var b = a.Bastones[iB];
+                var margen = MargenM(b.Posicion);
+                var tramos = CadLink.Cad.Bastones.Tramos(b, largo, margen);
+
+                if (tramos.Count == 0 || !usadas.Add(b.Posicion))
+                {
+                    continue;
+                }
+
+                var dB = b.Var.Cm / 100.0 * esc;
+                var yB = YDe(b.Posicion, dB);
+                var arriba = b.Posicion == PosicionBaston.Superior;
+
+                // Lo que puede bajar (o subir) el gancho en la punta xG, en metros.
+                double DisponibleEn(double xGm)
+                {
+                    if (b.Posicion == PosicionBaston.Medio)
+                    {
+                        return 0;
+                    }
+
+                    var cara = arriba ? yB + (dB / 2) : yB - (dB / 2);
+                    var tol = (dB / esc) + 0.015;
+
+                    double? Hasta(PosicionBaston otra, out bool conGancho)
+                    {
+                        conGancho = false;
+
+                        if (!puestos.TryGetValue(otra, out var o)
+                            || !CadLink.Cad.Bastones.PasaPor(o.B, largo, xGm, tol, o.M))
+                        {
+                            return null;
+                        }
+
+                        conGancho = CadLink.Cad.Bastones.GanchoEn(o.B, largo, o.M, xGm, tol);
+                        return arriba ? (o.Y - (o.D / 2)) - cara : cara - (o.Y + (o.D / 2));
+                    }
+
+                    var opuesto = Hasta(
+                        arriba ? PosicionBaston.Inferior : PosicionBaston.Superior, out var conG);
+
+                    var libre = CadLink.Cad.Bastones.LibreParaGancho(
+                        arriba ? caraInf - cara : cara - caraSup,
+                        Hasta(PosicionBaston.Medio, out _), opuesto, holguraGancho, conG);
+
+                    return libre / esc;
+                }
+
+                // La fila de su cota, arriba del alzado y por encima del título.
+                var yCota = top - 26 - (filaCota * FilaCotaBastonPx);
+                filaCota++;
+
+                foreach (var t in tramos)
+                {
+                    var xIni = izquierda + (t.Ini * esc);
+                    var xFin = izquierda + (t.Fin * esc);
+
+                    if (xFin <= xIni + 1)
+                    {
+                        continue;
+                    }
+
+                    // Su caja, para que un clic encima lo quite.
+                    _bastonesEnPrevia.Add((new Rect(xIni, yB - 5, xFin - xIni, 10), iB));
+
+                    // Un largo de gancho para toda la varilla: el menor de sus dos puntas.
+                    var disponibleM = double.MaxValue;
+                    if (t.GanchoIzq) { disponibleM = Math.Min(disponibleM, DisponibleEn(t.Ini)); }
+                    if (t.GanchoDer) { disponibleM = Math.Min(disponibleM, DisponibleEn(t.Fin)); }
+                    if (disponibleM == double.MaxValue) { disponibleM = 0; }
+
+                    BarraDeAlzado(yB, b.Var.Cm, dobleHaciaAbajo: arriba, disponibleM,
+                        xDesde: xIni, xHasta: xFin,
+                        ganchoIzq: t.GanchoIzq, ganchoDer: t.GanchoDer,
+                        factorGancho: CadLink.Cad.Bastones.GanchoDiametros, tono: verdeTenue,
+                        rellenar: true);
+
+                    // LA COTA del tramo, con su LONGITUD REAL, como en AutoCAD.
+                    CotaDeBastonPrevia(xIni, xFin, yCota, top,
+                        CadLink.Cad.Bastones.Texto(b) + $"  L = {t.Largo:0.00} m");
+                }
+            }
+        }
+
         // Y AHORA los estribos, encima de las varillas.
         DibujarEstribosDelAlzado();
+
+        // ---------- El corte A-A' ----------
+        //
+        // El MISMO símbolo que pone AutoCAD —AlzadoLayout.Extremo— en el mismo sitio, L/4 +
+        // 5 cm. Aquí el alzado va siempre tendido, así que la línea es vertical: A arriba y
+        // A' abajo, con la flecha mirando a la izquierda y el triángulo del otro lado.
+        //
+        // El símbolo va en píxeles fijos (PxCorte por unidad de dibujo) y no a la escala de
+        // la pieza: en una trabe larga saldría de un píxel.
+        {
+            const double PxCorte = 300;
+            var xCorte = izquierda + (AlzadoLayout.PosicionCorte(largo) * esc);
+            var salidaPx = AlzadoLayout.SalidaCorte * PxCorte;
+            var tinta = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x33));
+
+            // (s, t) -> píxeles: s es la Y del lienzo y t la X, negativa hacia la izquierda.
+            Polyline Trazo(double[] st, bool cerrar)
+            {
+                var pl = new Polyline { Stroke = tinta, StrokeThickness = 1.1 };
+                for (var i = 0; i < st.Length; i += 2)
+                {
+                    pl.Points.Add(new Point(xCorte + st[i + 1], st[i]));
+                }
+
+                if (cerrar && st.Length >= 2)
+                {
+                    pl.Points.Add(new Point(xCorte + st[1], st[0]));
+                }
+
+                return pl;
+            }
+
+            var yIni = top - salidaPx;
+            var yFin = top + h + salidaPx;
+
+            PreviaFijaCanvas.Children.Add(Trazo(new[] { yIni, 0d, yFin, 0d }, false));
+
+            // El lienzo crece hacia abajo: la punta de arriba tiene la pieza hacia +s.
+            foreach (var (letra, punta, dentro) in new[] { ("A", yIni, +1), ("A'", yFin, -1) })
+            {
+                var e = AlzadoLayout.Extremo(punta, dentro, PxCorte);
+
+                PreviaFijaCanvas.Children.Add(Trazo(e.Raya, false));
+                PreviaFijaCanvas.Children.Add(Trazo(e.Punta, false));
+                PreviaFijaCanvas.Children.Add(Trazo(e.Triangulo, true));
+
+                // La letra detrás de la flecha, a su izquierda y a la altura de la raya.
+                Etiqueta(PreviaFijaCanvas, letra,
+                    xCorte + e.TLetra - (letra.Length * 7), e.SLetra - 8);
+            }
+        }
 
         Etiqueta(PreviaFijaCanvas, $"ALZADO  {a.TipoTexto}  {a.Id}", izquierda, top - 20);
 
@@ -5821,10 +6648,51 @@ public partial class MainWindow : Window
             ? $"   ·   gancho {a.GanchoCm:N0} cm"
             : "   ·   sin gancho";
 
+        // Baja un renglón para dejarle sitio a la A' del corte, que cuelga de la cara de abajo.
         Etiqueta(PreviaFijaCanvas, $"L = {largo:N2} m   ·   {centros.Count} estribos   ·   " +
                  $"{a.SeparacionesCm[0]:N0}-{a.SeparacionesCm[1]:N0}-{a.SeparacionesCm[2]:N0} cm" +
                  textoGancho,
-            izquierda, top + h + 8);
+            izquierda, top + h + 24);
+    }
+
+    /// <summary>Alto de cada fila de cotas de bastones en la vista previa.</summary>
+    private const double FilaCotaBastonPx = 22;
+
+    /// <summary>
+    /// Una cota de bastón en la vista previa: línea de cota con remates oblicuos, líneas de
+    /// extensión hasta la cara del alzado, y el texto centrado encima.
+    /// </summary>
+    private void CotaDeBastonPrevia(double x1, double x2, double y, double yCara, string texto)
+    {
+        var tinta = new SolidColorBrush(Color.FromRgb(0x5A, 0x64, 0x6E));
+
+        void L(double xa, double ya, double xb, double yb) =>
+            PreviaFijaCanvas.Children.Add(new Line
+            {
+                X1 = xa, Y1 = ya, X2 = xb, Y2 = yb, Stroke = tinta, StrokeThickness = 0.8
+            });
+
+        L(x1, y, x2, y);
+        L(x1, y - 3, x1, yCara);
+        L(x2, y - 3, x2, yCara);
+        L(x1 - 3, y + 3, x1 + 3, y - 3);
+        L(x2 - 3, y + 3, x2 + 3, y - 3);
+
+        var t = new TextBlock
+        {
+            Text = texto,
+            FontSize = 9.5,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x33))
+        };
+
+        // Centrado sobre la línea; si el tramo es más corto que el texto, arranca en él.
+        t.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var ancho = t.DesiredSize.Width;
+        var left = ancho < (x2 - x1) ? ((x1 + x2) / 2) - (ancho / 2) : x1;
+
+        Canvas.SetLeft(t, left);
+        Canvas.SetTop(t, y - 14);
+        PreviaFijaCanvas.Children.Add(t);
     }
 
     private void DibujarLecho(
@@ -6244,9 +7112,126 @@ public partial class MainWindow : Window
     /// gancho apunta para el otro lado.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// El contorno del estribo con su gancho <b>como lo dibuja AutoCAD</b>: la misma
+    /// cuenta de <c>SeccionDrawer.EstriboExterior</c> y <c>EstriboInterior</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En la esquina del gancho el estribo <b>no lleva su redondeo</b>: el doblez es el arco
+    /// del gancho, con centro en la varilla de la esquina —de 315° a 90° la cara de fuera y
+    /// de 315° a 135° la de dentro—, y la cara de dentro del costado derecho se recorta
+    /// donde la cruza la cola. Las colas las pone <see cref="DibujarGanchoPrevio"/>.
+    /// </para>
+    /// <para>
+    /// Antes se dibujaban dos rectángulos redondeados completos y encima los arcos del
+    /// gancho: en la esquina salían dos dobleces, uno encima del otro.
+    /// </para>
+    /// </remarks>
+    /// <returns><c>false</c> si no aplica —sin gancho, o con paquete—, y entonces el estribo
+    /// se dibuja como siempre.</returns>
+    private bool EstriboConGanchoComoAutoCad(
+        SeccionConcretoRow s, double de, double rec, double escala,
+        Func<double, double> px, Func<double, double> py, Brush trazo)
+    {
+        if (s.GanchoCm <= 0 || de <= 0 || PaqueteVarillas.EsPaquete(s.NEsqSup))
+        {
+            return false;
+        }
+
+        // Los mismos diámetros que el dibujante: sin varilla, el del estribo.
+        var dSup = Varilla.TryDiametroCm(s.DiamEsqSup, out var a) && a > 0 ? a : de;
+        var dInf = Varilla.TryDiametroCm(s.DiamEsqInfEfectivo, out var b) && b > 0 ? b : de;
+
+        var B = s.BaseCm;
+        var H = s.AlturaCm;
+
+        if (rec <= 0 || 2 * (rec + de) >= B || 2 * (rec + de) >= H)
+        {
+            return false;
+        }
+
+        var pi = Math.PI;
+
+        void Trazo(IEnumerable<Point> puntos) =>
+            PreviewCanvas.Children.Add(new Polyline
+            {
+                Points = new PointCollection(puntos),
+                Stroke = trazo,
+                StrokeThickness = LineaAcero,
+                StrokeLineJoin = PenLineJoin.Round
+            });
+
+        // Un arco en cm, muestreado, en el sentido de a0 a a1.
+        IEnumerable<Point> Arco(double cx, double cy, double rr, double a0, double a1)
+        {
+            for (var k = 0; k <= 16; k++)
+            {
+                var t = a0 + ((a1 - a0) * k / 16.0);
+                yield return new Point(px(cx + (rr * Math.Cos(t))), py(cy + (rr * Math.Sin(t))));
+            }
+        }
+
+        Point P(double x, double y) => new(px(x), py(y));
+
+        // ---------- La cara de FUERA ----------
+        {
+            var rfS = de + (dSup / 2);
+            var rfI = de + (dInf / 2);
+            double x1 = rec, y1 = rec, x2 = B - rec, y2 = H - rec;
+
+            var pts = new List<Point>();
+            pts.AddRange(Arco(x2 - rfS, y2 - rfS, rfS, 1.75 * pi, 2.5 * pi));    // el doblez del gancho, 315° a 90°
+            pts.Add(P(x1 + rfS, y2));
+            pts.AddRange(Arco(x1 + rfS, y2 - rfS, rfS, 0.5 * pi, pi));
+            pts.Add(P(x1, y1 + rfI));
+            pts.AddRange(Arco(x1 + rfI, y1 + rfI, rfI, pi, 1.5 * pi));
+            pts.Add(P(x2 - rfI, y1));
+            pts.AddRange(Arco(x2 - rfI, y1 + rfI, rfI, 1.5 * pi, 2 * pi));
+            pts.Add(P(x2, y2 - rfS));
+            Trazo(pts);
+        }
+
+        // ---------- La cara de DENTRO ----------
+        {
+            var rS = dSup / 2;
+            var rI = dInf / 2;
+            double x1 = rec + de, y1 = rec + de, x2 = B - rec - de, y2 = H - rec - de;
+
+            // El costado derecho se recorta donde lo cruza la cola: misma condición que
+            // EstriboInterior.
+            var yFinDer = y2 - rS;
+            var rOut = rS + de;
+            var tCruce = rOut - (Math.Sqrt(2) * rS);
+
+            if (tCruce >= 0 && tCruce <= s.GanchoCm)
+            {
+                var yTrim = y2 - (Math.Sqrt(2) * rOut);
+                if (yTrim > y1 + rI)
+                {
+                    yFinDer = yTrim;
+                }
+            }
+
+            // El doblez del gancho, 315° a 135°, alrededor de la varilla.
+            Trazo(Arco(x2 - rS, y2 - rS, rS, 1.75 * pi, 2.75 * pi));
+
+            var pts = new List<Point> { P(x2, yFinDer), P(x2, y1 + rI) };
+            pts.AddRange(Arco(x2 - rI, y1 + rI, rI, 2 * pi, 1.5 * pi));
+            pts.Add(P(x1 + rI, y1));
+            pts.AddRange(Arco(x1 + rI, y1 + rI, rI, 1.5 * pi, pi));
+            pts.Add(P(x1, y2 - rS));
+            pts.AddRange(Arco(x1 + rS, y2 - rS, rS, pi, 0.5 * pi));
+            pts.Add(P(x2 - rS, y2));
+            Trazo(pts);
+        }
+
+        return true;
+    }
+
     private void DibujarGanchoPrevio(
         SeccionConcretoRow s, double dEst, double rec, double escala,
-        Func<double, double> px, Func<double, double> py, Brush trazo)
+        Func<double, double> px, Func<double, double> py, Brush trazo, bool conFondoSolido = false)
     {
         // Sin gancho no hay nada que dibujar, y sin estribo tampoco: el doblez se apoya en
         // el espesor del estribo.
@@ -6406,10 +7391,16 @@ public partial class MainWindow : Window
 
         // ---------- Sin paquete: el gancho de siempre, de 180° en la esquina ----------
 
-        // Media vuelta, de 315° a 135°, pasando por la esquina. Es el sector del dibujante:
-        // sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi }).
-        ArcoDoblez(bx, by, rIn, 1.75 * Math.PI, Math.PI);
-        ArcoDoblez(bx, by, rOut, 1.75 * Math.PI, Math.PI);
+        // Los ARCOS DEL DOBLEZ ya los pone el contorno del estribo
+        // (EstriboConGanchoComoAutoCad), igual que en AutoCAD, donde salen de
+        // EstriboExterior/Interior y Ganchos solo añade las colas. Dibujarlos también aquí
+        // los duplicaba: era el doble arco que se veía en la esquina. Solo se dibujan si el
+        // estribo va como anillo relleno, que no los trae.
+        if (conFondoSolido)
+        {
+            ArcoDoblez(bx, by, rIn, 1.75 * Math.PI, Math.PI);
+            ArcoDoblez(bx, by, rOut, 1.75 * Math.PI, Math.PI);
+        }
 
         // Las dos colas, hacia el núcleo. rt2I es cos(45°): la dirección es 225°.
         const double ux = -rt2I;
@@ -6434,17 +7425,21 @@ public partial class MainWindow : Window
             var poX = bx + (rOut * nx);
             var poY = by + (rOut * ny);
 
+            // LAS PUNTAS SE CALCULAN ANTES DEL RECORTE, como en SeccionDrawer.Cola. Antes se
+            // calculaban después, desde el arranque ya recortado, así que la cara de fuera
+            // terminaba más lejos que la de dentro y la punta salía en diagonal en lugar de
+            // cerrar la cola en escuadra.
+            var qiX = piX + (largo * ux);
+            var qiY = piY + (largo * uy);
+            var qoX = poX + (largo * ux);
+            var qoY = poY + (largo * uy);
+
             // La cola recortada arranca donde la cruza el estribo, no en la perpendicular.
             if (recorta)
             {
                 poX = bx + rIn - (Math.Sqrt(2) * rOut);
                 poY = by + rIn;
             }
-
-            var qiX = piX + (largo * ux);
-            var qiY = piY + (largo * uy);
-            var qoX = poX + (largo * ux);
-            var qoY = poY + (largo * uy);
 
             // Las TRES líneas de la cola: interior, exterior y la punta que las cierra.
             foreach (var (ax, ay, bx2, by2) in new[]
@@ -6465,15 +7460,81 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Barra(double cx, double cy, double radio)
+    /// <summary>
+    /// Dónde van, en <b>centímetros</b> desde la esquina de abajo, las varillas de los
+    /// bastones que cruza el corte. Es la cuenta de <c>SeccionDrawer.PosicionesDeBastones</c>.
+    /// </summary>
+    private List<(double X, double Y, double R)> PosicionesDeBastonesPrevia(
+        SeccionConcretoRow s, double de, double rec)
+    {
+        var res = new List<(double, double, double)>();
+
+        if (!LlevaBastones(s))
+        {
+            return res;
+        }
+
+        foreach (var bas in AFormatoCad(s).BastonesEnCorte.Where(CadLink.Cad.Bastones.EsValido))
+        {
+            var cama = CamaDeBaston(s, bas, de, rec);
+            if (cama is null)
+            {
+                continue;
+            }
+
+            foreach (var x in cama.Value.Xs)
+            {
+                res.Add((x, cama.Value.Y, cama.Value.R));
+            }
+        }
+
+        return res;
+    }
+
+    /// <summary>
+    /// Dónde va la cama de un bastón en la sección, en <b>centímetros</b> desde la esquina de
+    /// abajo: <b>pegada</b> a las varillas de su lecho y repartida entre las esquinas. Lo usan
+    /// el corte de la vista previa y el 3D, con la misma cuenta que AutoCAD.
+    /// </summary>
+    private (List<double> Xs, double Y, double R)? CamaDeBaston(
+        SeccionConcretoRow s, BastonCad bas, double de, double rec)
+    {
+        var sec = AFormatoCad(s);
+        var dSup = sec.Superior.Esquina.Cm > 0 ? sec.Superior.Esquina.Cm : de;
+        var dInf = sec.Inferior.Esquina.Cm > 0 ? sec.Inferior.Esquina.Cm : de;
+        var dB = bas.Var.Cm;
+
+        if (dB <= 0)
+        {
+            return null;
+        }
+
+        var y = bas.Posicion == PosicionBaston.Superior
+            ? s.AlturaCm - (rec + de + dSup) - (dB / 2)
+            : rec + de + dInf + (dB / 2);
+
+        if (y - (dB / 2) < rec + de || y + (dB / 2) > s.AlturaCm - rec - de)
+        {
+            return null;
+        }
+
+        var off = rec + de + (dB / 2);
+        return (CadLink.Cad.Bastones.XsEnCama(bas.Cantidad, off, s.BaseCm - off), y, dB / 2);
+    }
+
+    private void Barra(double cx, double cy, double radio, bool baston = false)
     {
         var r = Math.Max(radio, 1.8);
         var c = new Ellipse
         {
             Width = r * 2,
             Height = r * 2,
-            Fill = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B)),
-            Stroke = new SolidColorBrush(Color.FromRgb(0x7B, 0x24, 0x1B)),
+            Fill = new SolidColorBrush(baston
+                ? Color.FromRgb(0x7F, 0xC8, 0x9C)
+                : Color.FromRgb(0xC0, 0x39, 0x2B)),
+            Stroke = new SolidColorBrush(baston
+                ? Color.FromRgb(0x2E, 0x7D, 0x4F)
+                : Color.FromRgb(0x7B, 0x24, 0x1B)),
             StrokeThickness = 0.8
         };
         Canvas.SetLeft(c, cx - r);

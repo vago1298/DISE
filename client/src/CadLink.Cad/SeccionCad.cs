@@ -189,6 +189,13 @@ public sealed class SeccionCad
     /// que el bloque circular de arriba: es lo último que se agregó.
     /// </remarks>
     public List<GrapaCad> Grapas { get; set; } = new();
+
+    /// <summary>
+    /// Los <b>bastones que cruza el corte A-A'</b>, ya filtrados con
+    /// <see cref="Bastones.EnElCorte"/>. Se dibujan como una cama aparte, por dentro de su
+    /// lecho.
+    /// </summary>
+    public List<BastonCad> BastonesEnCorte { get; set; } = new();
 }
 
 /// <summary>

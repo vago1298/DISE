@@ -109,12 +109,16 @@ public sealed partial class ZapataDrawer
     // renglón lo da TrazoZapata.YRotulo, 80 cm por debajo del fondo de la plantilla, igual para
     // todas las zapatas. Los saltos entre los tres renglones sí son los de la macro
     // (TrazoZapata.RotuloSalto1 y RotuloSalto2).
-    private const double AltoTitulo = 0.07;
-    private const double AltoSubtitulo = 0.05;
-    private const double AltoEscala = 0.04;
-    private const double AltoTerreno = 0.025;
-    private const double AltoMtexto = 0.015;
-    private const double AltoPlantilla = 0.02;
+    // Las alturas salen del estilo «Zapatas aisladas y corridas» de la ventana «Estilo de dibujo»;
+    // sus valores por defecto son los que estaban aqui escritos.
+    private static PerfilEstilo EstiloZapatas => EstiloDibujo.Actual.Perfil(EstiloDibujo.Zapatas);
+
+    private static double AltoTitulo => EstiloZapatas.Numero("alto.titulo");
+    private static double AltoSubtitulo => EstiloZapatas.Numero("alto.subtitulo");
+    private static double AltoEscala => EstiloZapatas.Numero("alto.escala");
+    private static double AltoTerreno => EstiloZapatas.Numero("alto.terreno");
+    private static double AltoMtexto => EstiloZapatas.Numero("alto.rotulos");
+    private static double AltoPlantilla => EstiloZapatas.Numero("alto.plantilla");
     private const double LargoFlecha = 0.014;
     private const double AnchoFlecha = 0.0042;
     private const double RotuloVertGapLeader = 0.06;
@@ -154,12 +158,14 @@ public sealed partial class ZapataDrawer
     private const double TerrenoVuelo = 0.2;
 
     // Hatches
-    private const string PatronConcreto = "AR-CONC";
+    // Los patrones y sus escalas, del estilo «Zapatas aisladas y corridas»; por defecto los de la
+    // macro: AR-CONC a 0.0005 (0.0003 rellena) y EARTH a 0.01.
+    private static string PatronConcreto => EstiloZapatas.Texto("hatch.concreto");
     private const string PatronRespaldo = "ANSI31";
-    private const string PatronTerreno = "EARTH";
-    private const double EscalaConcretoNormal = 0.0005;   // HATCH_ESCALA_CONCRETO
-    private const double EscalaConcretoRelleno = 0.0003;  // RELLENO_HATCH_ESCALA
-    private const double EscalaTerreno = 0.01;            // HATCH_ESCALA_TERRENO
+    private static string PatronTerreno => EstiloZapatas.Texto("hatch.terreno");
+    private static double EscalaConcretoNormal => EstiloZapatas.Numero("hatch.concreto.escala");          // HATCH_ESCALA_CONCRETO
+    private static double EscalaConcretoRelleno => EstiloZapatas.Numero("hatch.concreto.escala.relleno"); // RELLENO_HATCH_ESCALA
+    private static double EscalaTerreno => EstiloZapatas.Numero("hatch.terreno.escala");                  // HATCH_ESCALA_TERRENO
     private const string TranspTerreno = "45";            // HATCH_TRANSP_TERRENO
     private const int ColorSolidoRelleno = 9;             // RELLENO_COLOR_SOLIDO
     private const int ColorPatronRelleno = 251;           // RELLENO_COLOR_CONCRETO

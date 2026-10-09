@@ -94,7 +94,9 @@ public sealed partial class SeccionDrawer
     /// <summary>Traslape cola-doblez del gancho: 10 micras, como en la macro.</summary>
     private const double SolapeGancho = 0.00001;
 
-    private const string PatronConcreto = "AR-CONC";
+    // El patrón del concreto, del estilo «Secciones y alzados» (AR-CONC por defecto). La escala
+    // es la de la casilla de la hoja, que se guarda con el trabajo.
+    private static string PatronConcreto => EstiloDibujo.Actual.Perfil(EstiloDibujo.Secciones).Texto("hatch.concreto");
     private const string PatronRespaldo = "ANSI31";
 
     /// <summary>
@@ -130,18 +132,28 @@ public sealed partial class SeccionDrawer
 
     // ---------- Estilos de texto y de cota ----------
     private const string EstiloTexto = "SECCIONES";
-    private const string FuenteTexto = "BAHNSCHRIFT SEMILIGHT";
-    private const double AlturaTextoCotas = 0.025;
+    // La fuente, las alturas, la marca y los colores salen del estilo «Secciones y alzados» de la
+    // ventana «Estilo de dibujo». Sus valores por defecto son los que estaban aqui escritos.
+    private static PerfilEstilo EstiloSecciones => EstiloDibujo.Actual.Perfil(EstiloDibujo.Secciones);
+
+    private static string FuenteTexto => EstiloSecciones.Texto("fuente");
+    private static double AlturaTextoCotas => EstiloSecciones.Numero("alto.estilo");
     private const double FactorAnchoTexto = 1.0;
 
     private const string EstiloCota = "COTA_ESTRUCTURAL";
-    private const string BloqueFlechaCota = "_OPEN90";
-    private const int ColorLineaCota = 253;
-    private const int ColorExtensionCota = 253;
-    private const int ColorTextoCota = 1;
+    private static string BloqueFlechaCota => EstiloSecciones.Texto("cota.marca");
+    private static int ColorLineaCota => EstiloSecciones.ColorAci("cota.color.lineas");
+    private static int ColorExtensionCota => EstiloSecciones.ColorAci("cota.color.lineas");
+    private static int ColorTextoCota => EstiloSecciones.ColorAci("cota.color.texto");
+
+    /// <summary>La altura del numero de las cotas, a la escala base.</summary>
+    private static double AltoNumeroCota => EstiloSecciones.Numero("cota.alto");
+
+    /// <summary>El tamano de la marca de las cotas, a la escala base.</summary>
+    private static double TamMarcaCota => EstiloSecciones.Numero("cota.marca.tam");
 
     // ---------- Llamadas (leaders) de los lechos ----------
-    private const double AlturaTextoLeader = 0.021;
+    private static double AlturaTextoLeader => EstiloSecciones.Numero("alto.llamadas");
     private const double LechoSepY = 0.032;
     private const double LechoSepX = 0.045;
     private const double OffsetIntermediaSup = 0.011;
@@ -328,6 +340,34 @@ public sealed partial class SeccionDrawer
     /// </summary>
     public bool UltimaFueASuSitio { get; private set; }
 
+    /// <summary>
+    /// Al redibujar, si el <b>bloque</b> vuelve al punto donde estaba insertado. Encendido
+    /// por omisión, que es lo de siempre.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Ojo: solo mueve el bloque.</b> Las cotas y los rótulos van sueltos y se dibujan
+    /// en la X que se le pasa a <see cref="Dibujar"/>. Si esa X no es la del sitio viejo,
+    /// el bloque y su rotulado quedan separados: así salió «Dibujar solo la seleccionada»
+    /// la primera vez, con las cotas en el origen.
+    /// </para>
+    /// <para>
+    /// Se apaga cuando quien llama ya sabe la X buena —la del lugar de la fila en la
+    /// tabla— y quiere que todo vaya ahí.
+    /// </para>
+    /// </remarks>
+    public bool VolverASuSitio { get; set; } = true;
+
+    /// <summary>
+    /// Índice del espacio modelo donde empezó lo que dibujó la última llamada a
+    /// <see cref="Dibujar"/>. De ahí al final es todo suyo: el bloque y sus cotas y rótulos.
+    /// </summary>
+    /// <remarks>
+    /// Lo usa <see cref="MarcasCad"/> para marcarlo, y así poder borrar después las cotas
+    /// sueltas de esta sección sin tocar las de las demás.
+    /// </remarks>
+    public int InicioUltima { get; private set; } = -1;
+
     /// <summary>Anota algo informativo, sin repetirlo.</summary>
     private void Nota(string texto)
     {
@@ -464,7 +504,7 @@ public sealed partial class SeccionDrawer
         Capa("ESTRIBOS", CapasCad.ColorDeCapa("ESTRIBOS"));
         Capa("TEXTOS", CapasCad.ColorDeCapa("TEXTOS"));
         Capa("ROTULOS", CapasCad.ColorDeCapa("TEXTOS"));
-        Capa("COTAS", 253);
+        Capa("COTAS", EstiloSecciones.ColorAci("capa.COTAS"));
 
         // La tabla de colores vive en CapasCad, compartida con los demás dibujantes: estaba escrita
         // solo aquí, y por eso el de zapatas creaba VAR_#5 en blanco.
@@ -660,7 +700,7 @@ public sealed partial class SeccionDrawer
         Dimvar("DIMCLRE", ColorExtensionCota);
         Dimvar("DIMCLRT", ColorTextoCota);
 
-        Dimvar("DIMTXT", 0.017 * _f);
+        Dimvar("DIMTXT", AltoNumeroCota * _f);
         Dimvar("DIMGAP", 0.005 * _f);
 
         // Aquí había un DIMTOFF que AutoCAD rechazaba, y con razón: esa variable
@@ -687,7 +727,7 @@ public sealed partial class SeccionDrawer
         // Flechas: marca abierta a 90, no el triángulo relleno de fábrica.
         // Al final, por ser lo más frágil. Se fijan las tres porque cuál manda
         // depende de DIMSAH, que se deja como lo tenga el dibujo, igual que la macro.
-        Dimvar("DIMASZ", 0.02 * _f);
+        Dimvar("DIMASZ", TamMarcaCota * _f);
         Dimvar("DIMBLK", BloqueFlechaCota);
         Dimvar("DIMBLK1", BloqueFlechaCota);
         Dimvar("DIMBLK2", BloqueFlechaCota);
@@ -856,9 +896,9 @@ public sealed partial class SeccionDrawer
 
         // --- Texto y flechas ---
         PropCota(cota, "TextGap", 0.005 * _f);
-        PropCota(cota, "TextHeight", 0.017 * _f);
+        PropCota(cota, "TextHeight", AltoNumeroCota * _f);
         PropCota(cota, "TextStyle", EstiloTexto);
-        PropCota(cota, "ArrowheadSize", 0.02 * _f);
+        PropCota(cota, "ArrowheadSize", TamMarcaCota * _f);
         PropCota(cota, "TextRotation", 0d);
 
         // Los DOS decimales se fijan también EN LA COTA, no solo con DIMDEC: la
@@ -902,6 +942,9 @@ public sealed partial class SeccionDrawer
         // Al redibujar, aquí se guarda dónde estaba para devolverla a su sitio.
         double[]? destino = null;
 
+        // Una sección saltada no dibujó nada: que nadie marque lo que no es suyo.
+        InicioUltima = -1;
+
         if (BloqueYaExiste(s.Id))
         {
             if (!Redibujar)
@@ -917,7 +960,10 @@ public sealed partial class SeccionDrawer
 
             // El punto se lee ANTES de borrar. Después ya no hay a quién
             // preguntárselo, y la sección acabaría al final de la fila.
-            destino = PuntoDeInsercion(s.Id);
+            //
+            // Sin VolverASuSitio no se lee: quien llama ya dio la X buena —la de su
+            // lugar en la tabla— y ahí van el bloque Y sus cotas.
+            destino = VolverASuSitio ? PuntoDeInsercion(s.Id) : null;
 
             if (!BorrarSeccion(s.Id))
             {
@@ -935,6 +981,10 @@ public sealed partial class SeccionDrawer
         UltimaFueASuSitio = destino is not null;
 
         var inicio = (int)AcadConnection.Retry(() => (int)_ms.Count);
+
+        // Se publica DESPUÉS del BorrarSeccion: borrar corre los índices hacia abajo, y
+        // contado antes el tramo de lo nuevo empezaría donde ya hay piezas viejas.
+        InicioUltima = inicio;
 
         // El registro de varillas es POR SECCION: si no se limpia, el estribo
         // diamante de una seccion se abrazaria a las varillas de la anterior.
@@ -1032,6 +1082,9 @@ public sealed partial class SeccionDrawer
         var posInf = Lecho(circulos, s.Inferior, s, xIzquierda, yAbajo, b, h, rec, dEst, arriba: false);
 
         Laterales(circulos, s, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf);
+
+        // Los bastones que cruza el corte A-A', en su cama por dentro del lecho.
+        BastonesDelCorte(circulos, s, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf);
 
         var rellenosVarilla = new List<object>();
         RellenarVarillas(circulos, rellenosVarilla);
@@ -2252,6 +2305,128 @@ public sealed partial class SeccionDrawer
         }
     }
 
+    /// <summary>
+    /// <b>Dónde</b> van las varillas de los bastones del corte, sin dibujar nada.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Cada bastón es una <b>cama</b> por dentro de su lecho, a
+    /// <see cref="Bastones.SeparacionCamaCm"/> libres, y repartida entre las dos esquinas.
+    /// Si hay dos bastones en el mismo lecho, el segundo va una cama más adentro: es el
+    /// mismo orden que usa el alzado, así que la cama del corte es la del alzado.
+    /// </para>
+    /// <para>
+    /// Separado del dibujo por lo mismo que <see cref="PosicionesDeLecho"/>: las llamadas se
+    /// rehacen junto al bloque que inserta el alzado.
+    /// </para>
+    /// </remarks>
+    private List<(BastonCad B, List<(double X, double Y)> Pos, double R)> PosicionesDeBastones(
+        SeccionCad s, double x0, double y0, double b, double h,
+        double rec, double dEst, double dSup, double dInf)
+    {
+        var res = new List<(BastonCad, List<(double, double)>, double)>();
+        var sep = Bastones.SeparacionCamaCm * _escala;
+        var usados = new HashSet<PosicionBaston>();
+
+        foreach (var bas in s.BastonesEnCorte.Where(Bastones.EsValido))
+        {
+            // Uno por posición, igual que en el alzado.
+            if (!usados.Add(bas.Posicion))
+            {
+                continue;
+            }
+
+            var dB = bas.Var.Cm * _escala;
+            var off = rec + dEst + (dB / 2);
+
+            double y;
+            List<double> xs;
+
+            if (bas.Posicion == PosicionBaston.Medio)
+            {
+                // A media altura, con la misma cuenta del alzado, y por DENTRO de las
+                // laterales: repartido en el ancho sin tocar los costados, donde van ellas.
+                y = Bastones.YMedio(y0 + rec + dEst + dInf, y0 + h - rec - dEst - dSup, s.NLateral);
+                xs = Enumerable.Range(1, bas.Cantidad)
+                    .Select(i => x0 + off + ((b - (2 * off)) * i / (bas.Cantidad + 1)))
+                    .ToList();
+            }
+            else
+            {
+                var arriba = bas.Posicion == PosicionBaston.Superior;
+                // EN EL CORTE VAN PEGADOS a las varillas de su lecho, sin separación: lo
+                // pidió el usuario. En el alzado sí llevan la separación de la cama.
+                y = arriba
+                    ? y0 + h - (rec + dEst + dSup) - (dB / 2)
+                    : y0 + (rec + dEst + dInf) + (dB / 2);
+                xs = Bastones.XsEnCama(bas.Cantidad, x0 + off, x0 + b - off);
+            }
+
+            // Fuera del núcleo no es armado: no se dibuja.
+            if (y - (dB / 2) < y0 + rec + dEst || y + (dB / 2) > y0 + h - rec - dEst)
+            {
+                continue;
+            }
+
+            res.Add((bas, xs.Select(x => (x, y)).ToList(), dB / 2));
+        }
+
+        return res;
+    }
+
+    /// <summary>Dibuja los bastones del corte y sus llamadas.</summary>
+    private void BastonesDelCorte(
+        List<object> circulos, SeccionCad s,
+        double x0, double y0, double b, double h, double rec, double dEst,
+        double dSup, double dInf)
+    {
+        foreach (var (bas, pos, r) in
+                 PosicionesDeBastones(s, x0, y0, b, h, rec, dEst, dSup, dInf))
+        {
+            foreach (var (x, y) in pos)
+            {
+                Agregar(circulos, Varilla(x, y, r, bas.Var.Clave));
+            }
+
+            if (pos.Count > 0)
+            {
+                LeaderBaston(pos, bas, x0);
+            }
+        }
+    }
+
+    /// <summary>
+    /// La llamada de un bastón en el corte: <b>una flecha a cada varilla</b> del bastón,
+    /// colgadas de una misma espina que llega al texto, como la llamada de un lecho.
+    /// </summary>
+    /// <remarks>
+    /// Antes señalaba solo la primera varilla, y la otra quedaba sin llamada: no se sabía que
+    /// también era bastón. La espina va por debajo de las varillas, a la altura de la de las
+    /// laterales, para no cruzar las llamadas de los lechos.
+    /// </remarks>
+    private void LeaderBaston(
+        IReadOnlyList<(double X, double Y)> pos, BastonCad bas, double xIzquierdaSeccion)
+    {
+        if (pos.Count == 0)
+        {
+            return;
+        }
+
+        var y = pos[0].Y;
+        var yAbajo = y - (LineaVerticalDist * _f);
+        var xTexto = xIzquierdaSeccion - (0.02 * _f);
+
+        Rotulado(Linea(xTexto, yAbajo, pos.Max(p => p.X), yAbajo, "ROTULOS"));
+
+        foreach (var (x, yv) in pos)
+        {
+            Rotulado(Linea(x, yv, x, yAbajo, "ROTULOS"));
+            FlechaTriangular(x, yv, haciaArriba: false);
+        }
+
+        TextoLeader(xTexto, yAbajo, Bastones.Texto(bas));
+    }
+
     private object? Varilla(double cx, double cy, double radio, string clave)
     {
         try
@@ -2553,7 +2728,15 @@ public sealed partial class SeccionDrawer
     // Rotulo
     // ==================================================================
 
-    private void Rotulo(SeccionCad s, double xCentro, double yBase)
+    /// <summary>
+    /// Los renglones del rótulo de una sección: elemento, «ID», varillas por diámetro, estribo,
+    /// diamante, grapas, recubrimiento, f'c y escala.
+    /// </summary>
+    /// <remarks>
+    /// Público y estático porque el complemento de Revit pone EXACTAMENTE estos renglones en las
+    /// propiedades de tipo: así el rótulo del plano de AutoCAD y la etiqueta de Revit dicen lo mismo.
+    /// </remarks>
+    public static List<string> LineasDeRotulo(SeccionCad s)
     {
         var lineas = new List<string>
         {
@@ -2633,6 +2816,13 @@ public sealed partial class SeccionDrawer
             lineas.Add($"Escala 1:{s.Escala}");
         }
 
+        return lineas;
+    }
+
+    private void Rotulo(SeccionCad s, double xCentro, double yBase)
+    {
+        var lineas = LineasDeRotulo(s);
+
         var texto = string.Join("\\P", lineas);
 
         try
@@ -2640,7 +2830,7 @@ public sealed partial class SeccionDrawer
             AcadConnection.Retry(() =>
             {
                 dynamic mt = _ms.AddMText(new[] { xCentro, yBase, 0d }, 0.45 * _f, texto);
-                mt.Height = 0.03 * _f;
+                mt.Height = EstiloSecciones.Numero("alto.rotulo.seccion") * _f;
                 mt.AttachmentPoint = 2;   // acAttachmentPointTopCenter
                 mt.InsertionPoint = new[] { xCentro, yBase, 0d };
                 mt.Layer = "ROTULOS";

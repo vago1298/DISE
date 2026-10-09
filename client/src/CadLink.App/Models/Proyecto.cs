@@ -101,6 +101,11 @@ public sealed class ProyectoGuardado
     /// </remarks>
     public List<FilaGuardada> ZapatasCorridas { get; set; } = new();
 
+    /// <summary>Los muros de contencion. Un .clk de antes no las trae y quedan vacias.</summary>
+    public List<FilaGuardada> MurosArmados { get; set; } = new();
+
+    public List<FilaGuardada> MurosCiclopeos { get; set; } = new();
+
     /// <summary>Las filas de la hoja de <b>placas base</b>.</summary>
     /// <remarks>
     /// Con el mismo mecanismo genérico que las dos hojas de zapatas, y por el mismo motivo: una
@@ -190,6 +195,21 @@ public sealed class SeccionGuardada
     // versión del archivo NO sube, porque nada de lo que ya se guardaba cambió de
     // significado.
     public List<GrapaGuardada> Grapas { get; set; } = new();
+
+    // ---------------- Bastones ----------------
+    // Al final y vacía por omisión, como las grapas: un .clk de antes se abre igual y sus
+    // trabes salen sin bastones, que es lo que tenían.
+    public List<BastonGuardado> Bastones { get; set; } = new();
+}
+
+/// <summary>Un bastón, como se guarda en el archivo del proyecto.</summary>
+public sealed class BastonGuardado
+{
+    public string Posicion { get; set; } = string.Empty;
+    public string Ubicacion { get; set; } = string.Empty;
+    public int Cantidad { get; set; }
+    public string Diametro { get; set; } = string.Empty;
+    public double DistanciaM { get; set; }
 }
 
 /// <summary>Una grapa, como se guarda en el archivo del proyecto.</summary>

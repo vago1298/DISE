@@ -407,8 +407,12 @@ check("o junto a los propios .bat, que es donde uno lo suelta",
 #  archivo -o se le quita el espacio despues de los dos puntos- esto falla en lugar de
 #  fallar callando en la maquina del usuario.
 #  ═══════════════════════════════════════════════════════════════════════════════════
-check("y si no, la ruta que ya trae la configuracion",
-      'findstr /c:"logo" "%CFGFUENTE%" ^| findstr /v /c:"//"' in BAT
+#  LA CLAVE ES «icono», NO «logo». Se pidio el perfil I como icono, y el .bat leia el logo
+#  -el CADLINK.ico de la empresa-: el ejecutable salia con el logo de CadLink. El logo es la
+#  marca de la pantalla de inicio; el icono, otra cosa.
+check("y si no, la ruta de la clave icono de la configuracion -no la del logo-",
+      'findstr /c:"icono" "%CFGFUENTE%" ^| findstr /v /c:"//"' in BAT
+      and 'findstr /c:"logo" "%CFGFUENTE%"' not in BAT
       and "set \"LINEA=%LINEA:*: =%\"" in BAT
       and 'set "ICONOTUYO=%ICONOTUYO:/=\\%"' in BAT)
 
@@ -417,8 +421,8 @@ CONFIG = leer("client", "src", "CadLink.App", "cadlink.config.json")
 
 def icono_de_la_config(texto):
     """Las mismas cuatro sustituciones que hace el .bat, en Python."""
-    #  findstr /c:"logo"  |  findstr /v /c:"//"      -distingue mayusculas-
-    lineas = [l for l in texto.splitlines() if "logo" in l and "//" not in l]
+    #  findstr /c:"icono"  |  findstr /v /c:"//"      -distingue mayusculas-
+    lineas = [l for l in texto.splitlines() if "icono" in l and "//" not in l]
 
     if not lineas:
         return None
@@ -437,18 +441,21 @@ def icono_de_la_config(texto):
 RUTA_CFG = icono_de_la_config(CONFIG)
 
 check("el filtro de comentarios deja un solo renglon, no un ejemplo del bloque de ayuda",
-      len([l for l in CONFIG.splitlines() if "logo" in l and "//" not in l]) == 1,
-      f"{[l.strip()[:40] for l in CONFIG.splitlines() if 'logo' in l and '//' not in l]}")
+      len([l for l in CONFIG.splitlines() if "icono" in l and "//" not in l]) == 1,
+      f"{[l.strip()[:40] for l in CONFIG.splitlines() if 'icono' in l and '//' not in l]}")
 
-check("y de ese renglon sale una ruta a un .ico",
-      RUTA_CFG is not None and RUTA_CFG.lower().endswith(".ico")
-      and "\\" in RUTA_CFG and '"' not in RUTA_CFG,
+check("y de ese renglon sale VACIO -el perfil I del repositorio- o una ruta a un .ico",
+      RUTA_CFG is not None and '"' not in RUTA_CFG
+      and (RUTA_CFG == "" or (RUTA_CFG.lower().endswith(".ico") and "\\" in RUTA_CFG)),
       f"{RUTA_CFG}")
+
+check("y viene vacio: sin tocar nada, el icono es el perfil I",
+      RUTA_CFG == "" and '"icono": "",' in CONFIG)
 
 #  UN .png EN ESA CLAVE ES VALIDO PARA EL LOGO Y NO PARA EL ICONO, y eso se explica en
 #  lugar de dejar al usuario pensando que su logo no se aplico.
 check("un .png en esa clave se rechaza explicando la diferencia",
-      ":icono_no_es_ico" in BAT and "para el icono del ejecutable hace falta un .ico" in BAT)
+      ":icono_no_es_ico" in BAT and "Para el icono del ejecutable hace falta un .ico de verdad." in BAT)
 
 check("y una ruta que ya no existe tambien se avisa",
       ":icono_no_esta" in BAT and "no encuentro el icono que dice" in BAT)
@@ -527,7 +534,7 @@ check("hay un diagnostico que se abre con doble clic", bool(DIAG))
 check("mira los cuatro sitios de donde puede salir el icono",
       'for %%i in ("%RAIZ%installer\\*.ico")' in DIAG
       and 'for %%i in ("%RAIZ%*.ico")' in DIAG
-      and 'findstr /c:"logo" "%CFGFUENTE%"' in DIAG
+      and 'findstr /c:"icono" "%CFGFUENTE%"' in DIAG
       and "%ICONOAPP%" in DIAG)
 
 check("dice el tamano de cada uno, que es como se distinguen",

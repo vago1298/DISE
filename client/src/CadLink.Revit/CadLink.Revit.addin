@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+
+  <!-- Manifiesto del complemento.
+
+       Va copiado, junto a CadLink.Revit.dll, a la carpeta de complementos de Revit:
+
+           %APPDATA%\Autodesk\Revit\Addins\2026\
+
+       El Assembly puede ir con ruta relativa al propio manifiesto, que es lo que se hace
+       aqui: asi la carpeta se puede mover entera sin editar nada.
+
+       El AddInId tiene que ser UNICO y NO se debe cambiar entre versiones: Revit lo usa
+       para saber que es el mismo complemento, y cambiarlo hace que aparezca dos veces en
+       la cinta. -->
+
+  <AddIn Type="Application">
+    <Name>CadLink</Name>
+    <Assembly>CadLink.Revit.dll</Assembly>
+    <AddInId>8C2E1B74-5A63-4F0D-9E71-3D8B6A14C905</AddInId>
+    <FullClassName>CadLink.Revit.Aplicacion</FullClassName>
+    <VendorId>CDLK</VendorId>
+    <VendorDescription>CadLink</VendorDescription>
+  </AddIn>
+
+</RevitAddIns>

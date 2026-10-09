@@ -124,7 +124,9 @@ public partial class MainWindow
         // MouseDoubleClick: hay que contar los clics a mano.
         if (e.ChangedButton == MouseButton.Left
             && e.ClickCount == 2
-            && VarillaEn(e.GetPosition(PreviewCanvas)) is null)
+            && VarillaEn(e.GetPosition(PreviewCanvas)) is null
+            // Ni sobre el alzado: dos clics seguidos ahí son dos bastones, no un reajuste.
+            && !EnElAlzado(e.GetPosition(PreviaFijaCanvas)))
         {
             ReiniciarEncuadrePrevia();
             CancelarGrapaPendiente();
@@ -320,7 +322,12 @@ public partial class MainWindow
             && e is MouseButtonEventArgs boton
             && boton.ChangedButton == MouseButton.Left)
         {
-            ProcesarClicEnPrevia(e.GetPosition(PreviewCanvas));
+            // El alzado va primero: está en su propio lienzo, sin zoom, y si el clic cae
+            // ahí es un bastón, no una varilla de la sección.
+            if (!ProcesarClicEnAlzado(e.GetPosition(PreviaFijaCanvas)))
+            {
+                ProcesarClicEnPrevia(e.GetPosition(PreviewCanvas));
+            }
         }
     }
 

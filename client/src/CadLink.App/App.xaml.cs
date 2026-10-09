@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Windows;
 using CadLink.Etabs;
+using CadLink.App.Models;
 using CadLink.Licensing;
 
 namespace CadLink.App;
@@ -20,9 +21,15 @@ public partial class App : Application
 
     private LicenseService? _licenseService;
 
+    /// <summary>El trabajo con que se abrio el programa: doble clic en un .clk.</summary>
+    private string? _trabajoAlAbrir;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        _trabajoAlAbrir = e.Args.FirstOrDefault(a =>
+            a.EndsWith(ArchivoProyecto.Extension, StringComparison.OrdinalIgnoreCase) && File.Exists(a));
 
         // Sin ventana principal todavía; si no se cambia, la app se cerraría al
         // ocultar el splash.
@@ -126,6 +133,11 @@ public partial class App : Application
         MainWindow = main;
         ShutdownMode = ShutdownMode.OnMainWindowClose;
         main.Show();
+
+        if (_trabajoAlAbrir is not null)
+        {
+            main.AbrirTrabajo(_trabajoAlAbrir);
+        }
     }
 
     private static void ShowBlockingMessage(LicenseInfo info)

@@ -114,6 +114,12 @@ public sealed class AlzadoCad
     /// </remarks>
     public bool ZunchoHelicoidal { get; set; }
 
+    /// <summary>
+    /// Los <b>bastones</b>. Solo los llevan trabes y contratrabes; en un alzado vertical se
+    /// ignoran aunque vengan.
+    /// </summary>
+    public List<BastonCad> Bastones { get; set; } = new();
+
     /// <summary>Alzado vertical: columnas y dados.</summary>
     public bool EsVertical => Tipo is TipoElemento.Columna or TipoElemento.Dado;
 

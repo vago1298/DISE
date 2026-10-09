@@ -26,8 +26,18 @@ namespace CadLink.Cad;
 /// </remarks>
 public static class FormaAcero
 {
-    /// <summary>Alma y dos patines: la W, la I soldada, la IC y la S.</summary>
+    /// <summary>Alma y dos patines: la W, la I soldada y la S.</summary>
     public const string I = "I";
+
+    /// <summary>
+    /// La <b>IC</b>: dos perfiles I iguales que forman una CRUZ. Uno va entero, de pie, y el
+    /// otro, girado 90°, se parte por el alma en dos tes soldadas a los lados del primero.
+    /// </summary>
+    /// <remarks>
+    /// Las medidas del catálogo -peralte, ancho, espesores- son las de CADA I; el peso, el área
+    /// y los momentos de inercia son los de la cruz completa (Ix = Iy).
+    /// </remarks>
+    public const string Cruz = "CRUZ";
 
     /// <summary>Medio perfil I: patín arriba y alma colgando. La WT.</summary>
     public const string Te = "TE";
@@ -53,17 +63,23 @@ public static class FormaAcero
     /// <summary>Varilla redonda maciza: una circunferencia rellena. El OS.</summary>
     public const string RedondoMacizo = "REDONDO_MACIZO";
 
-    /// <summary>Las nueve, en el orden en que están declaradas.</summary>
+    /// <summary>Las diez: las nueve de siempre y la cruz al final.</summary>
     public static readonly string[] Todas =
     {
         I, Te, Angulo, Canal, CanalConLabios, Zeta,
-        TuboRectangular, TuboRedondo, RedondoMacizo
+        TuboRectangular, TuboRedondo, RedondoMacizo, Cruz
     };
+
+    /// <summary>¿Es de alma y patines como una I -la I o la cruz de dos I-?</summary>
+    public static bool EsDeI(string? forma) =>
+        string.Equals(forma, I, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(forma, Cruz, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>La forma dicha en castellano, para los avisos y las ayudas.</summary>
     public static string Nombre(string? forma) => forma switch
     {
         I => "perfil I",
+        Cruz => "cruz de dos perfiles I",
         Te => "te",
         Angulo => "ángulo",
         Canal => "canal laminada",

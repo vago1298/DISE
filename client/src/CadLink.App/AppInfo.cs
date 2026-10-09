@@ -28,6 +28,19 @@ public sealed class AppConfig
     public string Logo { get; set; } = string.Empty;
 
     /// <summary>
+    /// Ruta al .ico del ICONO de la aplicación -ventana, barra de tareas-. Vacío = el que va
+    /// incrustado en el ejecutable, el perfil I. Es aparte del logo: el logo es la marca de la
+    /// pantalla de inicio, y el icono puede ser otro.
+    /// </summary>
+    public string Icono { get; set; } = string.Empty;
+
+    /// <summary>
+    /// El código de oficina. Lo pone el instalador DE OFICINA en <c>cadlink.oficina.json</c>;
+    /// con él este equipo queda autorizado solo. Vacío en los demás.
+    /// </summary>
+    public string CodigoOficina { get; set; } = string.Empty;
+
+    /// <summary>
     /// Ruta a <c>ETABSv1.dll</c>, la librería de la API de ETABS. Se admite tanto
     /// la carpeta como el archivo.
     /// </summary>
@@ -57,6 +70,17 @@ public sealed class AppConfig
 public static class AppInfo
 {
     public const string ConfigFileName = "cadlink.config.json";
+
+    /// <summary>
+    /// Lo que deja el instalador DE OFICINA: la dirección del servidor de la oficina y su
+    /// código. Manda sobre <see cref="ConfigFileName"/> en esas dos cosas.
+    /// </summary>
+    /// <remarks>
+    /// Va en un archivo APARTE porque la configuración no se pisa al reinstalar -para no
+    /// borrarle al usuario lo que editó-, y entonces instalar el paquete de oficina encima de
+    /// uno de prueba dejaría el <c>localhost</c> de antes. Este archivo sí se copia siempre.
+    /// </remarks>
+    public const string OficinaFileName = "cadlink.oficina.json";
 
     private static readonly Lazy<AppConfig> Cargada = new(Cargar, isThreadSafe: true);
 
@@ -105,19 +129,55 @@ public static class AppInfo
     {
         ServerUrl = LicenseServerUrl,
         AppVersion = Version,
-        AppFolderName = ProductName
+        AppFolderName = ProductName,
+        OfficeCode = Config.CodigoOficina
     };
+
+    /// <summary>Pone encima lo del instalador de oficina, si este equipo lo trae.</summary>
+    private static void ConLoDeLaOficina(AppConfig config, JsonSerializerOptions opciones)
+    {
+        try
+        {
+            var ruta = Path.Combine(AppContext.BaseDirectory, OficinaFileName);
+
+            if (!File.Exists(ruta))
+            {
+                return;
+            }
+
+            var oficina = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(ruta), opciones);
+
+            if (oficina is null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(oficina.CodigoOficina))
+            {
+                config.CodigoOficina = oficina.CodigoOficina.Trim();
+            }
+
+            // Solo si el archivo la trae: un AppConfig vacío trae localhost por omisión.
+            if (File.ReadAllText(ruta).Contains("servidorLicencias", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(oficina.ServidorLicencias))
+            {
+                config.ServidorLicencias = oficina.ServidorLicencias.Trim();
+            }
+        }
+        catch (Exception ex) when (ex is IOException
+                                      or JsonException
+                                      or UnauthorizedAccessException
+                                      or NotSupportedException)
+        {
+            // Ilegible: se queda la configuración normal.
+        }
+    }
 
     private static AppConfig Cargar()
     {
         try
         {
             var ruta = ConfigPath;
-            if (!File.Exists(ruta))
-            {
-                return new AppConfig();
-            }
-
             var opciones = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
@@ -125,8 +185,18 @@ public static class AppInfo
                 AllowTrailingCommas = true
             };
 
-            return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(ruta), opciones)
-                   ?? new AppConfig();
+            if (!File.Exists(ruta))
+            {
+                var sinArchivo = new AppConfig();
+                ConLoDeLaOficina(sinArchivo, opciones);
+                return sinArchivo;
+            }
+
+            var config = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(ruta), opciones)
+                         ?? new AppConfig();
+
+            ConLoDeLaOficina(config, opciones);
+            return config;
         }
         catch (Exception ex) when (ex is IOException
                                       or JsonException

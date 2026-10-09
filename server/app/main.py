@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -13,9 +14,18 @@ from sqlalchemy.orm import Session
 from .admin import router as admin_router
 from .config import Settings, get_settings
 from .database import get_db, init_db
-from .models import AuditLog, License, Machine, Tier, utcnow
+from .models import (
+    AuditLog,
+    EstadoSolicitud,
+    License,
+    Machine,
+    SolicitudOficina,
+    Tier,
+    utcnow,
+)
 from .schemas import ActivateRequest, RenewRequest, TokenResponse
 from .tokens import issue_token
+from .oficina import router as oficina_router
 from .webhooks import router as webhooks_router
 
 log = logging.getLogger("cadlink.license")
@@ -54,6 +64,7 @@ app = FastAPI(
 
 app.include_router(admin_router)
 app.include_router(webhooks_router)
+app.include_router(oficina_router)
 
 
 def _audit(
@@ -96,8 +107,12 @@ def activate(
     Decide el tier así:
       1. Si el equipo ya existe, respeta el tier que tenga asignado.
       2. Si trae clave de licencia válida  -> COMMERCIAL
-      3. Si el SID de dominio coincide     -> INTERNAL (si hay asientos libres)
-      4. En cualquier otro caso            -> TRIAL (si está permitido)
+      3. Si trae el código de oficina      -> INTERNAL (si hay asientos libres)
+      4. Si el SID de dominio coincide     -> INTERNAL (si hay asientos libres)
+      5. En cualquier otro caso            -> TRIAL (si está permitido)
+
+    Un equipo que ya estaba en PRUEBA y llega con el código de oficina se promueve a
+    INTERNAL: es lo que pasa al instalar el paquete de oficina encima de uno de prueba.
     """
     now = utcnow()
     machine = db.scalar(
@@ -122,6 +137,13 @@ def activate(
                 message=f"Promovido a COMMERCIAL con licencia {license_.key}",
                 request=request,
             )
+
+    # EL CODIGO DE OFICINA NO AUTORIZA SOLO: deja la PC esperando a que el dueño la apruebe
+    # en http://localhost:8000/oficina (8-aprobar-equipos.bat). Así, una copia del instalador
+    # o de la carpeta instalada que acabe en una PC ajena no entra sin que él la vea.
+    if (machine.tier == Tier.TRIAL.value and not machine.revoked and not payload.license_key
+            and _es_codigo_de_oficina(payload.office_code, settings)):
+        _tramitar_oficina(machine, payload, db, request, now)
 
     license_ = (
         db.get(License, machine.license_id) if machine.license_id is not None else None
@@ -219,6 +241,11 @@ def _create_machine(
             request=request,
         )
 
+    elif _es_codigo_de_oficina(payload.office_code, settings):
+        # El instalador de oficina: el equipo se registra SIN prueba y queda esperando a que
+        # el dueño lo apruebe. La solicitud la abre _tramitar_oficina, en activate().
+        machine.trial_expires_at = None
+
     elif _is_internal_domain(payload.domain_sid, settings):
         if _internal_seats_used(db) >= settings.INTERNAL_SEATS:
             _audit(
@@ -273,6 +300,80 @@ def _is_internal_domain(domain_sid: str | None, settings: Settings) -> bool:
     if not configured or not domain_sid:
         return False
     return domain_sid.strip().upper() == configured
+
+
+MENSAJE_PENDIENTE = (
+    "ESPERANDO APROBACIÓN: este equipo ya pidió acceso a la oficina. Pide al "
+    "administrador que lo apruebe en su computadora (8-aprobar-equipos.bat). "
+    "En cuanto lo apruebe, esta pantalla entra sola."
+)
+
+MENSAJE_RECHAZADO = (
+    "El administrador de la oficina RECHAZÓ este equipo. Si es un error, pídele que lo "
+    "apruebe en 8-aprobar-equipos.bat y vuelve a abrir el programa."
+)
+
+
+def _tramitar_oficina(
+    machine: Machine, payload: ActivateRequest, db: Session, request: Request, now: datetime
+) -> None:
+    """Abre o actualiza la solicitud de una PC con el código de oficina, y la deja esperando.
+
+    Siempre termina en error HTTP, porque una PC en prueba con el código no recibe licencia
+    hasta que el dueño la aprueba: entonces su tier pasa a INTERNAL y ya no entra aquí.
+    """
+    solicitud = db.scalar(
+        select(SolicitudOficina).where(SolicitudOficina.machine_id == machine.id)
+    )
+    ip = request.client.host if request.client else None
+
+    if solicitud is None:
+        solicitud = SolicitudOficina(
+            machine_id=machine.id,
+            estado=EstadoSolicitud.PENDIENTE.value,
+            hostname=payload.hostname,
+            os_user=payload.os_user,
+            client_ip=ip,
+            creada=now,
+            ultima_vez=now,
+        )
+        db.add(solicitud)
+        _audit(
+            db,
+            "SOLICITUD_OFICINA",
+            fingerprint=machine.fingerprint,
+            message=f"{payload.hostname} ({payload.os_user}) pide acceso a la oficina",
+            request=request,
+        )
+        log.warning(
+            "NUEVA PC PIDIENDO ACCESO: %s (%s). Apruebala en http://localhost:8000/oficina",
+            payload.hostname, payload.os_user,
+        )
+    else:
+        solicitud.ultima_vez = now
+        solicitud.hostname = payload.hostname or solicitud.hostname
+        solicitud.os_user = payload.os_user or solicitud.os_user
+        solicitud.client_ip = ip or solicitud.client_ip
+
+    rechazada = solicitud.estado == EstadoSolicitud.RECHAZADA.value
+
+    # Se guarda ANTES de contestar con error: una excepción sin commit se llevaría la
+    # solicitud, y el dueño nunca la vería.
+    db.commit()
+
+    if rechazada:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=MENSAJE_RECHAZADO)
+
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=MENSAJE_PENDIENTE)
+
+
+def _es_codigo_de_oficina(codigo: str | None, settings: Settings) -> bool:
+    """¿Trae el código de oficina del servidor? Sin código configurado, nunca."""
+    configurado = (settings.OFFICE_CODE or "").strip()
+    if not configurado or not codigo:
+        return False
+    # compare_digest: el tiempo de la comparación no dice cuántas letras se acertaron.
+    return hmac.compare_digest(codigo.strip().encode(), configurado.encode())
 
 
 def _no_hay_equipos(db: Session) -> bool:
