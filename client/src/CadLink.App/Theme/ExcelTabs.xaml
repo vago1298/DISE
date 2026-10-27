@@ -208,4 +208,61 @@
         <Setter Property="FontSize" Value="12" />
     </Style>
 
+    <!-- ==================================================================
+         Barra de herramientas de arriba
+         ==================================================================
+         Un boton de barra NO se pinta como los de dentro de las hojas: va
+         plano, sin fondo hasta que el raton pasa por encima, que es como se
+         comporta la barra de cualquier programa de Windows. Usar aqui el
+         PrimaryButtonStyle dejaria una fila de botones azules gritando en lo
+         alto de la ventana. -->
+    <Style x:Key="ToolbarButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="Margin" Value="0,0,2,0" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="3"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource TabHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#FFD2DAE1" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- El de la accion principal de la barra, «Guardar»: mismo tamaño y misma
+         forma que los demas, pero con el color de marca, para que se distinga de
+         un golpe de vista sin romper la barra. -->
+    <Style x:Key="ToolbarPrimaryButtonStyle" TargetType="Button"
+           BasedOn="{StaticResource ToolbarButtonStyle}">
+        <Setter Property="Foreground" Value="{StaticResource BrandDarkBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- Separador vertical de la barra, para agrupar acciones -->
+    <Style x:Key="ToolbarSeparatorStyle" TargetType="Border">
+        <Setter Property="Width" Value="1" />
+        <Setter Property="Background" Value="{StaticResource BorderBrush}" />
+        <Setter Property="Margin" Value="7,5,7,5" />
+    </Style>
+
 </ResourceDictionary>

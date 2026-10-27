@@ -7,16 +7,126 @@
         WindowStartupLocation="CenterScreen"
         Background="#FFF7F9FB">
 
+    <!-- Los atajos de siempre. Estaban prometidos en los ToolTip de los botones
+         pero no existian: escribir Ctrl+G no hacia nada. -->
+    <Window.InputBindings>
+        <KeyBinding Key="N" Modifiers="Control" Command="ApplicationCommands.New" />
+        <KeyBinding Key="G" Modifiers="Control" Command="ApplicationCommands.Save" />
+        <KeyBinding Key="S" Modifiers="Control" Command="ApplicationCommands.Save" />
+        <KeyBinding Key="G" Modifiers="Control+Shift" Command="ApplicationCommands.SaveAs" />
+        <KeyBinding Key="S" Modifiers="Control+Shift" Command="ApplicationCommands.SaveAs" />
+        <KeyBinding Key="A" Modifiers="Control" Command="ApplicationCommands.Open" />
+        <KeyBinding Key="O" Modifiers="Control" Command="ApplicationCommands.Open" />
+    </Window.InputBindings>
+
+    <Window.CommandBindings>
+        <CommandBinding Command="ApplicationCommands.New"     Executed="OnNuevoTrabajo" />
+        <CommandBinding Command="ApplicationCommands.Save"   Executed="OnGuardarTrabajo" />
+        <CommandBinding Command="ApplicationCommands.SaveAs" Executed="OnGuardarComo" />
+        <CommandBinding Command="ApplicationCommands.Open"   Executed="OnAbrirTrabajo" />
+    </Window.CommandBindings>
+
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
+        <!-- ==================== Menu ==================== -->
+        <!-- Arriba de todo, como en cualquier programa de Windows. Guardar y abrir
+             el trabajo vivian dentro de la hoja «Proyecto», al final de un
+             ScrollViewer: para guardar habia que cambiar de pestaña y bajar. -->
+        <Menu Grid.Row="0" Background="{StaticResource TabStripBrush}" Padding="6,2">
+            <MenuItem Header="_Archivo">
+                <MenuItem Header="_Nuevo" Command="ApplicationCommands.New"
+                          InputGestureText="Ctrl+N" />
+                <Separator />
+                <MenuItem Header="_Abrir trabajo..." Command="ApplicationCommands.Open"
+                          InputGestureText="Ctrl+A" />
+                <MenuItem Header="_Guardar trabajo" Command="ApplicationCommands.Save"
+                          InputGestureText="Ctrl+G" />
+                <MenuItem Header="Guardar _como..." Command="ApplicationCommands.SaveAs"
+                          InputGestureText="Ctrl+Mayus+G" />
+                <Separator />
+                <MenuItem Header="_Importar desde Excel..." Click="OnImportExcel" />
+                <MenuItem Header="Cargar _ejemplo" Click="OnLoadSample" />
+                <MenuItem Header="_Limpiar todo" Click="OnClearAll" />
+                <Separator />
+                <MenuItem Header="_Salir" Click="OnSalir" />
+            </MenuItem>
+
+            <MenuItem Header="_Dibujar">
+                <MenuItem Header="_Revisar datos" Click="OnValidate" />
+                <Separator />
+                <MenuItem Header="Generar _dibujo de las secciones" Click="OnExport" />
+                <MenuItem Header="Generar _alzados" Click="OnExportAlzados" />
+                <MenuItem Header="Dibujar la _planta en AutoCAD" Click="OnDibujarPlantaCad" />
+            </MenuItem>
+
+            <MenuItem Header="_ETABS">
+                <MenuItem Header="_Probar conexion" Click="OnTestEtabs" />
+                <MenuItem Header="_Leer modelo" Click="OnImportEtabs" />
+                <MenuItem Header="Leer _plantas" Click="OnLeerPlantas" />
+                <MenuItem Header="Leer piers de _muros" Click="OnLeerPiers" />
+            </MenuItem>
+
+            <MenuItem Header="A_yuda">
+                <MenuItem Header="_Revalidar la licencia" Click="OnRevalidate" />
+                <MenuItem Header="_Copiar la huella del equipo" Click="OnCopyFingerprint" />
+                <Separator />
+                <MenuItem Header="_Acerca de..." Click="OnAcercaDe" />
+            </MenuItem>
+        </Menu>
+
+        <!-- ==================== Barra de guardar ==================== -->
+        <Border Grid.Row="1" Background="{StaticResource TabInactiveBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,1"
+                Padding="8,4">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <Button Content="Nuevo" Style="{StaticResource ToolbarButtonStyle}"
+                            Command="ApplicationCommands.New"
+                            ToolTip="Empieza un trabajo en blanco (Ctrl+N)." />
+                    <Button Content="Abrir" Style="{StaticResource ToolbarButtonStyle}"
+                            Command="ApplicationCommands.Open"
+                            ToolTip="Abre un archivo .clk guardado antes (Ctrl+A)." />
+                    <Button Content="Guardar" Style="{StaticResource ToolbarPrimaryButtonStyle}"
+                            Command="ApplicationCommands.Save"
+                            ToolTip="Guarda todo lo capturado en un archivo .clk (Ctrl+G)." />
+                    <Button Content="Guardar como..." Style="{StaticResource ToolbarButtonStyle}"
+                            Command="ApplicationCommands.SaveAs"
+                            ToolTip="Guarda con otro nombre (Ctrl+Mayus+G)." />
+
+                    <Border Style="{StaticResource ToolbarSeparatorStyle}" />
+
+                    <Button Content="Importar Excel" Style="{StaticResource ToolbarButtonStyle}"
+                            Click="OnImportExcel"
+                            ToolTip="Lee la hoja de calculo y llena las tablas." />
+                    <Button Content="Revisar datos" Style="{StaticResource ToolbarButtonStyle}"
+                            Click="OnValidate"
+                            ToolTip="Busca errores en lo capturado antes de dibujar." />
+                </StackPanel>
+
+                <!-- El nombre del archivo abierto, a la derecha de su barra: es el
+                     sitio donde se busca «en que estoy trabajando». -->
+                <TextBlock Grid.Column="1" x:Name="ArchivoText" FontSize="11.5"
+                           VerticalAlignment="Center" HorizontalAlignment="Right"
+                           Margin="14,0,6,0" TextTrimming="CharacterEllipsis"
+                           Foreground="{StaticResource MutedTextBrush}" />
+            </Grid>
+        </Border>
+
         <!-- ==================== Encabezado ==================== -->
-        <Border Grid.Row="0" Background="{StaticResource BrandDarkBrush}" Padding="16,10">
+        <Border Grid.Row="2" Background="{StaticResource BrandDarkBrush}" Padding="16,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -46,14 +156,14 @@
         </Border>
 
         <!-- ==================== Aviso ==================== -->
-        <Border x:Name="NoticeBar" Grid.Row="1"
+        <Border x:Name="NoticeBar" Grid.Row="3"
                 Background="#FFFFF4CE" BorderBrush="#FFE0C36A" BorderThickness="0,0,0,1"
                 Padding="16,8" Visibility="Collapsed">
             <TextBlock x:Name="NoticeText" FontSize="12" TextWrapping="Wrap" Foreground="#FF7A5B00" />
         </Border>
 
         <!-- ==================== Hojas ==================== -->
-        <TabControl x:Name="Sheets" Grid.Row="2"
+        <TabControl x:Name="Sheets" Grid.Row="4"
                     Style="{StaticResource ExcelTabControlStyle}" Margin="8,8,8,0">
 
             <!-- ===== Proyecto ===== -->
@@ -144,21 +254,10 @@
                             </DataGrid.Columns>
                         </DataGrid>
 
-                        <!-- Guardar y abrir el trabajo: extension .clk -->
+                        <!-- Guardar, abrir y crear un trabajo estan ARRIBA, en la
+                             barra de la ventana, no aqui. Aqui solo queda lo que es
+                             propio de esta hoja. -->
                         <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
-                            <Button Content="Guardar trabajo" Style="{StaticResource PrimaryButtonStyle}"
-                                    Click="OnGuardarTrabajo"
-                                    ToolTip="Guarda todo lo capturado en un archivo .clk (Ctrl+G)." />
-                            <Button Content="Guardar como..." Style="{StaticResource SecondaryButtonStyle}"
-                                    Click="OnGuardarComo" />
-                            <Button Content="Abrir trabajo" Style="{StaticResource SecondaryButtonStyle}"
-                                    Click="OnAbrirTrabajo"
-                                    ToolTip="Abre un archivo .clk guardado antes (Ctrl+A)." />
-                            <TextBlock x:Name="ArchivoText" FontSize="11.5" VerticalAlignment="Center"
-                                       Margin="14,0,0,0" Foreground="{StaticResource MutedTextBrush}" />
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal">
                             <Button Content="Importar desde Excel" Style="{StaticResource PrimaryButtonStyle}" Click="OnImportExcel" />
                             <Button Content="Cargar ejemplo" Style="{StaticResource SecondaryButtonStyle}" Click="OnLoadSample" />
                             <Button Content="Limpiar todo" Style="{StaticResource SecondaryButtonStyle}" Click="OnClearAll" />
@@ -639,7 +738,7 @@
 
                         <TextBlock FontSize="11.5" TextWrapping="Wrap" MaxWidth="640"
                                    Foreground="{StaticResource MutedTextBrush}"
-                                   Text="El boton para dibujar esta en la pestaña Secciones Concreto, junto a la tabla." />
+                                   Text="Los botones para dibujar viven junto a lo que dibujan: las secciones y los alzados en la pestaña Secciones Concreto, y la planta en la pestaña Dibujar planos estructurales, con el boton Dibujar en AutoCAD. Tambien estan todos en el menu Dibujar de arriba." />
 
                         <TextBlock x:Name="ExportHintText" FontSize="11.5" Margin="0,12,0,0"
                                    TextWrapping="Wrap" MaxWidth="640" Foreground="{StaticResource MutedTextBrush}" />
@@ -717,6 +816,15 @@
                             <Button Content="Leer plantas de ETABS" Style="{StaticResource PrimaryButtonStyle}"
                                     Click="OnLeerPlantas"
                                     ToolTip="Lee el modelo de ETABS y arma la lista de niveles con sus plantas." />
+
+                            <!-- El boton de dibujar vive junto a la planta que dibuja:
+                                 lo que se manda a AutoCAD es EXACTAMENTE el nivel y los
+                                 filtros que se estan viendo aqui abajo. -->
+                            <Button x:Name="PlantaCadButton" Content="Dibujar en AutoCAD"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Click="OnDibujarPlantaCad"
+                                    ToolTip="Dibuja en AutoCAD la planta del nivel elegido, con los filtros de arriba.&#10;Requiere AutoCAD abierto." />
+
                             <TextBlock x:Name="PlantasResumenText" FontSize="11.5" VerticalAlignment="Center"
                                        Margin="14,0,0,0" Foreground="{StaticResource MutedTextBrush}" />
                         </StackPanel>
@@ -764,14 +872,14 @@
                                 </StackPanel>
                         <TextBlock x:Name="PlanoHintText" FontSize="11.5" Margin="0,12,0,0"
                                    TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"
-                                   Text="Lee el modelo en la pestaña de ETABS y la planta aparece aquí." />
+                                   Text="Lee el modelo en la pestaña de ETABS y la planta aparece aquí. Con «Dibujar en AutoCAD» se manda a AutoCAD el nivel elegido, tal como se ve, en metros y repartido en capas por tipo de elemento." />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
         </TabControl>
 
         <!-- ==================== Barra de estado ==================== -->
-        <Border Grid.Row="3" Background="{StaticResource TabStripBrush}"
+        <Border Grid.Row="5" Background="{StaticResource TabStripBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14,5">
             <Grid>
                 <Grid.ColumnDefinitions>

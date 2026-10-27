@@ -311,10 +311,14 @@ def v6_handlers() -> None:
         codigo = leer(cb)
         txt = leer(x)
         handlers = set()
+        # 'Executed' y 'CanExecute' van en la lista igual que 'Click'. Sin ellos,
+        # cablear un boton por ApplicationCommands se saltaba esta comprobacion
+        # entera: el metodo podia no existir y aqui nadie se enteraba.
         for m in re.finditer(
             r'\b(?:Click|Checked|Unchecked|SelectionChanged|TextChanged|Loaded|'
             r'Closing|Closed|MouseDown|MouseUp|KeyDown|KeyUp|GotFocus|LostFocus|'
-            r'SizeChanged|PreviewKeyDown|Drop|DragOver)\s*=\s*"([A-Za-z0-9_]+)"',
+            r'SizeChanged|PreviewKeyDown|Drop|DragOver|Executed|CanExecute)'
+            r'\s*=\s*"([A-Za-z0-9_]+)"',
             txt,
         ):
             handlers.add(m.group(1))
@@ -2445,17 +2449,159 @@ def v16_extruida_piers() -> None:
           'x:Name="PiersGrid"' in xaml and "PiersGrid.Visibility" in codigo)
 
 
+# ======================================================================
+# 18. Dibujar la planta en AutoCAD
+# ======================================================================
+def v18_planta_autocad() -> None:
+    """El boton «Dibujar en AutoCAD» de la pestaña de planos, y su dibujante."""
+    print("\n[18] Dibujar la planta en AutoCAD")
+
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    codigo = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+
+    # ------------------------------------------------------------------
+    # El boton, y donde vive
+    # ------------------------------------------------------------------
+    check("hay boton «Dibujar en AutoCAD»", 'Content="Dibujar en AutoCAD"' in xaml)
+    check("y esta cableado", 'Click="OnDibujarPlantaCad"' in xaml)
+
+    # Tiene que estar DENTRO de la pestaña de planos, no en otra: se dibuja el nivel
+    # y los filtros que el usuario esta viendo, asi que el boton va donde se eligen.
+    i_tab = xaml.find('Header="Dibujar planos estructurales"')
+    i_lic = xaml.find('Header="Licencia"')
+    i_btn = xaml.find('x:Name="PlantaCadButton"')
+
+    check("el boton esta en la pestaña de planos estructurales",
+          i_tab >= 0 and i_btn > i_tab, f"pestaña en {i_tab}, boton en {i_btn}")
+    check("y no se colo en la pestaña de la licencia",
+          not (0 <= i_lic < i_btn < i_tab))
+
+    # ------------------------------------------------------------------
+    # Se dibuja LO QUE SE VE
+    # ------------------------------------------------------------------
+    m = re.search(r"private PlantaCad ArmarPlanta\(.*?\n    \}", codigo, re.S)
+    check("se puede leer ArmarPlanta", m is not None)
+    if m:
+        cuerpo = m.group(0)
+        check("filtra por el nivel elegido en la lista", "NivelElegido" in cuerpo)
+        check("y por los filtros de ESA pestaña", "VisibleEnElPlano" in cuerpo)
+
+    m_vis = re.search(r"private bool VisibleEnElPlano\(.*?\n    \}", codigo, re.S)
+    check("se puede leer VisibleEnElPlano", m_vis is not None)
+    if m_vis:
+        cuerpo = m_vis.group(0)
+        # Las casillas del PLANO, no las del visor 3D: son dos juegos distintos y
+        # confundirlos haria que el plano saliera con lo que se ve en otra pestaña.
+        for caja in ("VerColumnasPlanoChk", "VerTrabesPlanoChk",
+                     "VerMurosPlanoChk", "VerLosasPlanoChk"):
+            check(f"usa la casilla {caja}", caja in cuerpo)
+
+        for caja in ("VerColumnasChk", "VerTrabesChk", "VerMurosChk", "VerLosasChk"):
+            check(f"y NO la del visor 3D ({caja})",
+                  not re.search(rf"\b{caja}\b", cuerpo))
+
+    # ------------------------------------------------------------------
+    # El permiso es el mismo que el de las secciones
+    # ------------------------------------------------------------------
+    m_mod = re.search(r"private void AplicarModulos\(\).*?\n    \}", codigo, re.S)
+    check("se puede leer AplicarModulos", m_mod is not None)
+    if m_mod:
+        check("el boton de la planta se apaga sin licencia de dibujo",
+              "PlantaCadButton.IsEnabled = puedeDibujar;" in m_mod.group(0))
+
+    m_h = re.search(r"private void OnDibujarPlantaCad\(.*?\n    \}", codigo, re.S)
+    check("se puede leer OnDibujarPlantaCad", m_h is not None)
+    if m_h:
+        cuerpo = m_h.group(0)
+        # Apagar un boton no es la medida de seguridad: la comprobacion de verdad va
+        # tambien en el codigo que ejecuta la funcion.
+        check("y el permiso se vuelve a comprobar al ejecutar",
+              'HasFeature("export-dxf")' in cuerpo)
+        check("no se dibuja sin modelo leido", "_modeloEtabs is null" in cuerpo)
+        check("se avisa si no queda nada que dibujar",
+              "planta.Elementos.Count == 0" in cuerpo)
+        check("se tolera que AutoCAD no este abierto",
+              "AcadNotAvailableException" in cuerpo)
+        check("y el cursor de espera se repone siempre",
+              "finally" in cuerpo and "Cursor = Cursors.Arrow;" in cuerpo)
+
+    # ------------------------------------------------------------------
+    # El dibujante
+    # ------------------------------------------------------------------
+    dib = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.cs"))
+    dto = leer(ruta("client/src/CadLink.Cad/PlantaCad.cs"))
+
+    check("existe PlantaDrawer", "class PlantaDrawer" in dib)
+    check("existe el DTO PlantaCad", "class PlantaCad" in dto)
+
+    # CadLink.Cad NO conoce ETABS: quien traduce es la ventana, en un solo sitio.
+    proj = leer(ruta("client/src/CadLink.Cad/CadLink.Cad.csproj"))
+    check("CadLink.Cad no referencia a CadLink.Etabs", "CadLink.Etabs" not in proj)
+    # Se miran los USOS, no el texto: los dos archivos EXPLICAN en un comentario que
+    # el espejo de ClaseElemento esta duplicado a proposito, y buscar la cadena a
+    # pelo daba por incumplida justo la regla que el comentario documenta.
+    for f in ("PlantaDrawer.cs", "PlantaCad.cs"):
+        limpio = _sin_comentarios(leer(ruta("client/src/CadLink.Cad/" + f)))
+        check(f"{f} no usa tipos de ETABS",
+              "CadLink.Etabs" not in limpio and "ClaseElemento" not in limpio)
+    check("la ventana es la que traduce", "ClasePlantaDe" in codigo)
+
+    # Una capa por tipo de elemento: es lo que se usa para trabajar encima.
+    for capa in ("PLANTA-COLUMNAS", "PLANTA-TRABES", "PLANTA-MUROS",
+                 "PLANTA-LOSAS", "PLANTA-EJES", "PLANTA-TEXTOS"):
+        check(f"hay capa {capa}", f'"{capa}"' in dib)
+
+    # Las capas que ya existen se dejan como estan: pueden llevar el color y la
+    # pluma que les puso el usuario.
+    m_cap = re.search(r"public void AsegurarCapas\(\).*?\n    \}", dib, re.S)
+    check("se puede leer AsegurarCapas", m_cap is not None)
+    if m_cap:
+        check("una capa que ya existe no se toca",
+              "todas.Item(nombre)" in m_cap.group(0))
+
+    # Las losas ANTES que trabes y columnas: en AutoCAD el orden de creacion es el
+    # orden de dibujo, asi que si se dibujaran al final taparian el resto.
+    m_dib = re.search(r"public Resumen Dibujar\(.*?\n    \}", dib, re.S)
+    check("se puede leer Dibujar", m_dib is not None)
+    if m_dib:
+        cuerpo = m_dib.group(0)
+        i_losa = cuerpo.find("ClasePlanta.Losa")
+        i_col = cuerpo.find("ClasePlanta.Columna")
+        check("las losas se dibujan antes que las columnas",
+              0 <= i_losa < i_col, f"losa en {i_losa}, columna en {i_col}")
+
+    # La barra se dibuja por sus dos paños, con la normal al eje: asi funciona en
+    # cualquier direccion y no solo en las ortogonales.
+    m_bar = re.search(r"private bool Barra\(.*?\n    \}", dib, re.S)
+    check("se puede leer Barra", m_bar is not None)
+    if m_bar:
+        cuerpo = m_bar.group(0)
+        check("los paños salen de la normal unitaria al eje",
+              "-dy / largo" in cuerpo and "dx / largo" in cuerpo)
+        check("y un elemento de largo nulo no se dibuja",
+              "largo < LargoMinimo" in cuerpo)
+
+    # Lo que el modelo no dio se AVISA, no se calla: hay que saberlo antes de acotar.
+    m_esp = re.search(r"private double Espesor\(.*?\n    \}", dib, re.S)
+    check("se puede leer Espesor", m_esp is not None)
+    if m_esp:
+        check("una medida que falta se avisa", "_log.Add(" in m_esp.group(0))
+
+    check("los fallos se pueden consultar", "IReadOnlyList<string> Fallos" in dib)
+
+
 def main() -> int:
     print("=" * 66)
     print(" Validaciones estaticas de CadLink")
-    print(" (este entorno no tiene .NET: no se compila, solo se revisa)")
+    print(" (esto NO sustituye a compilar: revisa lo que un compilador no ve)")
     print("=" * 66)
 
     for f in (v1_xml, v2_bat, v3_usings, v4_cs0050, v5_value,
               v6_handlers, v7_names, v8_python, v9_modo, v10_nombres_tapados,
               v11_visor, v12_fidelidad, v13_compilacion,
               v14_bloques_diamante_etabs, v15_cs0103,
-              v16_extruida_piers, v17_guardar_y_defaults):
+              v16_extruida_piers, v17_guardar_y_defaults,
+              v18_planta_autocad):
         f()
 
     print("\n" + "=" * 66)
@@ -2882,9 +3028,79 @@ def v17_guardar_y_defaults() -> None:
     check("se rechaza un archivo de version mas nueva", "p.Version > 1" in proy)
     check("los acentos no se escapan", "UnsafeRelaxedJsonEscaping" in proy)
 
-    check("hay botones de guardar y abrir",
-          'Click="OnGuardarTrabajo"' in xaml and 'Click="OnAbrirTrabajo"' in xaml
-          and 'Click="OnGuardarComo"' in xaml)
+    # Guardar, guardar como y abrir se disparan desde TRES sitios: el boton de la
+    # barra de arriba, el menu Archivo y el teclado. Por eso van por
+    # ApplicationCommands y no por Click: asi los tres comparten una sola ruta de
+    # codigo y no puede pasar que el boton guarde y el atajo no. Lo que se comprueba
+    # es que las tres acciones esten CABLEADAS, no como estan cableadas.
+    check("hay acciones de guardar, guardar como y abrir",
+          'Executed="OnGuardarTrabajo"' in xaml
+          and 'Executed="OnGuardarComo"' in xaml
+          and 'Executed="OnAbrirTrabajo"' in xaml)
+
+    for cmd in ("ApplicationCommands.Save", "ApplicationCommands.SaveAs",
+                "ApplicationCommands.Open"):
+        # Dos usos por comando como minimo: el CommandBinding que lo atiende y algo
+        # que lo invoque. Con uno solo habria un comando atendido que nadie dispara.
+        check(f"algo invoca {cmd}", xaml.count(cmd) >= 2,
+              f"aparece {xaml.count(cmd)} vez/veces")
+
+    # Los atajos prometidos en los ToolTip tienen que existir de verdad. Antes los
+    # ToolTip decian Ctrl+G y Ctrl+A y no habia ni un KeyBinding en todo el proyecto.
+    for tecla, mod, cmd in (("G", "Control", "Save"),
+                            ("A", "Control", "Open"),
+                            ("G", "Control+Shift", "SaveAs")):
+        check(f"el atajo Ctrl{'+Mayus' if 'Shift' in mod else ''}+{tecla} existe",
+              re.search(
+                  rf'<KeyBinding\s+Key="{tecla}"\s+Modifiers="{re.escape(mod)}"\s+'
+                  rf'Command="ApplicationCommands\.{cmd}"\s*/>', xaml) is not None)
+
+    # ----------------------------------------------------------------
+    # Y ARRIBA, como en cualquier programa de Windows
+    # ----------------------------------------------------------------
+    # Esto es el fondo del asunto y por eso se comprueba por POSICION y no por que
+    # exista un boton: guardar vivia dentro de la hoja «Proyecto», al final de un
+    # ScrollViewer, asi que para guardar habia que cambiar de pestaña y bajar.
+    m_menu = re.search(r"<Menu\b", xaml)
+    check("hay una barra de menu", m_menu is not None)
+
+    m_tabs = re.search(r'<TabControl x:Name="Sheets"', xaml)
+    check("se puede localizar el TabControl de las hojas", m_tabs is not None)
+
+    if m_menu and m_tabs:
+        check("el menu va ANTES de las hojas", m_menu.start() < m_tabs.start())
+
+    check("el menu lleva Archivo, Dibujar y Ayuda",
+          "_Archivo" in xaml and "_Dibujar" in xaml and "A_yuda" in xaml)
+
+    # La barra de guardar tiene que estar FUERA de cualquier pestaña, o vuelve a
+    # depender de en que hoja este el usuario.
+    m_barra = re.search(r'Command="ApplicationCommands\.Save"', xaml)
+    if m_barra and m_tabs:
+        check("la barra de guardar esta fuera de las pestañas",
+              m_barra.start() < m_tabs.start())
+
+    # El nombre del archivo abierto se lee en la barra, no enterrado en una hoja.
+    m_arch = re.search(r'x:Name="ArchivoText"', xaml)
+    check("el nombre del archivo se ve en la barra de arriba",
+          m_arch is not None and m_tabs is not None and m_arch.start() < m_tabs.start())
+
+    # Y ya NO debe quedar el juego viejo de botones dentro de la hoja Proyecto.
+    check("los botones de guardar ya no estan dentro de la hoja Proyecto",
+          'Click="OnGuardarTrabajo"' not in xaml
+          and 'Click="OnGuardarComo"' not in xaml
+          and 'Click="OnAbrirTrabajo"' not in xaml)
+
+    # Nuevo suelta la ruta del archivo. Si no lo hiciera, el primer Ctrl+G del
+    # trabajo nuevo sobreescribiria en silencio el .clk anterior.
+    m_nuevo = re.search(r"private void OnNuevoTrabajo\(.*?\n    \}", codigo, re.S)
+    check("se puede leer OnNuevoTrabajo", m_nuevo is not None)
+    if m_nuevo:
+        check("Nuevo olvida la ruta del archivo anterior",
+              "_archivoActual = string.Empty;" in m_nuevo.group(0))
+        check("y pregunta antes de borrar lo no guardado",
+              "MessageBoxResult.Yes" in m_nuevo.group(0))
+
     check("Guardar reutiliza el archivo abierto", "_archivoActual" in codigo)
 
     m_ap = re.search(r"private void AplicarProyecto\(.*?\n    \}", codigo, re.S)

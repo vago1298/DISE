@@ -859,7 +859,19 @@ public sealed partial class SeccionDrawer
             return new List<(double X, double Y, double R)> { varillas[mejor] };
         }
 
-        // El eje cae entre dos: se toman la más cercana por cada lado
+        // El eje cae entre dos: se toman la más cercana por cada lado.
+        //
+        // OJO CON EL 'Coord'. Aquí estaba el defecto que reportó el usuario: este
+        // bloque leía 'varillas[i].X' a pelo, en lugar de la coordenada que toca. En
+        // los lechos de arriba y abajo da igual, porque ahí el eje ES la X. Pero en
+        // los COSTADOS se llama con porY: true y las varillas se reparten en
+        // vertical: todas tienen prácticamente la misma X, así que comparar la X
+        // contra una 'cx' que en realidad era la Y del centro no separaba nada.
+        // Resultado: en un costado con número PAR de varillas —ninguna a media
+        // altura— no se encontraba pareja y el doblez se iba al círculo ficticio o a
+        // una sola varilla descentrada, con la otra atravesada por la cinta. Con
+        // Coord() la regla de «las dos más centradas» vale igual para arriba, abajo,
+        // izquierda y derecha.
         var izq = -1;
         var der = -1;
         var dIzq = double.MaxValue;
@@ -867,17 +879,19 @@ public sealed partial class SeccionDrawer
 
         for (var i = 0; i < varillas.Count; i++)
         {
-            if (varillas[i].X < cx)
+            var c = Coord(varillas[i]);
+
+            if (c < cx)
             {
-                if (cx - varillas[i].X < dIzq)
+                if (cx - c < dIzq)
                 {
-                    dIzq = cx - varillas[i].X;
+                    dIzq = cx - c;
                     izq = i;
                 }
             }
-            else if (varillas[i].X - cx < dDer)
+            else if (c - cx < dDer)
             {
-                dDer = varillas[i].X - cx;
+                dDer = c - cx;
                 der = i;
             }
         }

@@ -52,6 +52,8 @@ Antes de invertir tiempo, ten claro qué está listo y qué no:
 | Validación de conectividad y vista previa del unifilar | ✅ Completo |
 | Columnas calculadas (kVA, corriente, ampacidad total) | ✅ Completo |
 | Conexión a AutoCAD por COM (`AcadConnection`) | ✅ Completo |
+| Barra de guardar y menú arriba, con Ctrl+G / Ctrl+A / Ctrl+N | ✅ Completo |
+| Dibujar la planta estructural en AutoCAD (`PlantaDrawer`) | ✅ Completo |
 | **Importar desde Excel** | ⛔ Pendiente — aquí va la lógica de tus macros |
 | **Motor de dibujo en AutoCAD** | 🚧 En proceso — decidida la ruta A (COM) |
 | **Lectura de ETABS (CSI OAPI)** | ⛔ Pendiente |
@@ -73,10 +75,23 @@ del port**, incluyendo los errores detectados en el código actual:
 nativo. Razones y consecuencias en
 [`docs/decision-ruta-a-com.md`](docs/decision-ruta-a-com.md).
 
-> ⚠️ **El código C# no fue compilado.** Se escribió en un entorno Linux sin .NET,
-> así que no pude ejecutar `dotnet build`. Espera tener que corregir algún detalle
-> menor la primera vez que compiles. El servidor en Python sí fue verificado
-> sintácticamente con Python 3.11.
+> ### Estado de compilación
+>
+> | Proyecto | ¿Compilado? |
+> |---|---|
+> | `CadLink.Cad` | ✅ `dotnet build` limpio, 0 avisos |
+> | `CadLink.Etabs` | ✅ `dotnet build` limpio, 0 avisos |
+> | `CadLink.Licensing` | ⛔ No se pudo: necesita dos paquetes de NuGet y el entorno donde se escribió no tiene salida a internet |
+> | `CadLink.App` | ⛔ No se pudo: depende de `CadLink.Licensing`, y WPF además pide `EnableWindowsTargeting` fuera de Windows |
+>
+> De los dos que no compilan se comprobó lo que se puede comprobar sin compilar:
+> XAML bien formado, **cero errores de sintaxis** de C# (analizados con Roslyn), y
+> las validaciones estáticas de `tools/validar.py`, que revisan justo los errores
+> que un compilador no ve. Aun así, **espera tener que corregir algún detalle menor
+> de `CadLink.App` la primera vez que compiles en Windows**: un error de nombre o de
+> tipo en ese proyecto no lo caza nada de lo anterior.
+>
+> El servidor en Python sí fue verificado con Python 3.11.
 
 ---
 
