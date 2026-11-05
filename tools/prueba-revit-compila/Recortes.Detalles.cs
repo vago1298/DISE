@@ -68,6 +68,9 @@ public sealed class Material : Element
     public static ElementId Create(Document doc, string nombre) => new(0L);
 
     public Color Color { get; set; } = new(0, 0, 0);
+
+    /// <summary>Revit API: Material.AppearanceAssetId. La apariencia de render, para la vista Realista.</summary>
+    public ElementId AppearanceAssetId { get; set; } = ElementId.InvalidElementId;
 }
 
 public sealed class Frame

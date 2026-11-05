@@ -129,7 +129,7 @@ public sealed class AnclaJson
     /// </summary>
     public double RadioDobleM { get; set; }
 
-    /// <summary>Hacia donde apunta la pata, en los ejes del detalle. Unitario.</summary>
+    /// <summary>Hacia donde apunta la pata, en los ejes del detalle: hacia el centro de la placa. Unitario.</summary>
     public double PataX { get; set; }
 
     public double PataY { get; set; }

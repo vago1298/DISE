@@ -283,6 +283,9 @@ public sealed class FamilySymbol : ElementType
 /// </summary>
 public sealed class FamilyInstance : Element
 {
+    /// <summary>Revit API: FamilyInstance.StructuralMaterialType. Para no poner placa en un dado de concreto.</summary>
+    public Structure.StructuralMaterialType StructuralMaterialType => Structure.StructuralMaterialType.Steel;
+
     public XYZ HandOrientation => new(1, 0, 0);
 
     public XYZ FacingOrientation => new(0, 1, 0);

@@ -48,6 +48,12 @@ public sealed class OpcionesDetalle
     /// <summary>Soldar la columna a la placa base, todo alrededor.</summary>
     public bool SoldarColumna { get; set; } = true;
 
+    /// <summary>
+    /// Contraplaca: una segunda placa al FONDO de las anclas, ahogada en el dado, con su tuerca
+    /// abajo. Con ella las anclas van rectas: la contraplaca hace lo que haria el gancho.
+    /// </summary>
+    public bool Contraplaca { get; set; }
+
     /// <summary>La plantilla bajo las zapatas, en metros. Cero = sin plantilla.</summary>
     public double PlantillaM { get; set; } = Cimentacion.PlantillaPorOmisionM;
 
@@ -112,6 +118,15 @@ internal static class Detallador
             {
                 var nombre = $"columna {col.Id.Value}";
 
+                // LA PLACA BASE ES DE LA COLUMNA DE ACERO. Un dado modelado como columna de
+                // concreto cae en la misma categoria, y al elegir con ventana se lleva su propia
+                // placa en el fondo: una segunda placa que nadie pidio.
+                if (EsDeConcreto(col))
+                {
+                    r.Avisos.Add($"«{nombre}»: Es de concreto (un dado o una columna); la placa va en la de acero que se apoya en ella.");
+                    continue;
+                }
+
                 try
                 {
                     var marco = MarcoDeColumna(col, abajo: true);
@@ -153,6 +168,22 @@ internal static class Detallador
                     // ---- La placa, con sus barrenos ----
                     var solidoPlaca = Solidos.Prisma(planta, caraInf, caraSup, acero);
                     var piezasAncla = new List<GeometryObject>();
+                    var espesor = caraSup - caraInf;
+
+                    // ---- La contraplaca, al fondo de las anclas: la placa misma, con su tuerca abajo ----
+                    Solid? contraplaca = null;
+                    var fondoAnclas = placa.Anclas
+                        .Where(a => a.PuntaM - a.FondoM > 0.001)
+                        .Select(a => caraInf + Unidades.AInternas(a.FondoM))
+                        .DefaultIfEmpty(double.NaN)
+                        .Max();
+                    var tuercaAbajo = Unidades.AInternas(placa.Anclas.Select(a => a.TuercaAltoM).DefaultIfEmpty(0).Max());
+                    var caraContra = fondoAnclas + tuercaAbajo;
+
+                    if (o.Contraplaca && !double.IsNaN(fondoAnclas))
+                    {
+                        contraplaca = Solidos.Prisma(planta, caraContra, caraContra + espesor, acero);
+                    }
 
                     foreach (var a in placa.Anclas)
                     {
@@ -168,6 +199,13 @@ internal static class Detallador
                             (caraSup - caraInf) + (2 * holgura), radioBarreno, acero);
                         solidoPlaca = Solidos.Restar(solidoPlaca, barreno);
 
+                        if (contraplaca is not null)
+                        {
+                            contraplaca = Solidos.Restar(contraplaca, Solidos.Cilindro(
+                                new XYZ(eje.X, eje.Y, caraContra - holgura), XYZ.BasisZ,
+                                espesor + (2 * holgura), radioBarreno, acero));
+                        }
+
                         // Sin alzado -ni ahogo ni longitud en la hoja- el detalle de AutoCAD no
                         // dibuja el vastago, y aqui tampoco se modela: queda el barreno.
                         if (radio <= 0 || a.PuntaM - a.FondoM <= 0.001)
@@ -175,16 +213,31 @@ internal static class Detallador
                             continue;
                         }
 
-                        // ---- El ancla con su codo y su pata, hacia dentro ----
+                        // ---- El ancla con su codo y su pata, HACIA EL CENTRO de la placa ----
+                        //
+                        // Hacia el centro y no a lo largo de su hilera: asi la pata se mete en el
+                        // nucleo del dado y nunca se sale por una de sus caras. Con contraplaca va
+                        // recta: la contraplaca ya ancla.
                         var punta = new XYZ(eje.X, eje.Y, caraInf + Unidades.AInternas(a.PuntaM));
-                        var hacia = (ex * a.PataX) + (ey * a.PataY);
-                        hacia = hacia.GetLength() < 1e-9 ? ex : hacia.Normalize();
+                        var hacia = (ex * -a.X) + (ey * -a.Y);
+                        hacia = hacia.GetLength() < 1e-9
+                            ? ((ex * a.PataX) + (ey * a.PataY)).GetLength() < 1e-9 ? ex : ((ex * a.PataX) + (ey * a.PataY)).Normalize()
+                            : hacia.Normalize();
+                        var pata = contraplaca is null ? Unidades.AInternas(a.PataM) : 0;
 
                         foreach (var pieza in Solidos.AnclaDoblada(
                                      punta, caraInf + Unidades.AInternas(a.FondoM), hacia,
-                                     Unidades.AInternas(a.PataM), Unidades.AInternas(a.RadioDobleM), radio, anclas))
+                                     pata, Unidades.AInternas(a.RadioDobleM), radio, anclas))
                         {
                             piezasAncla.Add(pieza);
+                        }
+
+                        // La tuerca de abajo de la contraplaca, colgando de su cara de abajo.
+                        if (contraplaca is not null && a.TuercaM > 0 && a.TuercaAltoM > 0)
+                        {
+                            piezasAncla.Add(Solidos.Tuerca(
+                                new XYZ(eje.X, eje.Y, caraContra), XYZ.BasisZ.Negate(), ex,
+                                Unidades.AInternas(a.TuercaM), Unidades.AInternas(a.TuercaAltoM), radio, anclas));
                         }
 
                         // ---- La tuerca sobre la placa, con su chaflan y su barreno ----
@@ -233,9 +286,13 @@ internal static class Detallador
                     Solidos.Forma(doc, categoria, new List<GeometryObject> { solidoPlaca }, llave,
                         $"{texto} {TextoDeMedidas(placa)}", marca);
 
+                    // Las anclas y la contraplaca van como PARTE de la llave: se borran con la placa,
+                    // pero no cuentan para saber donde termina el dado.
+                    var llaveAnclas = llave + "|anclas";
+
                     if (piezasAncla.Count > 0)
                     {
-                        Solidos.Forma(doc, categoria, piezasAncla, llave,
+                        Solidos.Forma(doc, categoria, piezasAncla, llaveAnclas,
                             $"{texto}, {placa.Anclas.Count} anclas", marca);
                     }
 
@@ -243,6 +300,12 @@ internal static class Detallador
                     {
                         Solidos.Forma(doc, categoria, new List<GeometryObject> { solidoGrout }, llave,
                             $"{texto}, grout {Cm(placa.GroutM)} cm", marca);
+                    }
+
+                    if (contraplaca is not null)
+                    {
+                        Solidos.Forma(doc, categoria, new List<GeometryObject> { contraplaca }, llaveAnclas,
+                            $"{texto}, contraplaca", marca);
                     }
 
                     if (filete is not null)
@@ -308,6 +371,11 @@ internal static class Detallador
 
         return res;
     }
+
+    /// <summary>¿Es una columna de concreto -un dado modelado como columna-?</summary>
+    public static bool EsDeConcreto(FamilyInstance col) =>
+        col.StructuralMaterialType == Autodesk.Revit.DB.Structure.StructuralMaterialType.Concrete
+        || col.StructuralMaterialType == Autodesk.Revit.DB.Structure.StructuralMaterialType.PrecastConcrete;
 
     /// <summary>¿El punto cae dentro de la caja en planta?</summary>
     private static bool Contiene(BoundingBoxXYZ c, XYZ p, double holgura) =>

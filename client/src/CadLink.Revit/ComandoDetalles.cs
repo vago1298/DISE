@@ -32,11 +32,21 @@ public sealed class ComandoPlacasBase : IExternalCommand
             return Result.Failed;
         }
 
-        var columnas = DetallesEnRevit.Piezas(uidoc, "Elige las columnas que llevan la placa y pulsa Terminar.",
+        var elegidas = DetallesEnRevit.Piezas(uidoc, "Elige las columnas de acero que llevan la placa y pulsa Terminar.",
             BuiltInCategory.OST_StructuralColumns).OfType<FamilyInstance>().ToList();
+
+        // Los dados modelados como columna de concreto se quedan fuera: la placa es de la columna
+        // de acero que se apoya en ellos. Elegir con ventana se los lleva, y antes salia una
+        // segunda placa en el fondo del dado.
+        var columnas = elegidas.Where(c => !Detallador.EsDeConcreto(c)).ToList();
 
         if (columnas.Count == 0)
         {
+            if (elegidas.Count > 0)
+            {
+                TaskDialog.Show("CadLink", "Las columnas elegidas son de concreto. La placa base va en la columna de acero.");
+            }
+
             return Result.Cancelled;
         }
 
@@ -68,6 +78,8 @@ public sealed class ComandoPlacasBase : IExternalCommand
         var subir = ventana.Casilla("Subir el arranque de la columna a la cara de la placa", true,
             "Solo con la placa sobre el apoyo. Apagado, la columna se queda donde esta y atraviesa la placa.");
         var soldar = ventana.Casilla("Soldar la columna a la placa, todo alrededor", true);
+        var contra = ventana.Casilla("Con contraplaca al fondo de las anclas", false,
+            "Una segunda placa ahogada en el dado, al fondo de las anclas, con su tuerca abajo. Con ella las anclas van rectas.");
         var girar = ventana.Casilla("Girar la placa 90° sobre la columna", false);
 
         if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Poner placas") || lista.SelectedIndex < 0)
@@ -89,7 +101,8 @@ public sealed class ComandoPlacasBase : IExternalCommand
             Girar = girar.IsChecked == true,
             SobreElApoyo = posicion.SelectedIndex != 1,
             SubirColumna = subir.IsChecked == true,
-            SoldarColumna = soldar.IsChecked == true
+            SoldarColumna = soldar.IsChecked == true,
+            Contraplaca = contra.IsChecked == true
         });
 
         TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "columna(s) con su placa base", archivo.Avisos));
@@ -261,7 +274,7 @@ public sealed class ComandoSoldarVigas : IExternalCommand
         var extremos = ventana.Lista("Extremos:", new[]
         {
             "Los dos extremos de cada viga",
-            "Uno: das clic en cada viga cerca del extremo que se conecta"
+            "Uno: das clic en cada viga cerca del extremo; se conecta con cada clic y Esc termina"
         });
         var lado = ventana.Numero("Tamaño del filete, en mm:", Cordon.PorOmisionM * 1000);
         var patin = ventana.Numero("A momento: espesor de las placas de los patines, en mm:", medidas.PlacaPatinEspesorM * 1000);
@@ -298,24 +311,43 @@ public sealed class ComandoSoldarVigas : IExternalCommand
             return Result.Cancelled;
         }
 
-        var vigas = extremos.SelectedIndex == 1
-            ? DetallesEnRevit.ClicsEnVigas(uidoc)
-            : DetallesEnRevit.Piezas(uidoc, "Elige las vigas que se conectan y pulsa Terminar.",
+        var columnas = DetallesEnRevit.Todas(doc, BuiltInCategory.OST_StructuralColumns);
+        var muros = DetallesEnRevit.Todas(doc, BuiltInCategory.OST_Walls);
+
+        ResultadoDetalles r;
+
+        if (extremos.SelectedIndex == 1)
+        {
+            // UN EXTREMO: se conecta CON CADA CLIC, para que se vea al momento, y Esc termina.
+            // Antes se juntaban los clics y se conectaba todo al final, al pulsar Esc; quien
+            // pulsaba Enter -como en cualquier otra seleccion- se quedaba esperando sin que pasara
+            // nada, porque una seleccion de un punto no termina con Enter.
+            r = DetallesEnRevit.ConectarConCadaClic(uidoc, viga =>
+                Detallador.Soldaduras(doc, new[] { viga }, columnas, muros, o));
+
+            if (r.Hechas == 0 && r.Errores.Count == 0 && r.Avisos.Count == 0)
+            {
+                return Result.Cancelled;
+            }
+        }
+        else
+        {
+            var vigas = DetallesEnRevit.Piezas(uidoc, "Elige las vigas que se conectan y pulsa Terminar (o Enter).",
                     BuiltInCategory.OST_StructuralFraming)
                 .OfType<FamilyInstance>()
                 .Select(v => new Detallador.VigaElegida(v, null))
                 .ToList();
 
-        if (vigas.Count == 0)
-        {
-            return Result.Cancelled;
+            if (vigas.Count == 0)
+            {
+                return Result.Cancelled;
+            }
+
+            r = Detallador.Soldaduras(doc, vigas, columnas, muros, o);
         }
 
-        var r = Detallador.Soldaduras(doc, vigas,
-            DetallesEnRevit.Todas(doc, BuiltInCategory.OST_StructuralColumns),
-            DetallesEnRevit.Todas(doc, BuiltInCategory.OST_Walls), o);
-
-        TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "viga(s) conectada(s)", null));
+        TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "viga(s) conectada(s)", null,
+            extremos.SelectedIndex != 1));
 
         return Result.Succeeded;
     }
@@ -421,33 +453,45 @@ internal static class DetallesEnRevit
     }
 
     /// <summary>
-    /// Clic en cada viga cerca del extremo que se conecta, una por una, hasta pulsar Esc.
+    /// Clic en cada viga cerca del extremo que se conecta, uno por uno, y se conecta al momento.
+    /// Esc termina. Devuelve lo de todos los clics junto.
     /// </summary>
     /// <remarks>
     /// Se elige con un PUNTO sobre la viga, no la viga entera: asi Revit devuelve donde se dio el
     /// clic, y de ahi sale el extremo. Una misma viga se puede picar dos veces para sus dos lados.
+    /// Cada clic es su propia transaccion: Ctrl+Z deshace el ultimo.
     /// </remarks>
-    public static List<Detallador.VigaElegida> ClicsEnVigas(UIDocument uidoc)
+    public static ResultadoDetalles ConectarConCadaClic(
+        UIDocument uidoc, Func<Detallador.VigaElegida, ResultadoDetalles> conectar)
     {
-        var res = new List<Detallador.VigaElegida>();
+        var total = new ResultadoDetalles();
         var filtro = new Filtro(new[] { BuiltInCategory.OST_StructuralFraming });
 
         while (true)
         {
+            Reference r;
+
             try
             {
-                var r = uidoc.Selection.PickObject(ObjectType.PointOnElement, filtro,
-                    $"Clic en la viga, cerca del extremo que se conecta ({res.Count} elegidos). Esc para terminar.");
-
-                if (uidoc.Document.GetElement(r) is FamilyInstance viga && r.GlobalPoint is { } punto)
-                {
-                    res.Add(new Detallador.VigaElegida(viga, punto));
-                }
+                r = uidoc.Selection.PickObject(ObjectType.PointOnElement, filtro,
+                    $"Clic en la viga cerca del extremo que se conecta ({total.Hechas} hechas). Esc para terminar.");
             }
             catch (Autodesk.Revit.Exceptions.OperationCanceledException)
             {
-                return res;
+                return total;
             }
+
+            if (uidoc.Document.GetElement(r) is not FamilyInstance viga || r.GlobalPoint is not { } punto)
+            {
+                continue;
+            }
+
+            var uno = conectar(new Detallador.VigaElegida(viga, punto));
+
+            total.Hechas += uno.Hechas;
+            total.Reemplazadas += uno.Reemplazadas;
+            total.Avisos.AddRange(uno.Avisos);
+            total.Errores.AddRange(uno.Errores);
         }
     }
 

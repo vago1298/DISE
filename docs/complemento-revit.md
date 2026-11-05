@@ -571,7 +571,8 @@ la cota salen de la pieza de Revit.
      y escoge la zapata de cada uno. La plantilla se pregunta; por omisión 5 cm.
    - **Conectar vigas**: elige cómo —filete o a momento—, si van los dos extremos o uno, y
      después las vigas. Con «uno» se da clic en cada viga **cerca del extremo** que se conecta;
-     Esc termina. No necesita archivo.
+     cada clic se conecta al momento y Esc termina (Enter no: una selección de un punto no termina con
+     Enter). No necesita archivo.
    - **Soldar columnas**: elige las columnas y si va en la base, en la cabeza o en las dos.
 
 Si ya había piezas elegidas al pulsar el botón, se usan esas; si no, el botón las pide.
@@ -590,6 +591,14 @@ Si ya había piezas elegidas al pulsar el botón, se usan esas; si no, el botón
 - **Las anclas van donde las pone el detalle de AutoCAD.** CadLink las calcula con las mismas
   cuentas —`AnclasPlacaBase.Construir`, la separación ajustada a la columna K y el alzado de
   `ElevacionPlacaBase.AnclasDeCanto`— y el complemento solo las coloca.
+- **La placa es de la columna de ACERO.** Si el dado está modelado como columna de concreto y
+  se elige junto con la columna, se salta: antes se llevaba su propia placa en el fondo.
+- **Contraplaca**, solo si se marca: una segunda placa al fondo de las anclas, ahogada en el dado,
+  con su tuerca abajo. Con ella las anclas van rectas.
+- **Las patas de las anclas apuntan al centro de la placa**, para que no se salgan por las caras del
+  dado.
+- **Los materiales** de CadLink toman la apariencia de render de un concreto, mortero o acero del
+  proyecto. Sin eso, en la vista Realista el grout salía negro y parecía un hueco.
 - **La placa va sobre el dado o el muro, o embebida.** Sobre el apoyo —lo normal—, el grout se
   apoya en la cara de arriba del concreto que la columna tiene debajo —dado, columna de concreto,
   muro, zapata o losa— y la columna se sube a la cara de la placa (se puede apagar). Embebida, la

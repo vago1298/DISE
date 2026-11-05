@@ -35,37 +35,78 @@ internal static class Solidos
     /// Con su color propio cada parte se distingue en una vista sombreada sin hacer nada: la placa
     /// gris, la soldadura casi negra, el grout arena y el concreto claro.
     /// </remarks>
-    public static ElementId MaterialDe(Document doc, string nombre, byte r, byte g, byte b)
+    /// <remarks>
+    /// <para>
+    /// <b>La apariencia se copia de un material del proyecto.</b> Un material recien creado por la
+    /// API no trae apariencia de render, y en una vista Realista sale NEGRO: el grout bajo la placa
+    /// se veia como un hueco oscuro. Se toma la del primer material cuyo nombre se parezca
+    /// -«Grout», «Mortero», «Concrete»...-; si el proyecto no tiene ninguno, se queda el color.
+    /// </para>
+    /// <para>
+    /// Tambien se le pone a los materiales de CadLink que ya existian sin apariencia, para que un
+    /// modelo donde ya se pusieron placas se arregle al volver a ponerlas.
+    /// </para>
+    /// </remarks>
+    public static ElementId MaterialDe(Document doc, string nombre, byte r, byte g, byte b, params string[] parecidos)
     {
+        Material? propio = null;
+        Material? modelo = null;
+
         foreach (var e in new FilteredElementCollector(doc).OfClass(typeof(Material)))
         {
-            if (e is Material m && string.Equals(m.Name, nombre, StringComparison.OrdinalIgnoreCase))
+            if (e is not Material m)
             {
-                return m.Id;
+                continue;
+            }
+
+            if (string.Equals(m.Name, nombre, StringComparison.OrdinalIgnoreCase))
+            {
+                propio = m;
+            }
+            else if (modelo is null
+                     && m.AppearanceAssetId != ElementId.InvalidElementId
+                     && parecidos.Any(x => (m.Name ?? string.Empty).IndexOf(x, StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                modelo = m;
             }
         }
 
-        var id = Material.Create(doc, nombre);
-
-        if (doc.GetElement(id) is Material nuevo)
+        if (propio is null)
         {
-            nuevo.Color = new Color(r, g, b);
+            propio = doc.GetElement(Material.Create(doc, nombre)) as Material;
+
+            if (propio is null)
+            {
+                return ElementId.InvalidElementId;
+            }
+
+            propio.Color = new Color(r, g, b);
         }
 
-        return id;
+        if (propio.AppearanceAssetId == ElementId.InvalidElementId && modelo is not null)
+        {
+            propio.AppearanceAssetId = modelo.AppearanceAssetId;
+        }
+
+        return propio.Id;
     }
 
-    public static ElementId Acero(Document doc) => MaterialDe(doc, "CadLink - Acero", 120, 128, 136);
+    private static readonly string[] ParecidosAcero = { "Steel", "Acero", "Metal" };
 
-    public static ElementId Anclas(Document doc) => MaterialDe(doc, "CadLink - Anclas", 70, 74, 80);
+    private static readonly string[] ParecidosConcreto = { "Concrete", "Concreto", "Hormig" };
 
-    public static ElementId Soldadura(Document doc) => MaterialDe(doc, "CadLink - Soldadura", 40, 40, 40);
+    public static ElementId Acero(Document doc) => MaterialDe(doc, "CadLink - Acero", 120, 128, 136, ParecidosAcero);
 
-    public static ElementId Grout(Document doc) => MaterialDe(doc, "CadLink - Grout", 176, 160, 128);
+    public static ElementId Anclas(Document doc) => MaterialDe(doc, "CadLink - Anclas", 70, 74, 80, ParecidosAcero);
 
-    public static ElementId Concreto(Document doc) => MaterialDe(doc, "CadLink - Concreto", 192, 192, 188);
+    public static ElementId Soldadura(Document doc) => MaterialDe(doc, "CadLink - Soldadura", 40, 40, 40, ParecidosAcero);
 
-    public static ElementId Plantilla(Document doc) => MaterialDe(doc, "CadLink - Plantilla", 214, 204, 176);
+    public static ElementId Grout(Document doc) =>
+        MaterialDe(doc, "CadLink - Grout", 176, 160, 128, "Grout", "Mortero", "Mortar", "Concrete", "Concreto");
+
+    public static ElementId Concreto(Document doc) => MaterialDe(doc, "CadLink - Concreto", 192, 192, 188, ParecidosConcreto);
+
+    public static ElementId Plantilla(Document doc) => MaterialDe(doc, "CadLink - Plantilla", 214, 204, 176, ParecidosConcreto);
 
     // ---------------------------------------------------------------------
     //  Formas
@@ -96,9 +137,10 @@ internal static class Solidos
 
         foreach (var e in new FilteredElementCollector(doc).OfClass(typeof(DirectShape)))
         {
+            // La llave y sus partes -«llave|anclas»- se van juntas.
             if (e is DirectShape ds
                 && ds.ApplicationId == LlaveDetalle.Aplicacion
-                && ds.ApplicationDataId == llave)
+                && (ds.ApplicationDataId == llave || (ds.ApplicationDataId ?? string.Empty).StartsWith(llave + "|", StringComparison.Ordinal)))
             {
                 ids.Add(ds.Id);
             }
@@ -113,6 +155,10 @@ internal static class Solidos
     }
 
     /// <summary>Lo mas bajo de lo que CadLink puso con esta llave, o null si no hay nada.</summary>
+    /// <remarks>
+    /// Solo la llave exacta, no sus partes: de una placa base cuenta la placa y su grout, no las
+    /// anclas ni la contraplaca, que bajan dentro del dado.
+    /// </remarks>
     public static double? FondoDe(Document doc, string llave)
     {
         double? fondo = null;

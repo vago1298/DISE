@@ -182,9 +182,11 @@ public partial class MainWindow
         {
             var alzado = a.EsX ? deX : deY;
 
-            // La pata apunta HACIA DENTRO, a lo largo de su hilera, como en el alzado.
-            var haciaX = a.EsX ? (a.X > 1e-9 ? -1.0 : 1.0) : 0.0;
-            var haciaY = a.EsX ? 0.0 : (a.Y > 1e-9 ? -1.0 : 1.0);
+            // La pata apunta HACIA EL CENTRO de la placa: asi se mete en el nucleo del dado y no
+            // se sale por ninguna de sus caras. El ancla del centro, si la hay, hacia +X.
+            var largo = Math.Sqrt((a.X * a.X) + (a.Y * a.Y));
+            var haciaX = largo < 1e-9 ? 1.0 : -a.X / largo;
+            var haciaY = largo < 1e-9 ? 0.0 : -a.Y / largo;
 
             placa.Anclas.Add(new AnclaJson
             {

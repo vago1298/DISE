@@ -17108,6 +17108,19 @@ def v31_detalles_revit() -> None:
     check("hay boton para soldar columnas, en la base o en la cabeza",
           "typeof(ComandoSoldarColumnas).FullName" in apl and "ClaseDetalle.SoldaduraColumna" in det)
 
+    # Tercera vuelta: la placa salia duplicada, el grout negro y la viga no se soldaba.
+    check("la placa base no se pone en los dados de concreto modelados como columna",
+          "public static bool EsDeConcreto(FamilyInstance col)" in det
+          and "columnas = elegidas.Where(c => !Detallador.EsDeConcreto(c))" in com)
+    check("la contraplaca solo si se pide, al fondo de las anclas",
+          "public bool Contraplaca { get; set; }" in det and "Contraplaca = contra.IsChecked == true" in com)
+    check("los materiales de CadLink toman la apariencia de uno del proyecto (el grout no sale negro)",
+          "propio.AppearanceAssetId = modelo.AppearanceAssetId;" in sol)
+    check("las anclas no cuentan para saber donde termina el dado",
+          'var llaveAnclas = llave + "|anclas";' in det)
+    check("con un extremo, cada clic conecta al momento y Esc termina",
+          "public static ResultadoDetalles ConectarConCadaClic(" in com)
+
     check("la capa de Revit de los detalles se compila contra los recortes",
           "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)
 
