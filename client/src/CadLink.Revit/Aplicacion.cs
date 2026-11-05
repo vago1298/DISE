@@ -112,6 +112,37 @@ public sealed class Aplicacion : IExternalApplication
             "Crea una vista de corte transversal de la seccion que pidas, con su nombre "
             + "y sus cotas.",
             TextoCorte("columna o trabe"), "corte-seccion");
+
+        // ---- Detalles: lo que va DEBAJO y ENTRE las piezas ya modeladas ----
+        //
+        // Placas base, zapatas y soldaduras. Las tablas de CadLink son de tipos, asi que se eligen
+        // las piezas en el modelo y se les pone la fila de la tabla que toque.
+        var detalles = app.CreateRibbonPanel(Pestana, "Detalles");
+
+        Boton(detalles, dll, "CadLinkPlacasBase", "Placas\nbase", typeof(ComandoPlacasBase).FullName,
+            "Pone la placa base de CadLink bajo las columnas elegidas: placa, anclas, grout y soldadura.",
+            "Lee el .cadlink-detalles.json que escribe CadLink con el boton «Para Revit…» de la hoja "
+            + "Placa Base. Se eligen las columnas, se escoge la placa, y en cada una se modela la "
+            + "placa con sus barrenos, las anclas con su tuerca y su doblez, la cama de grout y el "
+            + "filete de la columna todo alrededor.\n\n"
+            + "Las anclas van donde las pone el detalle de AutoCAD. La placa se orienta midiendo "
+            + "la columna; volver a ponerla reemplaza la anterior.",
+            "placa-base");
+
+        Boton(detalles, dll, "CadLinkCimentacion", "Cimenta-\nción", typeof(ComandoCimentacion).FullName,
+            "Pone zapatas aisladas bajo las columnas y zapatas corridas bajo los muros elegidos.",
+            "Lee el mismo .cadlink-detalles.json, que trae las hojas Zapatas Aisladas y Zapatas "
+            + "Corridas. Bajo cada columna: la zapata, el dado y la plantilla, con la profundidad de "
+            + "desplante de la tabla; si la columna ya tiene placa base de CadLink, el dado termina "
+            + "bajo su grout. Bajo cada muro recto: la zapata corrida con su contratrabe o su enrase.",
+            "cimentacion");
+
+        Boton(detalles, dll, "CadLinkSoldarVigas", "Soldar\nvigas", typeof(ComandoSoldarVigas).FullName,
+            "Pone el filete todo alrededor del perfil en los extremos de las vigas que llegan a una columna.",
+            "Sirve con cualquier perfil -OR, IR, canal, angulo-: el contorno sale de la viga tal como "
+            + "Revit la dibujo, recortada en la cara de la columna. Solo se pregunta el tamaño del "
+            + "filete. No necesita archivo de CadLink.",
+            "soldar-viga");
     }
 
     private static string TextoAcero(string elemento) =>
@@ -169,6 +200,9 @@ public sealed class Aplicacion : IExternalApplication
         "viga-corte" => (Imagen("CadLink.Revit.viga-corte-32.png"), Imagen("CadLink.Revit.viga-corte-16.png")),
         "armar-tipo" => (Imagen("CadLink.Revit.armar-tipo-32.png"), Imagen("CadLink.Revit.armar-tipo-16.png")),
         "corte-seccion" => (Imagen("CadLink.Revit.corte-seccion-32.png"), Imagen("CadLink.Revit.corte-seccion-16.png")),
+        "placa-base" => (Imagen("CadLink.Revit.placa-base-32.png"), Imagen("CadLink.Revit.placa-base-16.png")),
+        "cimentacion" => (Imagen("CadLink.Revit.cimentacion-32.png"), Imagen("CadLink.Revit.cimentacion-16.png")),
+        "soldar-viga" => (Imagen("CadLink.Revit.soldar-viga-32.png"), Imagen("CadLink.Revit.soldar-viga-16.png")),
         _ => (null, null)
     };
 

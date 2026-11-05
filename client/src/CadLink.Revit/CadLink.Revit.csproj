@@ -138,6 +138,30 @@
     <EmbeddedResource Include="Assets\corte-seccion-16.png">
       <LogicalName>CadLink.Revit.corte-seccion-16.png</LogicalName>
     </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\placa-base-32.png">
+      <LogicalName>CadLink.Revit.placa-base-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\placa-base-16.png">
+      <LogicalName>CadLink.Revit.placa-base-16.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\cimentacion-32.png">
+      <LogicalName>CadLink.Revit.cimentacion-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\cimentacion-16.png">
+      <LogicalName>CadLink.Revit.cimentacion-16.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\soldar-viga-32.png">
+      <LogicalName>CadLink.Revit.soldar-viga-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\soldar-viga-16.png">
+      <LogicalName>CadLink.Revit.soldar-viga-16.png</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <PropertyGroup>

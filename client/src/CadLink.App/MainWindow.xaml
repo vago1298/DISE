@@ -1514,6 +1514,12 @@
                                     Click="OnExportZapatasCorridas"
                                     Margin="8,0,0,0"
                                     ToolTip="Dibuja cada zapata corrida en el AutoCAD que ya tengas abierto, en las posiciones de tus macros.&#10;La contratrabe y la cadena de desplante se insertan como bloque buscandolas por su ID." />
+
+                            <Button Content="Para Revit…"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnDetallesParaRevit"
+                                    Margin="8,0,0,0"
+                                    ToolTip="Guarda las hojas Placa Base, Zapatas Aisladas y Zapatas Corridas en un .cadlink-detalles.json.&#10;En Revit, pestaña CadLink → panel Detalles: eliges las columnas o los muros y la fila,&#10;y se modelan la placa con sus anclas, grout y soldadura, o la zapata con su dado y su plantilla." />
                         </StackPanel>
                     </StackPanel>
 
@@ -1885,6 +1891,12 @@
                                     Click="OnExportZapatas"
                                     Margin="8,0,0,0"
                                     ToolTip="Dibuja cada zapata en el AutoCAD que ya tengas abierto: su corte y su planta, en las posiciones de tus macros.&#10;Revisa primero y no dibuja si falta algo. El dado se inserta como bloque buscandolo por su ID." />
+
+                            <Button Content="Para Revit…"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnDetallesParaRevit"
+                                    Margin="8,0,0,0"
+                                    ToolTip="Guarda las hojas Placa Base, Zapatas Aisladas y Zapatas Corridas en un .cadlink-detalles.json.&#10;En Revit, pestaña CadLink → panel Detalles: eliges las columnas o los muros y la fila,&#10;y se modelan la placa con sus anclas, grout y soldadura, o la zapata con su dado y su plantilla." />
                         </StackPanel>
                     </StackPanel>
 
@@ -3172,6 +3184,11 @@
                                         Style="{StaticResource SecondaryButtonStyle}"
                                         Margin="0,0,14,0"
                                         Click="OnQuitarPlaca" />
+                                <Button Content="Para Revit…"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="0,0,8,0"
+                                        Click="OnDetallesParaRevit"
+                                        ToolTip="Guarda las hojas Placa Base, Zapatas Aisladas y Zapatas Corridas en un .cadlink-detalles.json.&#10;En Revit, pestaña CadLink → panel Detalles: eliges las columnas o los muros y la fila,&#10;y se modelan la placa con sus anclas, grout y soldadura, o la zapata con su dado y su plantilla." />
                                 <Button x:Name="PlacaBaseButton" Content="Dibujar placas base"
                                         Style="{StaticResource PrimaryButtonStyle}"
                                         Click="OnDibujarPlacaBase" />

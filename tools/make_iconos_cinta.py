@@ -169,6 +169,32 @@ def corte_seccion():
     return seccion(16, 16, 26)
 
 
+def placa_base():
+    # La placa en el piso, sus cuatro anclas y la columna que arranca encima.
+    f = caja(0, 0, 0, 16, 16, 1.6, cx=16, cy=17, s=1.0, colores=(GRIS, (150, 158, 168, 255), (110, 118, 130, 255)))
+    for x, y in ((2.5, 2.5), (13.5, 2.5), (2.5, 13.5), (13.5, 13.5)):
+        cx, cy = iso(x, y, 1.6, 16, 17)
+        f.append(circulo(cx, cy, 1.3, OSCURO))
+    return f + caja(5.5, 5.5, 1.6, 5, 5, 14, cx=16, cy=17, s=1.0)
+
+
+def cimentacion():
+    # La zapata, el dado y el arranque de la columna.
+    gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
+    f = caja(0, 0, 0, 18, 18, 4, cx=16, cy=19, s=0.95, colores=gris)
+    f += caja(5.5, 5.5, 4, 7, 7, 7, cx=16, cy=19, s=0.95, colores=gris)
+    return f + caja(7, 7, 11, 4, 4, 9, cx=16, cy=19, s=0.95)
+
+
+def soldar_viga():
+    # La columna, la viga que llega y el cordon alrededor del perfil, en rojo.
+    f = caja(0, 0, 0, 6, 6, 24, cx=9, cy=28, s=0.95)
+    f += caja(6, 1.5, 14, 16, 3, 5, cx=9, cy=28, s=0.95)
+    anillo = [iso(6.4, 1.2, 13.6, 9, 28, 0.95), iso(6.4, 4.8, 13.6, 9, 28, 0.95),
+              iso(6.4, 4.8, 19.4, 9, 28, 0.95), iso(6.4, 1.2, 19.4, 9, 28, 0.95)]
+    return f + lineas(anillo + [anillo[0]], 1.6, ROJO)
+
+
 ICONOS = {
     "importar-etabs": importar_etabs,
     "armar-modelo": armar_modelo,
@@ -178,6 +204,9 @@ ICONOS = {
     "viga-corte": viga_corte,
     "armar-tipo": armar_tipo,
     "corte-seccion": corte_seccion,
+    "placa-base": placa_base,
+    "cimentacion": cimentacion,
+    "soldar-viga": soldar_viga,
 }
 
 
