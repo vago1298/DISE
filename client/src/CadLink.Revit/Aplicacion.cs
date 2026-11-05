@@ -137,12 +137,22 @@ public sealed class Aplicacion : IExternalApplication
             + "bajo su grout. Bajo cada muro recto: la zapata corrida con su contratrabe o su enrase.",
             "cimentacion");
 
-        Boton(detalles, dll, "CadLinkSoldarVigas", "Soldar\nvigas", typeof(ComandoSoldarVigas).FullName,
-            "Pone el filete todo alrededor del perfil en los extremos de las vigas que llegan a una columna.",
-            "Sirve con cualquier perfil -OR, IR, canal, angulo-: el contorno sale de la viga tal como "
-            + "Revit la dibujo, recortada en la cara de la columna. Solo se pregunta el tamaño del "
-            + "filete. No necesita archivo de CadLink.",
+        Boton(detalles, dll, "CadLinkSoldarVigas", "Conectar\nvigas", typeof(ComandoSoldarVigas).FullName,
+            "Conecta los extremos de las vigas: a una columna con filete o a momento; a un muro, con placa embebida.",
+            "A una COLUMNA: filete todo alrededor del perfil, o a momento IR a IR con placa en cada patin "
+            + "y placa de cortante atornillada al alma, cada placa soldada a la columna.\n\n"
+            + "A un MURO de concreto: placa embebida a paño del muro, con sus anclas, y la viga soldada a "
+            + "ella.\n\n"
+            + "Se conectan los dos extremos, o uno: das clic en la viga cerca del extremo. El contorno sale "
+            + "de la viga tal como Revit la dibujo. No necesita archivo de CadLink.",
             "soldar-viga");
+
+        Boton(detalles, dll, "CadLinkSoldarColumnas", "Soldar\ncolumnas", typeof(ComandoSoldarColumnas).FullName,
+            "Pone el filete todo alrededor de la base o de la cabeza de las columnas elegidas.",
+            "Sobre lo que la columna tenga: una placa, una losa, un dado o la columna de abajo. El "
+            + "contorno sale de la columna tal como esta dibujada; solo se pregunta donde y de que "
+            + "tamaño. La placa base de CadLink ya trae su propia soldadura.",
+            "soldar-columna");
     }
 
     private static string TextoAcero(string elemento) =>
@@ -203,6 +213,7 @@ public sealed class Aplicacion : IExternalApplication
         "placa-base" => (Imagen("CadLink.Revit.placa-base-32.png"), Imagen("CadLink.Revit.placa-base-16.png")),
         "cimentacion" => (Imagen("CadLink.Revit.cimentacion-32.png"), Imagen("CadLink.Revit.cimentacion-16.png")),
         "soldar-viga" => (Imagen("CadLink.Revit.soldar-viga-32.png"), Imagen("CadLink.Revit.soldar-viga-16.png")),
+        "soldar-columna" => (Imagen("CadLink.Revit.soldar-columna-32.png"), Imagen("CadLink.Revit.soldar-columna-16.png")),
         _ => (null, null)
     };
 

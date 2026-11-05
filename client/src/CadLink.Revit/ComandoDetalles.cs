@@ -60,6 +60,14 @@ public sealed class ComandoPlacasBase : IExternalCommand
             + "La placa se orienta sola, midiendo la columna. Si queda girada, marca la casilla.");
 
         var lista = ventana.Lista("Placa:", archivo.Placas.Select(Describir));
+        var posicion = ventana.Lista("Donde va la placa:", new[]
+        {
+            "Sobre el dado o el muro de concreto, con su grout",
+            "Embebida: su cara de arriba a paño del arranque de la columna"
+        });
+        var subir = ventana.Casilla("Subir el arranque de la columna a la cara de la placa", true,
+            "Solo con la placa sobre el apoyo. Apagado, la columna se queda donde esta y atraviesa la placa.");
+        var soldar = ventana.Casilla("Soldar la columna a la placa, todo alrededor", true);
         var girar = ventana.Casilla("Girar la placa 90° sobre la columna", false);
 
         if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Poner placas") || lista.SelectedIndex < 0)
@@ -76,7 +84,13 @@ public sealed class ComandoPlacasBase : IExternalCommand
             return Result.Cancelled;
         }
 
-        var r = Detallador.Placas(doc, columnas, placa, new OpcionesDetalle { Girar = girar.IsChecked == true });
+        var r = Detallador.Placas(doc, columnas, placa, new OpcionesDetalle
+        {
+            Girar = girar.IsChecked == true,
+            SobreElApoyo = posicion.SelectedIndex != 1,
+            SubirColumna = subir.IsChecked == true,
+            SoldarColumna = soldar.IsChecked == true
+        });
 
         TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "columna(s) con su placa base", archivo.Avisos));
 
@@ -210,15 +224,109 @@ public sealed class ComandoCimentacion : IExternalCommand
 }
 
 /// <summary>
-/// El boton <b>Soldar vigas</b>: el filete todo alrededor en los extremos de las vigas que llegan a
-/// una columna.
+/// El boton <b>Conectar vigas</b>: en cada extremo que llega a una columna, el filete todo
+/// alrededor o la conexion a momento; en el que llega a un muro de concreto, la placa embebida.
 /// </summary>
 /// <remarks>
-/// No necesita archivo de CadLink: el contorno sale de la viga ya modelada, sea OR, IR o cualquier
-/// otro perfil, y lo unico que se pregunta es el tamaño del filete.
+/// No necesita archivo de CadLink: el contorno sale de la viga ya modelada. Primero se pregunta
+/// como, y despues se eligen las vigas: con «un extremo», se da clic en cada viga CERCA del extremo
+/// que se conecta.
 /// </remarks>
 [Transaction(TransactionMode.Manual)]
 public sealed class ComandoSoldarVigas : IExternalCommand
+{
+    public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+    {
+        var uidoc = commandData?.Application?.ActiveUIDocument;
+        var doc = uidoc?.Document;
+
+        if (uidoc is null || doc is null || doc.IsFamilyDocument)
+        {
+            message = "Abre un proyecto de Revit antes de conectar vigas.";
+            return Result.Failed;
+        }
+
+        var medidas = new OpcionesConexion();
+
+        var ventana = new VentanaDetalle("CadLink - Conectar vigas",
+            "En cada extremo de viga que llega a una COLUMNA se pone la conexion elegida; en el que "
+            + "llega a un MURO de concreto, una placa embebida a paño del muro con sus anclas, y la "
+            + "viga soldada a ella. El contorno sale de la viga tal como esta dibujada.");
+
+        var tipo = ventana.Lista("Conexion a la columna:", new[]
+        {
+            "Filete todo alrededor del perfil",
+            "A momento, IR a IR: placas en los patines y placa de cortante atornillada"
+        });
+        var extremos = ventana.Lista("Extremos:", new[]
+        {
+            "Los dos extremos de cada viga",
+            "Uno: das clic en cada viga cerca del extremo que se conecta"
+        });
+        var lado = ventana.Numero("Tamaño del filete, en mm:", Cordon.PorOmisionM * 1000);
+        var patin = ventana.Numero("A momento: espesor de las placas de los patines, en mm:", medidas.PlacaPatinEspesorM * 1000);
+        var largoPatin = ventana.Numero("A momento: largo de las placas de los patines, en cm:", medidas.PlacaPatinLargoM * 100);
+        var cortante = ventana.Numero("A momento: espesor de la placa de cortante, en mm:", medidas.PlacaCortanteEspesorM * 1000);
+        var tornillo = ventana.Numero("A momento: diametro de los tornillos, en mm:", medidas.TornilloM * 1000);
+        var enMuro = ventana.Casilla("En los muros: placa embebida con anclas", true,
+            "Apagado, la viga que llega a un muro solo se suelda todo alrededor, sin placa.");
+        var soloApoyos = ventana.Casilla("Solo los extremos que llegan a una columna o a un muro", true,
+            "Apagado, se conectan los extremos elegidos lleguen a donde lleguen.");
+
+        if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Elegir vigas"))
+        {
+            return Result.Cancelled;
+        }
+
+        medidas.PlacaPatinEspesorM = VentanaDetalle.Leer(patin, medidas.PlacaPatinEspesorM * 1000) / 1000;
+        medidas.PlacaPatinLargoM = VentanaDetalle.Leer(largoPatin, medidas.PlacaPatinLargoM * 100) / 100;
+        medidas.PlacaCortanteEspesorM = VentanaDetalle.Leer(cortante, medidas.PlacaCortanteEspesorM * 1000) / 1000;
+        medidas.TornilloM = VentanaDetalle.Leer(tornillo, medidas.TornilloM * 1000) / 1000;
+
+        var o = new OpcionesDetalle
+        {
+            SoldaduraM = VentanaDetalle.Leer(lado, Cordon.PorOmisionM * 1000) / 1000,
+            SoloEnApoyos = soloApoyos.IsChecked == true,
+            PlacaEnMuro = enMuro.IsChecked == true,
+            Conexion = tipo.SelectedIndex == 1 ? TipoConexion.Momento : TipoConexion.Filete,
+            MedidasDeConexion = medidas
+        };
+
+        if (o.SoldaduraM <= 0)
+        {
+            TaskDialog.Show("CadLink", "El filete tiene que medir mas de cero.");
+            return Result.Cancelled;
+        }
+
+        var vigas = extremos.SelectedIndex == 1
+            ? DetallesEnRevit.ClicsEnVigas(uidoc)
+            : DetallesEnRevit.Piezas(uidoc, "Elige las vigas que se conectan y pulsa Terminar.",
+                    BuiltInCategory.OST_StructuralFraming)
+                .OfType<FamilyInstance>()
+                .Select(v => new Detallador.VigaElegida(v, null))
+                .ToList();
+
+        if (vigas.Count == 0)
+        {
+            return Result.Cancelled;
+        }
+
+        var r = Detallador.Soldaduras(doc, vigas,
+            DetallesEnRevit.Todas(doc, BuiltInCategory.OST_StructuralColumns),
+            DetallesEnRevit.Todas(doc, BuiltInCategory.OST_Walls), o);
+
+        TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "viga(s) conectada(s)", null));
+
+        return Result.Succeeded;
+    }
+}
+
+/// <summary>
+/// El boton <b>Soldar columnas</b>: el filete todo alrededor de la base o la cabeza de cada
+/// columna, sobre lo que tenga: una placa, una losa, un dado o la columna de abajo.
+/// </summary>
+[Transaction(TransactionMode.Manual)]
+public sealed class ComandoSoldarColumnas : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
@@ -231,21 +339,21 @@ public sealed class ComandoSoldarVigas : IExternalCommand
             return Result.Failed;
         }
 
-        var vigas = DetallesEnRevit.Piezas(uidoc, "Elige las vigas que se sueldan a las columnas y pulsa Terminar.",
-            BuiltInCategory.OST_StructuralFraming).OfType<FamilyInstance>().ToList();
+        var columnas = DetallesEnRevit.Piezas(uidoc, "Elige las columnas que se sueldan y pulsa Terminar.",
+            BuiltInCategory.OST_StructuralColumns).OfType<FamilyInstance>().ToList();
 
-        if (vigas.Count == 0)
+        if (columnas.Count == 0)
         {
             return Result.Cancelled;
         }
 
-        var ventana = new VentanaDetalle("CadLink - Soldar vigas",
-            $"Se pone un filete todo alrededor del perfil en los extremos de las {vigas.Count} viga(s), "
-            + "sobre la cara de la columna. El contorno sale de la viga tal como esta dibujada.");
+        var ventana = new VentanaDetalle("CadLink - Soldar columnas",
+            $"Se pone un filete todo alrededor del perfil de las {columnas.Count} columna(s), sobre la "
+            + "pieza en que se apoya o que tiene encima. El contorno sale de la columna tal como esta "
+            + "dibujada.\n\nLa placa base de CadLink ya trae su soldadura: este boton es para lo demas.");
 
+        var donde = ventana.Lista("Donde:", new[] { "En la base", "En la cabeza", "En la base y en la cabeza" });
         var lado = ventana.Numero("Tamaño del filete, en mm:", Cordon.PorOmisionM * 1000);
-        var soloColumnas = ventana.Casilla("Solo los extremos que llegan a una columna", true,
-            "Apagado, se sueldan los dos extremos de cada viga, lleguen a donde lleguen.");
 
         if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Soldar"))
         {
@@ -255,7 +363,12 @@ public sealed class ComandoSoldarVigas : IExternalCommand
         var o = new OpcionesDetalle
         {
             SoldaduraM = VentanaDetalle.Leer(lado, Cordon.PorOmisionM * 1000) / 1000,
-            SoloEnColumnas = soloColumnas.IsChecked == true
+            ExtremosColumna = donde.SelectedIndex switch
+            {
+                1 => ExtremosColumna.Cabeza,
+                2 => ExtremosColumna.Ambos,
+                _ => ExtremosColumna.Base
+            }
         };
 
         if (o.SoldaduraM <= 0)
@@ -264,20 +377,15 @@ public sealed class ComandoSoldarVigas : IExternalCommand
             return Result.Cancelled;
         }
 
-        var columnas = new FilteredElementCollector(doc)
-            .OfCategory(BuiltInCategory.OST_StructuralColumns)
-            .WhereElementIsNotElementType()
-            .ToList();
+        var r = Detallador.SoldarColumnas(doc, columnas, o);
 
-        var r = Detallador.Soldaduras(doc, vigas, columnas, o);
-
-        TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "viga(s) soldada(s)", null));
+        TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "columna(s) soldada(s)", null));
 
         return Result.Succeeded;
     }
 }
 
-/// <summary>Lo comun a los tres botones: elegir las piezas, abrir el archivo y el informe.</summary>
+/// <summary>Lo comun a los botones: elegir las piezas, abrir el archivo y el informe.</summary>
 internal static class DetallesEnRevit
 {
     /// <summary>
@@ -311,6 +419,41 @@ internal static class DetallesEnRevit
             return new List<Element>();
         }
     }
+
+    /// <summary>
+    /// Clic en cada viga cerca del extremo que se conecta, una por una, hasta pulsar Esc.
+    /// </summary>
+    /// <remarks>
+    /// Se elige con un PUNTO sobre la viga, no la viga entera: asi Revit devuelve donde se dio el
+    /// clic, y de ahi sale el extremo. Una misma viga se puede picar dos veces para sus dos lados.
+    /// </remarks>
+    public static List<Detallador.VigaElegida> ClicsEnVigas(UIDocument uidoc)
+    {
+        var res = new List<Detallador.VigaElegida>();
+        var filtro = new Filtro(new[] { BuiltInCategory.OST_StructuralFraming });
+
+        while (true)
+        {
+            try
+            {
+                var r = uidoc.Selection.PickObject(ObjectType.PointOnElement, filtro,
+                    $"Clic en la viga, cerca del extremo que se conecta ({res.Count} elegidos). Esc para terminar.");
+
+                if (uidoc.Document.GetElement(r) is FamilyInstance viga && r.GlobalPoint is { } punto)
+                {
+                    res.Add(new Detallador.VigaElegida(viga, punto));
+                }
+            }
+            catch (Autodesk.Revit.Exceptions.OperationCanceledException)
+            {
+                return res;
+            }
+        }
+    }
+
+    /// <summary>Todas las piezas de una categoria del proyecto.</summary>
+    public static List<Element> Todas(Document doc, BuiltInCategory categoria) =>
+        new FilteredElementCollector(doc).OfCategory(categoria).WhereElementIsNotElementType().ToList();
 
     private static bool EsDe(Element e, BuiltInCategory[] categorias) =>
         e.Category is { } c && categorias.Contains(c.BuiltInCategory);

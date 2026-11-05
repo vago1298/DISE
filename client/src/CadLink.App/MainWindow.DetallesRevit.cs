@@ -195,6 +195,7 @@ public partial class MainWindow
                 PuntaM = alzado.Punta / 100,
                 FondoM = alzado.Fondo / 100,
                 PataM = alzado.Pata / 100,
+                RadioDobleM = alzado.Radio / 100,
                 PataX = haciaX,
                 PataY = haciaY,
                 TuercaM = alzado.Tuerca / 100,
@@ -205,8 +206,8 @@ public partial class MainWindow
         return placa;
     }
 
-    /// <summary>Punta, fondo, pata y tuerca de un ancla, en cm desde la cara de abajo de la placa.</summary>
-    private static (double Punta, double Fondo, double Pata, double Tuerca, double TuercaAlto) AlzadoDeUnAncla(
+    /// <summary>Punta, fondo, pata, tuerca y radio del codo de un ancla, en cm desde la cara de abajo de la placa.</summary>
+    private static (double Punta, double Fondo, double Pata, double Tuerca, double TuercaAlto, double Radio) AlzadoDeUnAncla(
         PlacaBaseCad p, double anchoPlaca, double sepBorde, double ahogo, double largo, double doblez,
         double diametro, double grout)
     {
@@ -218,7 +219,7 @@ public partial class MainWindow
         {
             // Sin ahogo ni longitud la macro no dibuja el ancla en el alzado: aqui tampoco se
             // modela el vastago, solo el barreno.
-            return (0, 0, 0, 0, 0);
+            return (0, 0, 0, 0, 0, 0);
         }
 
         var v = lista[0].Vastago;
@@ -231,7 +232,10 @@ public partial class MainWindow
         var anchoTuerca = Math.Abs(t[2] - t[0]);
         var altoTuerca = Math.Abs(t[5] - t[1]);
 
-        return (punta, fondo, pata, anchoTuerca, altoTuerca);
+        // El radio del codo, al eje: el mismo con que AutoCAD redondea el doblez del alzado.
+        var radio = ElevacionPlacaBase.RadioDelDoblez(pata, punta - fondo, diametro);
+
+        return (punta, fondo, pata, anchoTuerca, altoTuerca, radio);
     }
 
     private static ZapataAisladaJson ZapataParaRevit(ZapataCad z) => new()

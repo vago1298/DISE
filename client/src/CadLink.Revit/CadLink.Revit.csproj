@@ -162,6 +162,14 @@
     <EmbeddedResource Include="Assets\soldar-viga-16.png">
       <LogicalName>CadLink.Revit.soldar-viga-16.png</LogicalName>
     </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\soldar-columna-32.png">
+      <LogicalName>CadLink.Revit.soldar-columna-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\soldar-columna-16.png">
+      <LogicalName>CadLink.Revit.soldar-columna-16.png</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <PropertyGroup>

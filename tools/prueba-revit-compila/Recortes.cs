@@ -108,12 +108,18 @@ public abstract class Curve
 
     /// <summary>Revit API: Curve.Tessellate() devuelve IList&lt;XYZ&gt;.</summary>
     public IList<XYZ> Tessellate() => new List<XYZ>();
+
+    /// <summary>Revit API: Curve.GetEndParameter(int). Donde se cuelga el perfil del barrido.</summary>
+    public double GetEndParameter(int i) => 0;
 }
 
 /// <summary>Revit API: Arc.Create(XYZ centro, double radio, double inicio, double fin, XYZ ejeX, XYZ ejeY).</summary>
 public sealed class Arc : Curve
 {
     public static Arc Create(XYZ centro, double radio, double inicio, double fin, XYZ ejeX, XYZ ejeY) => new();
+
+    /// <summary>Revit API: Arc.Create(XYZ extremo0, XYZ extremo1, XYZ puntoEnElArco). El codo del ancla.</summary>
+    public static Arc Create(XYZ extremo0, XYZ extremo1, XYZ puntoEnElArco) => new();
 }
 
 public sealed class Line : Curve

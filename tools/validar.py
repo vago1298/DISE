@@ -15798,7 +15798,7 @@ def v29_paquete_oficina() -> None:
 # Los iconos de la cinta de Revit, uno por boton (tools/make_iconos_cinta.py).
 ICONOS_CINTA = ("importar-etabs", "armar-modelo", "columna-acero", "columna-corte",
                 "viga-acero", "viga-corte", "armar-tipo", "corte-seccion",
-                "placa-base", "cimentacion", "soldar-viga")
+                "placa-base", "cimentacion", "soldar-viga", "soldar-columna")
 
 def v30_armado_por_tipo() -> None:
     print("\n[30] Revit: armar por tipo, todas las piezas de un jalon")
@@ -17087,9 +17087,27 @@ def v31_detalles_revit() -> None:
           "using Autodesk.Revit.UI" not in ven)
     check("el panel Detalles tiene sus tres botones",
           '"Detalles"' in apl and all(f"typeof({c}).FullName" in apl
-                                      for c in ("ComandoPlacasBase", "ComandoCimentacion", "ComandoSoldarVigas"))
+                                      for c in ("ComandoPlacasBase", "ComandoCimentacion", "ComandoSoldarVigas", "ComandoSoldarColumnas"))
           and all(f"class {c} : IExternalCommand" in com
-                  for c in ("ComandoPlacasBase", "ComandoCimentacion", "ComandoSoldarVigas")))
+                  for c in ("ComandoPlacasBase", "ComandoCimentacion", "ComandoSoldarVigas", "ComandoSoldarColumnas")))
+    # Lo que se pidio despues de probarlo en Revit.
+    check("la placa base va sobre el dado o el muro, o embebida, a eleccion",
+          "public static CotasPlaca Cotas(" in nuc and "SobreElApoyo = posicion.SelectedIndex != 1" in com
+          and "FAMILY_BASE_LEVEL_OFFSET_PARAM" in det)
+    check("la tuerca lleva chaflan y barreno: hexagono cortado por un solido de revolucion",
+          "CreateRevolvedGeometry(" in sol and "BooleanOperationsType.Intersect" in sol)
+    check("el ancla se modela con su codo: barrido a lo largo de su eje",
+          "CreateSweptGeometry(" in sol and "RadioDobleM = alzado.Radio / 100" in app
+          and "ElevacionPlacaBase.RadioDelDoblez(" in app)
+    check("conectar vigas: uno o los dos extremos, eligiendo el extremo con un clic",
+          "ObjectType.PointOnElement" in com and "Conexion.ExtremoMasCercano(" in det)
+    check("la viga que llega a un muro deja su placa embebida con anclas",
+          "Conexion.PlacaEnMuro(" in det and "PlacaEmbebida(" in det)
+    check("conexion a momento IR a IR: placas en los patines y de cortante con tornillos",
+          "Conexion.Momento(" in det and "Conexion.MedirI(" in det and '"placa de cortante"' in nuc)
+    check("hay boton para soldar columnas, en la base o en la cabeza",
+          "typeof(ComandoSoldarColumnas).FullName" in apl and "ClaseDetalle.SoldaduraColumna" in det)
+
     check("la capa de Revit de los detalles se compila contra los recortes",
           "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)
 

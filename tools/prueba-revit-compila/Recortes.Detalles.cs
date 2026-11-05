@@ -9,6 +9,9 @@
 //   GeometryCreationUtilities.CreateBlendGeometry(CurveLoop, CurveLoop, ICollection<VertexPair>, SolidOptions)
 //   BooleanOperationsUtils.ExecuteBooleanOperation(Solid, Solid, BooleanOperationsType)
 //   Material.Create(Document, string) -> ElementId, y Material.Color
+//   GeometryCreationUtilities.CreateRevolvedGeometry(Frame, IList<CurveLoop>, double, double, SolidOptions)
+//   GeometryCreationUtilities.CreateSweptGeometry(CurveLoop, int, double, IList<CurveLoop>, SolidOptions)
+//   Frame(XYZ, XYZ, XYZ, XYZ) y Reference.GlobalPoint
 
 namespace Autodesk.Revit.DB;
 
@@ -39,6 +42,13 @@ public static class GeometryCreationUtilities
 
     public static Solid CreateBlendGeometry(
         CurveLoop primero, CurveLoop segundo, ICollection<VertexPair>? pares, SolidOptions opciones) => new();
+
+    public static Solid CreateRevolvedGeometry(
+        Frame marco, IList<CurveLoop> perfil, double inicio, double fin, SolidOptions opciones) => new();
+
+    public static Solid CreateSweptGeometry(
+        CurveLoop camino, int curvaDelPerfil, double parametroDelPerfil, IList<CurveLoop> perfil,
+        SolidOptions opciones) => new();
 }
 
 public enum BooleanOperationsType { Union, Difference, Intersect }
@@ -58,4 +68,9 @@ public sealed class Material : Element
     public static ElementId Create(Document doc, string nombre) => new(0L);
 
     public Color Color { get; set; } = new(0, 0, 0);
+}
+
+public sealed class Frame
+{
+    public Frame(XYZ origen, XYZ ejeX, XYZ ejeY, XYZ ejeZ) { }
 }

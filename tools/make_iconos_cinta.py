@@ -195,6 +195,16 @@ def soldar_viga():
     return f + lineas(anillo + [anillo[0]], 1.6, ROJO)
 
 
+def soldar_columna():
+    # La columna sobre su placa y el cordon rojo alrededor de su pie.
+    gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
+    f = caja(0, 0, 0, 16, 16, 2, cx=16, cy=19, s=0.95, colores=gris)
+    f += caja(5, 5, 2, 6, 6, 16, cx=16, cy=19, s=0.95)
+    pie = [iso(4.6, 4.6, 2.3, 16, 19, 0.95), iso(11.4, 4.6, 2.3, 16, 19, 0.95),
+           iso(11.4, 11.4, 2.3, 16, 19, 0.95), iso(4.6, 11.4, 2.3, 16, 19, 0.95)]
+    return f + lineas(pie + [pie[0]], 1.6, ROJO)
+
+
 ICONOS = {
     "importar-etabs": importar_etabs,
     "armar-modelo": armar_modelo,
@@ -207,6 +217,7 @@ ICONOS = {
     "placa-base": placa_base,
     "cimentacion": cimentacion,
     "soldar-viga": soldar_viga,
+    "soldar-columna": soldar_columna,
 }
 
 

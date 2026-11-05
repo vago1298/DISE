@@ -226,21 +226,174 @@ internal static class Solidos
             new List<CurveLoop> { CirculoEn(desde, radio, eje) }, eje, largo,
             new SolidOptions(material, ElementId.InvalidElementId));
 
-    /// <summary>Un prisma hexagonal vertical: la tuerca. <paramref name="entreCaras"/> es la llave.</summary>
-    public static Solid Hexagono(XYZ centro, XYZ ex, double entreCaras, double z0, double alto, ElementId material)
+    /// <summary>
+    /// Una tuerca hexagonal de verdad: con su barreno y el chaflan de 30° arriba y abajo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es el hexagono cortado por un solido de revolucion: un anillo -de ahi sale el barreno- cuyo
+    /// canto exterior baja en cono hacia las dos caras. Las esquinas del hexagono quedan
+    /// achaflanadas y las caras planas se ven como un circulo, que es lo que hace que se lea como
+    /// tuerca y no como un prisma.
+    /// </para>
+    /// <para>
+    /// Si Revit no puede con el solido de revolucion, sale el hexagono con su barreno, sin chaflan.
+    /// </para>
+    /// </remarks>
+    /// <param name="apoyo">El centro de la cara que se apoya.</param>
+    /// <param name="eje">Unitario, de la cara de apoyo hacia fuera.</param>
+    /// <param name="ex">Una direccion en el plano de la tuerca: hacia ahi apunta una esquina.</param>
+    public static Solid Tuerca(
+        XYZ apoyo, XYZ eje, XYZ ex, double entreCaras, double alto, double barreno, ElementId material)
     {
+        var n = eje.Normalize();
+        var u = (ex - (n * ex.DotProduct(n))).Normalize();
+        var v = n.CrossProduct(u).Normalize();
         var radio = entreCaras / Math.Sqrt(3);
-        var ey = XYZ.BasisZ.CrossProduct(ex);
+        var opciones = new SolidOptions(material, ElementId.InvalidElementId);
+
         var puntos = new List<XYZ>();
 
         for (var i = 0; i < 6; i++)
         {
-            var a = (Math.PI / 6) + (i * Math.PI / 3);
-            puntos.Add(centro + (ex * (radio * Math.Cos(a))) + (ey * (radio * Math.Sin(a))));
+            var ang = i * Math.PI / 3;
+            puntos.Add(apoyo + (u * (radio * Math.Cos(ang))) + (v * (radio * Math.Sin(ang))));
         }
 
-        return Prisma(puntos, z0, z0 + alto, material);
+        var hexagono = GeometryCreationUtilities.CreateExtrusionGeometry(
+            new List<CurveLoop> { Poligono(puntos) }, n, alto, opciones);
+
+        var r = Math.Max(0, Math.Min(barreno, entreCaras * 0.4));
+
+        try
+        {
+            // El perfil del anillo, en el plano de U y el eje, del lado de +U.
+            var cara = 0.95 * entreCaras / 2;
+            var chaflan = Math.Min((radio - cara) * Math.Tan(Math.PI / 6), alto / 3);
+
+            XYZ P(double x, double z) => apoyo + (u * x) + (n * z);
+
+            var perfil = new List<XYZ>
+            {
+                P(r, 0), P(cara, 0), P(radio * 1.001, chaflan),
+                P(radio * 1.001, alto - chaflan), P(cara, alto), P(r, alto)
+            };
+
+            var anillo = GeometryCreationUtilities.CreateRevolvedGeometry(
+                new Frame(apoyo, u, v, n), new List<CurveLoop> { Poligono(perfil) }, 0, 2 * Math.PI, opciones);
+
+            var tuerca = BooleanOperationsUtils.ExecuteBooleanOperation(
+                hexagono, anillo, BooleanOperationsType.Intersect);
+
+            if (tuerca is not null && tuerca.Volume > 1e-12)
+            {
+                return tuerca;
+            }
+        }
+        catch (Exception)
+        {
+            // Sin chaflan, abajo.
+        }
+
+        return r > 0
+            ? Restar(hexagono, Cilindro(apoyo - (n * 0.001), n, alto + 0.002, r, material))
+            : hexagono;
     }
+
+    /// <summary>
+    /// Un ancla con su doblez: baja recta, da la vuelta con su radio y sigue en la pata.
+    /// </summary>
+    /// <remarks>
+    /// Es un barrido del circulo de la barra a lo largo de su EJE -recta, cuarto de circulo, recta-,
+    /// asi que el codo se ve redondo como en el alzado de AutoCAD y no como dos cilindros
+    /// encimados. Si Revit no puede hacer el barrido, se cae a las dos piezas rectas.
+    /// </remarks>
+    /// <param name="arriba">La punta, en el eje de la barra.</param>
+    /// <param name="fondo">La cota del eje de la pata.</param>
+    /// <param name="hacia">Horizontal y unitaria: hacia donde va la pata.</param>
+    /// <param name="pata">Del eje del vastago a la punta de la pata.</param>
+    /// <param name="radioCodo">Al eje de la barra. Cero = el que quepa.</param>
+    public static List<Solid> AnclaDoblada(
+        XYZ arriba, double fondo, XYZ hacia, double pata, double radioCodo, double radio, ElementId material)
+    {
+        var d = 2 * radio;
+        var tramo = arriba.Z - fondo;
+        var rc = radioCodo > 0 ? radioCodo : 1.5 * d;
+        rc = Math.Min(rc, Math.Min(pata - (d / 2), tramo - d));
+
+        var abajo = new XYZ(arriba.X, arriba.Y, fondo);
+
+        if (pata <= 0 || rc <= radio)
+        {
+            var piezas = new List<Solid> { Cilindro(abajo, XYZ.BasisZ, tramo, radio, material) };
+
+            if (pata > 0)
+            {
+                piezas.Add(Cilindro(abajo, hacia, pata, radio, material));
+            }
+
+            return piezas;
+        }
+
+        try
+        {
+            var inicioCodo = abajo + (XYZ.BasisZ * rc);
+            var finCodo = abajo + (hacia * rc);
+            var centro = abajo + (XYZ.BasisZ * rc) + (hacia * rc);
+            var medio = centro - (hacia * (rc * Math.Cos(Math.PI / 4))) - (XYZ.BasisZ * (rc * Math.Sin(Math.PI / 4)));
+
+            var recta = Line.CreateBound(arriba, inicioCodo);
+            var camino = new CurveLoop();
+            camino.Append(recta);
+            camino.Append(Arc.Create(inicioCodo, finCodo, medio));
+
+            if (pata - rc > 1e-6)
+            {
+                camino.Append(Line.CreateBound(finCodo, abajo + (hacia * pata)));
+            }
+
+            var barra = GeometryCreationUtilities.CreateSweptGeometry(
+                camino, 0, recta.GetEndParameter(0),
+                new List<CurveLoop> { CirculoEn(arriba, radio, XYZ.BasisZ) },
+                new SolidOptions(material, ElementId.InvalidElementId));
+
+            return new List<Solid> { barra };
+        }
+        catch (Exception)
+        {
+            return new List<Solid>
+            {
+                Cilindro(abajo, XYZ.BasisZ, tramo, radio, material),
+                Cilindro(abajo, hacia, pata, radio, material)
+            };
+        }
+    }
+
+    /// <summary>Una caja en los ejes de un extremo: de U0 a U1, de V0 a V1 y de A0 a A1.</summary>
+    public static Solid Caja(XYZ origen, XYZ u, XYZ v, XYZ a, CajaLocal c, ElementId material)
+    {
+        var esquinas = new List<XYZ>
+        {
+            origen + (u * c.U0) + (v * c.V0) + (a * c.A0),
+            origen + (u * c.U1) + (v * c.V0) + (a * c.A0),
+            origen + (u * c.U1) + (v * c.V1) + (a * c.A0),
+            origen + (u * c.U0) + (v * c.V1) + (a * c.A0)
+        };
+
+        return GeometryCreationUtilities.CreateExtrusionGeometry(
+            new List<CurveLoop> { Poligono(esquinas) }, a, c.A1 - c.A0,
+            new SolidOptions(material, ElementId.InvalidElementId));
+    }
+
+    /// <summary>La cara de la caja que mira hacia A0: con ella se suelda la placa a la columna.</summary>
+    public static CurveLoop CaraInicial(XYZ origen, XYZ u, XYZ v, XYZ a, CajaLocal c) =>
+        Poligono(new List<XYZ>
+        {
+            origen + (u * c.U0) + (v * c.V0) + (a * c.A0),
+            origen + (u * c.U1) + (v * c.V0) + (a * c.A0),
+            origen + (u * c.U1) + (v * c.V1) + (a * c.A0),
+            origen + (u * c.U0) + (v * c.V1) + (a * c.A0)
+        });
 
     /// <summary>Quita <paramref name="hueco"/> de <paramref name="solido"/>; si Revit no puede, lo deja entero.</summary>
     public static Solid Restar(Solid solido, Solid hueco)

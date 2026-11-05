@@ -569,7 +569,10 @@ la cota salen de la pieza de Revit.
    - **Placas base**: elige las columnas, abre el archivo y escoge la placa.
    - **Cimentación**: elige columnas (zapata aislada) y muros (zapata corrida), abre el archivo
      y escoge la zapata de cada uno. La plantilla se pregunta; por omisión 5 cm.
-   - **Soldar vigas**: elige las vigas y el tamaño del filete. No necesita archivo.
+   - **Conectar vigas**: elige cómo —filete o a momento—, si van los dos extremos o uno, y
+     después las vigas. Con «uno» se da clic en cada viga **cerca del extremo** que se conecta;
+     Esc termina. No necesita archivo.
+   - **Soldar columnas**: elige las columnas y si va en la base, en la cabeza o en las dos.
 
 Si ya había piezas elegidas al pulsar el botón, se usan esas; si no, el botón las pide.
 
@@ -577,14 +580,20 @@ Si ya había piezas elegidas al pulsar el botón, se usan esas; si no, el botón
 
 | Botón | Piezas |
 |---|---|
-| Placas base | Placa con sus barrenos, anclas con tuerca y doblez, cama de grout y filete de la columna **todo alrededor** |
+| Placas base | Placa con sus barrenos, anclas con su **codo redondo** y tuerca **con chaflán**, cama de grout y filete de la columna **todo alrededor** |
 | Cimentación, columnas | Zapata, dado (rectangular o circular) y plantilla |
 | Cimentación, muros | Zapata corrida con su contratrabe o, sin ella, el muro de enrase; y la plantilla |
-| Soldar vigas | Filete todo alrededor del perfil en cada extremo que llega a una columna |
+| Conectar vigas, a una columna | Filete todo alrededor del perfil, **o a momento IR a IR**: placa sobre el patín de arriba y bajo el de abajo, placa de cortante al alma con su hilera de tornillos a 3", y cada placa soldada a la columna |
+| Conectar vigas, a un muro | **Placa embebida** a paño del muro, con sus anclas hacia dentro, y la viga soldada a ella |
+| Soldar columnas | Filete todo alrededor en la base o en la cabeza, sobre lo que tenga: placa, losa, dado o la columna de abajo |
 
 - **Las anclas van donde las pone el detalle de AutoCAD.** CadLink las calcula con las mismas
   cuentas —`AnclasPlacaBase.Construir`, la separación ajustada a la columna K y el alzado de
   `ElevacionPlacaBase.AnclasDeCanto`— y el complemento solo las coloca.
+- **La placa va sobre el dado o el muro, o embebida.** Sobre el apoyo —lo normal—, el grout se
+  apoya en la cara de arriba del concreto que la columna tiene debajo —dado, columna de concreto,
+  muro, zapata o losa— y la columna se sube a la cara de la placa (se puede apagar). Embebida, la
+  cara de arriba de la placa queda a paño del arranque de la columna.
 - **La placa se orienta sola.** Se mide el paño de la columna modelada en sus dos direcciones y se
   compara con el del detalle. Si aun así queda girada, la casilla «Girar 90°» la corrige.
 - **El dado termina bajo el grout** si la columna ya tiene placa base de CadLink; si no, en el
@@ -606,9 +615,17 @@ Todo va como **DirectShape**, con su material propio (`CadLink - Acero`, `- Ancl
 *Comentarios* y *Marca* lo que es. **Volver a poner** una placa en la misma columna **reemplaza**
 la anterior; no se encima.
 
+- **El codo del ancla** es un barrido a lo largo de su eje, con el mismo radio que redondea el
+  alzado de AutoCAD (`ElevacionPlacaBase.RadioDelDoblez`).
+- **La conexión a momento mide la IR de su dibujo**: peralte, patín y espesores salen de las
+  aristas del contorno del extremo, no de los parámetros del tipo, que cada familia llama distinto.
+  Si el perfil no es una I, se avisa y no se pone.
+
 ### Límites
 
 - Los **cartabones** de la placa no se modelan todavía: se avisa cuántos lleva.
+- En la conexión a momento, las soldaduras de las placas a los **patines de la viga** y los
+  **barrenos** no se modelan; solo las soldaduras a la columna y los tornillos.
 - Son DirectShape, **no familias**: no se editan arrastrando ni admiten armado de Revit. Se
   cambian en CadLink y se vuelven a poner.
 - Solo **muros rectos** para la zapata corrida y **vigas rectas** para la soldadura.
