@@ -310,7 +310,7 @@ public static class ArchivoDetalles
 /// momento o la placa embebida en el muro-, para que cambiar de una a otra quite la anterior.
 /// <c>SoldaduraColumna</c> es el filete de la base o de la cabeza de una columna.
 /// </remarks>
-public enum ClaseDetalle { Placa, Zapata, Corrida, Soldadura, SoldaduraColumna }
+public enum ClaseDetalle { Placa, Zapata, Corrida, Soldadura, SoldaduraColumna, Encamisado }
 
 /// <summary>
 /// La llave de lo que CadLink pone sobre una pieza del modelo: <c>CadLink|Placa|123456</c>.
@@ -804,5 +804,230 @@ public static class Conexion
     /// <summary>¿Que extremo de la viga, de <paramref name="p0"/> a <paramref name="p1"/>, queda mas cerca del clic?</summary>
     public static int ExtremoMasCercano(V3 p0, V3 p1, V3 clic) =>
         (clic - p0).Largo <= (clic - p1).Largo ? 0 : 1;
+}
+
+/// <summary>Como se encamisa la trabe.</summary>
+public enum TipoEncamisado
+{
+    /// <summary>Placas corridas en las caras elegidas, con tornillos pasantes.</summary>
+    Placas,
+
+    /// <summary>Angulos en las esquinas y soleras -cinchos- a cada tanto, rodeando la trabe.</summary>
+    AngulosYSoleras
+}
+
+/// <summary>Las medidas del encamisado, con los valores usuales por omision.</summary>
+public sealed class OpcionesEncamisado
+{
+    public TipoEncamisado Tipo { get; set; } = TipoEncamisado.Placas;
+
+    public bool Fondo { get; set; } = true;
+
+    public bool Laterales { get; set; } = true;
+
+    /// <summary>
+    /// La cara de arriba. Apagada por omision: casi siempre la trabe tiene la losa encima.
+    /// </summary>
+    public bool Arriba { get; set; }
+
+    /// <summary>Espesor de las placas o de los angulos: 3/8".</summary>
+    public double EspesorM { get; set; } = 0.0095;
+
+    /// <summary>
+    /// La capa de adhesivo epoxico o grout entre el concreto y el acero. Cero = el acero pegado.
+    /// </summary>
+    public double AdhesivoM { get; set; } = 0.003;
+
+    /// <summary>Lado de los angulos: 3".</summary>
+    public double LadoAnguloM { get; set; } = 0.076;
+
+    /// <summary>Soleras: ancho a lo largo de la trabe y espesor (2" x 1/4").</summary>
+    public double AnchoSoleraM { get; set; } = 0.051;
+
+    public double EspesorSoleraM { get; set; } = 0.0064;
+
+    /// <summary>Entre soleras, o entre tornillos, a lo largo de la trabe.</summary>
+    public double SeparacionM { get; set; } = 0.30;
+
+    /// <summary>Tornillos pasantes de las placas laterales. Cero = sin tornillos.</summary>
+    public double TornilloM { get; set; } = 0.016;
+
+    /// <summary>Lo que el acero se queda antes de la cara de la columna, en cada punta.</summary>
+    public double LibreEnPuntasM { get; set; }
+}
+
+/// <summary>
+/// El encamisado de una trabe de concreto con acero, sin nada de Revit.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Las cajas van en los ejes de la trabe: <c>U</c> de lado -cero al centro-, <c>V</c> hacia arriba
+/// -cero en la cara de ABAJO del concreto- y <c>A</c> a lo largo, de cara a cara de columna.
+/// </para>
+/// <para>
+/// Las piezas que van por fuera abrazan a las de dentro: la placa del fondo es tan ancha como la
+/// trabe mas las dos laterales, asi que las esquinas cierran; y las soleras van por fuera de los
+/// angulos.
+/// </para>
+/// </remarks>
+public static class Encamisado
+{
+    public const string Adhesivo = "adhesivo";
+
+    public static (List<CajaLocal> Piezas, List<TornilloLocal> Tornillos) Piezas(
+        double baseM, double altoM, double largoM, OpcionesEncamisado o)
+    {
+        var piezas = new List<CajaLocal>();
+        var tornillos = new List<TornilloLocal>();
+
+        var b = baseM / 2;
+        var h = altoM;
+        var g = Math.Max(0, o.AdhesivoM);
+        var t = Math.Max(0, o.EspesorM);
+        var a0 = Math.Max(0, o.LibreEnPuntasM);
+        var a1 = largoM - a0;
+
+        if (a1 - a0 <= 0.01 || baseM <= 0 || altoM <= 0 || t <= 0)
+        {
+            return (piezas, tornillos);
+        }
+
+        // ---- El adhesivo: una capa en cada cara cubierta ----
+        if (g > 0)
+        {
+            if (o.Fondo) { piezas.Add(new CajaLocal(Adhesivo, -b, b, -g, 0, a0, a1)); }
+            if (o.Arriba) { piezas.Add(new CajaLocal(Adhesivo, -b, b, h, h + g, a0, a1)); }
+
+            if (o.Laterales)
+            {
+                piezas.Add(new CajaLocal(Adhesivo, -b - g, -b, 0, h, a0, a1));
+                piezas.Add(new CajaLocal(Adhesivo, b, b + g, 0, h, a0, a1));
+            }
+        }
+
+        if (o.Tipo == TipoEncamisado.Placas)
+        {
+            // Las laterales bajan y suben hasta cubrir el canto de las de abajo y arriba.
+            var ancho = o.Laterales ? b + g + t : b;
+            var vAbajo = o.Fondo ? -g - t : 0;
+            var vArriba = o.Arriba ? h + g + t : h;
+
+            if (o.Fondo) { piezas.Add(new CajaLocal("placa del fondo", -ancho, ancho, -g - t, -g, a0, a1)); }
+            if (o.Arriba) { piezas.Add(new CajaLocal("placa de arriba", -ancho, ancho, h + g, h + g + t, a0, a1)); }
+
+            if (o.Laterales)
+            {
+                piezas.Add(new CajaLocal("placa lateral", -b - g - t, -b - g, vAbajo, vArriba, a0, a1));
+                piezas.Add(new CajaLocal("placa lateral", b + g, b + g + t, vAbajo, vArriba, a0, a1));
+
+                // Tornillos pasantes a media altura, de lado a lado, a la separacion pedida.
+                if (o.TornilloM > 0 && o.SeparacionM > 0)
+                {
+                    var asoma = 0.025;
+
+                    foreach (var a in Repartir(a0, a1, o.SeparacionM))
+                    {
+                        tornillos.Add(new TornilloLocal(h / 2, a, -b - g - t - asoma, b + g + t + asoma, o.TornilloM));
+                    }
+                }
+            }
+
+            return (piezas, tornillos);
+        }
+
+        // ---- Angulos en las esquinas ----
+        var lado = Math.Max(o.LadoAnguloM, 2 * t);
+        var x = b + g;            // cara de dentro del angulo, de lado
+        var abajo = -g;           // cara de dentro, abajo
+        var arriba = h + g;       // cara de dentro, arriba
+
+        foreach (var s in new[] { -1.0, 1.0 })
+        {
+            // Abajo: ala horizontal bajo el fondo y ala vertical en la cara lateral.
+            piezas.Add(Caja("angulo inferior", s, x - lado + t, x + t, abajo - t, abajo, a0, a1));
+            piezas.Add(Caja("angulo inferior", s, x, x + t, abajo, abajo - t + lado, a0, a1));
+
+            if (o.Arriba)
+            {
+                piezas.Add(Caja("angulo superior", s, x - lado + t, x + t, arriba, arriba + t, a0, a1));
+                piezas.Add(Caja("angulo superior", s, x, x + t, arriba + t - lado, arriba, a0, a1));
+            }
+        }
+
+        // ---- Soleras: cinchos en U -o cerrados con la cara de arriba- por fuera de los angulos ----
+        var ts = Math.Max(0, o.EspesorSoleraM);
+        var w = Math.Max(0, o.AnchoSoleraM);
+
+        if (ts > 0 && w > 0 && o.SeparacionM > 0)
+        {
+            var xs = x + t;
+            var vAbajo = abajo - t - ts;
+            var vArriba = o.Arriba ? arriba + t + ts : h;
+
+            foreach (var a in Repartir(a0 + (w / 2), a1 - (w / 2), o.SeparacionM))
+            {
+                var c0 = a - (w / 2);
+                var c1 = a + (w / 2);
+
+                piezas.Add(new CajaLocal("solera", -xs - ts, xs + ts, vAbajo, abajo - t, c0, c1));
+                piezas.Add(new CajaLocal("solera", -xs - ts, -xs, abajo - t, vArriba, c0, c1));
+                piezas.Add(new CajaLocal("solera", xs, xs + ts, abajo - t, vArriba, c0, c1));
+
+                if (o.Arriba)
+                {
+                    piezas.Add(new CajaLocal("solera", -xs - ts, xs + ts, arriba + t, vArriba, c0, c1));
+                }
+            }
+        }
+
+        return (piezas, tornillos);
+    }
+
+    /// <summary>Una caja de un lado: con <paramref name="lado"/> negativo, el espejo en U.</summary>
+    private static CajaLocal Caja(string que, double lado, double u0, double u1, double v0, double v1, double a0, double a1) =>
+        lado > 0
+            ? new CajaLocal(que, u0, u1, v0, v1, a0, a1)
+            : new CajaLocal(que, -u1, -u0, v0, v1, a0, a1);
+
+    /// <summary>
+    /// Posiciones a lo largo de la trabe a la separacion pedida, centradas: el primero y el ultimo
+    /// quedan a la misma distancia de las puntas.
+    /// </summary>
+    public static List<double> Repartir(double a0, double a1, double separacion)
+    {
+        var res = new List<double>();
+        var largo = a1 - a0;
+
+        if (largo < 0 || separacion <= 0)
+        {
+            return res;
+        }
+
+        var n = 1 + (int)Math.Floor((largo / separacion) + 1e-9);
+        var sobra = largo - ((n - 1) * separacion);
+
+        for (var i = 0; i < n; i++)
+        {
+            res.Add(a0 + (sobra / 2) + (i * separacion));
+        }
+
+        return res;
+    }
+
+    /// <summary>Lo que falta para poder encamisar. Vacio = se puede.</summary>
+    public static List<string> Falta(OpcionesEncamisado o)
+    {
+        var f = new List<string>();
+
+        if (!o.Fondo && !o.Laterales && !o.Arriba) { f.Add("al menos una cara"); }
+        if (o.EspesorM <= 0) { f.Add("el espesor de las placas o los angulos"); }
+
+        if (o.Tipo == TipoEncamisado.AngulosYSoleras && !o.Laterales)
+        {
+            f.Add("las caras laterales: los angulos y las soleras las abrazan");
+        }
+
+        return f;
+    }
 }
 

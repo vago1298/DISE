@@ -417,6 +417,98 @@ public sealed class ComandoSoldarColumnas : IExternalCommand
     }
 }
 
+/// <summary>
+/// El boton <b>Encamisar trabes</b>: refuerza las trabes de concreto elegidas con placas de acero,
+/// o con angulos en las esquinas y soleras.
+/// </summary>
+[Transaction(TransactionMode.Manual)]
+public sealed class ComandoEncamisar : IExternalCommand
+{
+    public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+    {
+        var uidoc = commandData?.Application?.ActiveUIDocument;
+        var doc = uidoc?.Document;
+
+        if (uidoc is null || doc is null || doc.IsFamilyDocument)
+        {
+            message = "Abre un proyecto de Revit antes de encamisar.";
+            return Result.Failed;
+        }
+
+        var elegidas = DetallesEnRevit.Piezas(uidoc, "Elige las trabes de concreto que se encamisan y pulsa Terminar.",
+            BuiltInCategory.OST_StructuralFraming).OfType<FamilyInstance>().ToList();
+
+        // Solo las de concreto: una viga de acero no se encamisa.
+        var trabes = elegidas.Where(Detallador.EsDeConcreto).ToList();
+
+        if (trabes.Count == 0)
+        {
+            if (elegidas.Count > 0)
+            {
+                TaskDialog.Show("CadLink", "Las vigas elegidas no son de concreto. El encamisado es para trabes de concreto.");
+            }
+
+            return Result.Cancelled;
+        }
+
+        var o = new OpcionesEncamisado();
+
+        var ventana = new VentanaDetalle("CadLink - Encamisar trabes",
+            $"Se encamisan {trabes.Count} trabe(s) de concreto, de cara a cara de columna. La seccion se "
+            + "mide de la trabe dibujada, ya recortada bajo la losa."
+            + (elegidas.Count > trabes.Count ? $" {elegidas.Count - trabes.Count} de acero se saltan." : string.Empty));
+
+        var tipo = ventana.Lista("Encamisado:", new[]
+        {
+            "Placas corridas, con tornillos pasantes",
+            "Angulos en las esquinas y soleras"
+        });
+        var fondo = ventana.Casilla("Cara de abajo", true);
+        var lados = ventana.Casilla("Caras laterales", true);
+        var arriba = ventana.Casilla("Cara de arriba", false, "Casi siempre la trabe tiene la losa encima.");
+        var espesor = ventana.Numero("Espesor de las placas o los angulos, en mm:", o.EspesorM * 1000);
+        var adhesivo = ventana.Numero("Adhesivo epoxico o grout entre concreto y acero, en mm (0 = sin):", o.AdhesivoM * 1000);
+        var lado = ventana.Numero("Angulos: lado, en mm:", o.LadoAnguloM * 1000);
+        var solera = ventana.Numero("Soleras: ancho, en mm:", o.AnchoSoleraM * 1000);
+        var espSolera = ventana.Numero("Soleras: espesor, en mm:", o.EspesorSoleraM * 1000);
+        var sep = ventana.Numero("Separacion de soleras o tornillos, en cm:", o.SeparacionM * 100);
+        var tornillo = ventana.Numero("Placas: diametro de los tornillos, en mm (0 = sin):", o.TornilloM * 1000);
+        var libre = ventana.Numero("Libre antes de la cara de la columna, en cm:", 0);
+
+        if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Encamisar"))
+        {
+            return Result.Cancelled;
+        }
+
+        o.Tipo = tipo.SelectedIndex == 1 ? TipoEncamisado.AngulosYSoleras : TipoEncamisado.Placas;
+        o.Fondo = fondo.IsChecked == true;
+        o.Laterales = lados.IsChecked == true;
+        o.Arriba = arriba.IsChecked == true;
+        o.EspesorM = VentanaDetalle.Leer(espesor, o.EspesorM * 1000) / 1000;
+        o.AdhesivoM = VentanaDetalle.Leer(adhesivo, o.AdhesivoM * 1000) / 1000;
+        o.LadoAnguloM = VentanaDetalle.Leer(lado, o.LadoAnguloM * 1000) / 1000;
+        o.AnchoSoleraM = VentanaDetalle.Leer(solera, o.AnchoSoleraM * 1000) / 1000;
+        o.EspesorSoleraM = VentanaDetalle.Leer(espSolera, o.EspesorSoleraM * 1000) / 1000;
+        o.SeparacionM = VentanaDetalle.Leer(sep, o.SeparacionM * 100) / 100;
+        o.TornilloM = VentanaDetalle.Leer(tornillo, o.TornilloM * 1000) / 1000;
+        o.LibreEnPuntasM = VentanaDetalle.Leer(libre, 0) / 100;
+
+        var falta = Encamisado.Falta(o);
+
+        if (falta.Count > 0)
+        {
+            TaskDialog.Show("CadLink", "Falta: " + string.Join(", ", falta) + ".");
+            return Result.Cancelled;
+        }
+
+        var r = Detallador.Encamisar(doc, trabes, o);
+
+        TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "trabe(s) encamisada(s)", null));
+
+        return Result.Succeeded;
+    }
+}
+
 /// <summary>Lo comun a los botones: elegir las piezas, abrir el archivo y el informe.</summary>
 internal static class DetallesEnRevit
 {

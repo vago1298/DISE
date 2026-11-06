@@ -574,6 +574,11 @@ la cota salen de la pieza de Revit.
      cada clic se conecta al momento y Esc termina (Enter no: una selección de un punto no termina con
      Enter). No necesita archivo.
    - **Soldar columnas**: elige las columnas y si va en la base, en la cabeza o en las dos.
+   - **Encamisar trabes**: elige las trabes de concreto y si van con **placas corridas** (fondo,
+     laterales y, si se pide, arriba, con tornillos pasantes a media altura) o con **ángulos en las
+     esquinas y soleras** rodeando la trabe. Lleva su capa de adhesivo epóxico. La sección y el largo
+     se miden de la trabe dibujada, de cara a cara de columna y bajo la losa; las vigas de acero se
+     saltan. Volver a encamisar la misma trabe reemplaza el anterior.
 
 Si ya había piezas elegidas al pulsar el botón, se usan esas; si no, el botón las pide.
 

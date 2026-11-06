@@ -195,6 +195,17 @@ def soldar_viga():
     return f + lineas(anillo + [anillo[0]], 1.6, ROJO)
 
 
+def encamisar():
+    # La trabe de concreto gris con sus placas azules abrazandola y dos soleras rojas.
+    gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
+    f = caja(0, 0, 0, 26, 6, 9, cx=8, cy=11, s=0.7, colores=gris)
+    f += caja(0, 6, -1, 26, 1, 10, cx=8, cy=11, s=0.7)
+    f += caja(0, -1, -1.2, 26, 8, 1.2, cx=8, cy=11, s=0.7)
+    for x in (7, 18):
+        f += lineas([iso(x, 7.2, 9, 8, 11, 0.7), iso(x, 7.2, -1.4, 8, 11, 0.7), iso(x, -1, -1.4, 8, 11, 0.7)], 1.2, ROJO)
+    return f
+
+
 def soldar_columna():
     # La columna sobre su placa y el cordon rojo alrededor de su pie.
     gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
@@ -218,6 +229,7 @@ ICONOS = {
     "cimentacion": cimentacion,
     "soldar-viga": soldar_viga,
     "soldar-columna": soldar_columna,
+    "encamisar": encamisar,
 }
 
 

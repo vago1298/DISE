@@ -153,6 +153,15 @@ public sealed class Aplicacion : IExternalApplication
             + "contorno sale de la columna tal como esta dibujada; solo se pregunta donde y de que "
             + "tamaño. La placa base de CadLink ya trae su propia soldadura.",
             "soldar-columna");
+
+        Boton(detalles, dll, "CadLinkEncamisar", "Encamisar\ntrabes", typeof(ComandoEncamisar).FullName,
+            "Refuerza las trabes de concreto elegidas con placas de acero, o con angulos y soleras.",
+            "Placas corridas en el fondo, los lados y si se pide arriba, con tornillos pasantes a media "
+            + "altura; o angulos en las esquinas con soleras rodeando la trabe a cada tanto. Con su capa de "
+            + "adhesivo epoxico.\n\n"
+            + "La seccion y el largo se miden de la trabe dibujada, de cara a cara de columna y bajo la "
+            + "losa. Volver a encamisar la misma trabe reemplaza el encamisado anterior.",
+            "encamisar");
     }
 
     private static string TextoAcero(string elemento) =>
@@ -214,6 +223,7 @@ public sealed class Aplicacion : IExternalApplication
         "cimentacion" => (Imagen("CadLink.Revit.cimentacion-32.png"), Imagen("CadLink.Revit.cimentacion-16.png")),
         "soldar-viga" => (Imagen("CadLink.Revit.soldar-viga-32.png"), Imagen("CadLink.Revit.soldar-viga-16.png")),
         "soldar-columna" => (Imagen("CadLink.Revit.soldar-columna-32.png"), Imagen("CadLink.Revit.soldar-columna-16.png")),
+        "encamisar" => (Imagen("CadLink.Revit.encamisar-32.png"), Imagen("CadLink.Revit.encamisar-16.png")),
         _ => (null, null)
     };
 

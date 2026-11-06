@@ -15798,7 +15798,7 @@ def v29_paquete_oficina() -> None:
 # Los iconos de la cinta de Revit, uno por boton (tools/make_iconos_cinta.py).
 ICONOS_CINTA = ("importar-etabs", "armar-modelo", "columna-acero", "columna-corte",
                 "viga-acero", "viga-corte", "armar-tipo", "corte-seccion",
-                "placa-base", "cimentacion", "soldar-viga", "soldar-columna")
+                "placa-base", "cimentacion", "soldar-viga", "soldar-columna", "encamisar")
 
 def v30_armado_por_tipo() -> None:
     print("\n[30] Revit: armar por tipo, todas las piezas de un jalon")
@@ -17120,6 +17120,10 @@ def v31_detalles_revit() -> None:
           'var llaveAnclas = llave + "|anclas";' in det)
     check("con un extremo, cada clic conecta al momento y Esc termina",
           "public static ResultadoDetalles ConectarConCadaClic(" in com)
+
+    check("encamisado de trabes de concreto: placas, o angulos y soleras, medido de la trabe dibujada",
+          "public static class Encamisado" in nuc and "Detallador.Encamisar(" in com
+          and "typeof(ComandoEncamisar).FullName" in apl and "Geometria.PuntosDelSolido(trabe)" in det)
 
     check("la capa de Revit de los detalles se compila contra los recortes",
           "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)

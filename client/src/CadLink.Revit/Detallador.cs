@@ -1023,6 +1023,150 @@ internal static class Detallador
         });
     }
 
+    // ======================================================================
+    //  ENCAMISADO DE TRABES DE CONCRETO
+    // ======================================================================
+
+    /// <summary>
+    /// Encamisa cada trabe de concreto con placas, o con angulos y soleras, de cara a cara de
+    /// columna.
+    /// </summary>
+    /// <remarks>
+    /// La seccion y el largo se MIDEN del solido que Revit dibujo: asi la trabe ya viene recortada
+    /// en las caras de las columnas y bajo la losa, y el acero cubre lo que de verdad queda a la
+    /// vista, sea cual sea la familia y como se llamen sus parametros.
+    /// </remarks>
+    public static ResultadoDetalles Encamisar(
+        Document doc, IReadOnlyList<FamilyInstance> trabes, OpcionesEncamisado o)
+    {
+        return EnTransaccion(doc, "Encamisado de trabes de CadLink", r =>
+        {
+            var acero = Solidos.Acero(doc);
+            var tornilleria = Solidos.Anclas(doc);
+            var adhesivo = Solidos.Grout(doc);
+            var categoria = Solidos.Categoria(
+                doc, BuiltInCategory.OST_StructConnections, BuiltInCategory.OST_GenericModel);
+
+            foreach (var trabe in trabes)
+            {
+                var nombre = $"trabe {trabe.Id.Value}";
+
+                try
+                {
+                    if (trabe.Location is not LocationCurve lc || lc.Curve is not Line linea)
+                    {
+                        r.Errores.Add($"«{nombre}»: Trabe curva. Solo se encamisan trabes rectas.");
+                        continue;
+                    }
+
+                    var p0 = linea.GetEndPoint(0);
+                    var p1 = linea.GetEndPoint(1);
+                    var enPlanta = new XYZ(p1.X - p0.X, p1.Y - p0.Y, 0);
+
+                    if (enPlanta.GetLength() < 1e-6 || Math.Abs(p1.Z - p0.Z) / enPlanta.GetLength() > 0.02)
+                    {
+                        r.Errores.Add($"«{nombre}»: Inclinada. Solo se encamisan trabes horizontales.");
+                        continue;
+                    }
+
+                    var eje = enPlanta.Normalize();
+                    var u = XYZ.BasisZ.CrossProduct(eje).Normalize();
+                    var puntos = Geometria.PuntosDelSolido(trabe);
+
+                    if (puntos.Count < 4)
+                    {
+                        r.Errores.Add($"«{nombre}»: Sin geometria.");
+                        continue;
+                    }
+
+                    double a0 = double.MaxValue, a1 = double.MinValue, u0 = double.MaxValue, u1 = double.MinValue;
+                    double z0 = double.MaxValue, z1 = double.MinValue;
+
+                    foreach (var p in puntos)
+                    {
+                        var d = p - p0;
+                        a0 = Math.Min(a0, d.DotProduct(eje));
+                        a1 = Math.Max(a1, d.DotProduct(eje));
+                        u0 = Math.Min(u0, d.DotProduct(u));
+                        u1 = Math.Max(u1, d.DotProduct(u));
+                        z0 = Math.Min(z0, p.Z);
+                        z1 = Math.Max(z1, p.Z);
+                    }
+
+                    // El cero de la trabe: centro de su cara de abajo, en la cara de la primera columna.
+                    var origen = new XYZ(p0.X, p0.Y, z0) + (eje * a0) + (u * ((u0 + u1) / 2));
+
+                    var (piezas, tornillos) = Encamisado.Piezas(
+                        Unidades.AMetros(u1 - u0), Unidades.AMetros(z1 - z0), Unidades.AMetros(a1 - a0), o);
+
+                    if (piezas.Count == 0)
+                    {
+                        r.Errores.Add($"«{nombre}»: Es demasiado corta para encamisarla.");
+                        continue;
+                    }
+
+                    var acer = new List<GeometryObject>();
+                    var pega = new List<GeometryObject>();
+                    var torn = new List<GeometryObject>();
+
+                    foreach (var c in piezas)
+                    {
+                        var solido = Solidos.Caja(origen, u, XYZ.BasisZ, eje, AInternas(c),
+                            c.Que == Encamisado.Adhesivo ? adhesivo : acero);
+                        (c.Que == Encamisado.Adhesivo ? pega : acer).Add(solido);
+                    }
+
+                    foreach (var t in tornillos)
+                    {
+                        var radio = Unidades.AInternas(t.DiametroM / 2);
+                        var centro = origen + (XYZ.BasisZ * Unidades.AInternas(t.V)) + (eje * Unidades.AInternas(t.A));
+                        torn.Add(Solidos.Cilindro(centro + (u * Unidades.AInternas(t.U0)), u,
+                            Unidades.AInternas(t.U1 - t.U0), radio, tornilleria));
+
+                        // Tuerca de los dos lados, contra la cara de fuera de las placas.
+                        var cara = Unidades.AInternas(t.U1 - 0.025);
+                        var llave = Unidades.AInternas(1.5 * t.DiametroM);
+                        var alto = Unidades.AInternas(0.8 * t.DiametroM);
+                        torn.Add(Solidos.Tuerca(centro + (u * cara), u, XYZ.BasisZ, llave, alto, radio, tornilleria));
+                        torn.Add(Solidos.Tuerca(centro - (u * cara), u.Negate(), XYZ.BasisZ, llave, alto, radio, tornilleria));
+                    }
+
+                    var llaveTrabe = LlaveDetalle.De(ClaseDetalle.Encamisado, trabe.Id.Value);
+
+                    if (Solidos.Borrar(doc, llaveTrabe) > 0)
+                    {
+                        r.Reemplazadas++;
+                    }
+
+                    var que = o.Tipo == TipoEncamisado.Placas
+                        ? $"placas de {Mm(o.EspesorM)} mm"
+                        : $"angulos de {Mm(o.LadoAnguloM)}x{Mm(o.EspesorM)} mm y soleras de {Mm(o.AnchoSoleraM)}x{Mm(o.EspesorSoleraM)} mm @ {Cm(o.SeparacionM)} cm";
+
+                    Solidos.Forma(doc, categoria, acer, llaveTrabe, $"CadLink: encamisado con {que}", string.Empty);
+
+                    if (pega.Count > 0)
+                    {
+                        Solidos.Forma(doc, categoria, pega, llaveTrabe + "|adhesivo",
+                            $"CadLink: adhesivo epoxico de {Mm(o.AdhesivoM)} mm del encamisado", string.Empty);
+                    }
+
+                    if (torn.Count > 0)
+                    {
+                        Solidos.Forma(doc, categoria, torn, llaveTrabe + "|tornillos",
+                            $"CadLink: {tornillos.Count} tornillos pasantes de {Mm(o.TornilloM)} mm @ {Cm(o.SeparacionM)} cm",
+                            string.Empty);
+                    }
+
+                    r.Hechas++;
+                }
+                catch (Exception e)
+                {
+                    r.Errores.Add($"«{nombre}»: No se pudo encamisar. {e.Message}");
+                }
+            }
+        });
+    }
+
     /// <summary>Los materiales de las conexiones, buscados o creados una sola vez por boton.</summary>
     private sealed class Materiales
     {
