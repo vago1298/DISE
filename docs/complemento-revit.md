@@ -554,6 +554,102 @@ rectangulares.
 
 ---
 
+## Placas base, cimentación y soldadura: el panel Detalles
+
+Tres botones para lo que va **debajo y entre** las piezas ya modeladas. Funcionan igual que
+«Armar por tipo»: las hojas de CadLink describen **tipos** —«la placa PB-1»—, no piezas
+colocadas, así que en Revit se **eligen las piezas** y se escoge la fila. La posición, el giro y
+la cota salen de la pieza de Revit.
+
+### Cómo se usa
+
+1. En CadLink, en la hoja **Placa Base**, **Zapatas Aisladas** o **Zapatas Corridas**, pulsa
+   **«Para Revit…»**. Se guardan las **tres** hojas en un solo `.cadlink-detalles.json`.
+2. En Revit, pestaña **CadLink → Detalles**:
+   - **Placas base**: elige las columnas, abre el archivo y escoge la placa.
+   - **Cimentación**: elige columnas (zapata aislada) y muros (zapata corrida), abre el archivo
+     y escoge la zapata de cada uno. La plantilla se pregunta; por omisión 5 cm.
+   - **Conectar vigas**: elige cómo —filete o a momento—, si van los dos extremos o uno, y
+     después las vigas. Con «uno» se da clic en cada viga **cerca del extremo** que se conecta;
+     cada clic se conecta al momento y Esc termina (Enter no: una selección de un punto no termina con
+     Enter). No necesita archivo.
+   - **Soldar columnas**: elige las columnas y si va en la base, en la cabeza o en las dos.
+   - **Encamisar trabes**: elige las trabes de concreto y si van con **placas corridas** (fondo,
+     laterales y, si se pide, arriba, con tornillos pasantes a media altura) o con **ángulos en las
+     esquinas y soleras** rodeando la trabe. Lleva su capa de adhesivo epóxico. La sección y el largo
+     se miden de la trabe dibujada, de cara a cara de columna y bajo la losa; las vigas de acero se
+     saltan. Volver a encamisar la misma trabe reemplaza el anterior.
+
+Si ya había piezas elegidas al pulsar el botón, se usan esas; si no, el botón las pide.
+
+### Qué se modela
+
+| Botón | Piezas |
+|---|---|
+| Placas base | Placa con sus barrenos, anclas con su **codo redondo** y tuerca **con chaflán**, cama de grout y filete de la columna **todo alrededor** |
+| Cimentación, columnas | Zapata, dado (rectangular o circular) y plantilla |
+| Cimentación, muros | Zapata corrida con su contratrabe o, sin ella, el muro de enrase; y la plantilla |
+| Conectar vigas, a una columna | Filete todo alrededor del perfil, **o a momento IR a IR**: placa sobre el patín de arriba y bajo el de abajo, placa de cortante al alma con su hilera de tornillos a 3", y cada placa soldada a la columna |
+| Conectar vigas, a un muro | **Placa embebida** a paño del muro, con sus anclas hacia dentro, y la viga soldada a ella |
+| Soldar columnas | Filete todo alrededor en la base o en la cabeza, sobre lo que tenga: placa, losa, dado o la columna de abajo |
+
+- **Las anclas van donde las pone el detalle de AutoCAD.** CadLink las calcula con las mismas
+  cuentas —`AnclasPlacaBase.Construir`, la separación ajustada a la columna K y el alzado de
+  `ElevacionPlacaBase.AnclasDeCanto`— y el complemento solo las coloca.
+- **La placa es de la columna de ACERO.** Si el dado está modelado como columna de concreto y
+  se elige junto con la columna, se salta: antes se llevaba su propia placa en el fondo.
+- **Contraplaca**, solo si se marca: una segunda placa al fondo de las anclas, ahogada en el dado,
+  con su tuerca abajo. Con ella las anclas van rectas.
+- **Las patas de las anclas apuntan al centro de la placa**, para que no se salgan por las caras del
+  dado.
+- **Los materiales** de CadLink toman la apariencia de render de un concreto, mortero o acero del
+  proyecto. Sin eso, en la vista Realista el grout salía negro y parecía un hueco.
+- **La placa va sobre el dado o el muro, o embebida.** Sobre el apoyo —lo normal—, el grout se
+  apoya en la cara de arriba del concreto que la columna tiene debajo —dado, columna de concreto,
+  muro, zapata o losa— y la columna se sube a la cara de la placa (se puede apagar). Embebida, la
+  cara de arriba de la placa queda a paño del arranque de la columna.
+- **La placa se orienta sola.** Se mide el paño de la columna modelada en sus dos direcciones y se
+  compara con el del detalle. Si aun así queda girada, la casilla «Girar 90°» la corrige.
+- **El dado termina bajo el grout** si la columna ya tiene placa base de CadLink; si no, en el
+  arranque de la columna. La zapata baja desde ahí la **profundidad de desplante** de la tabla,
+  que es la misma cuenta del corte de AutoCAD.
+- **La zapata corrida de lindero** queda a paño con la cara exterior del muro y crece hacia dentro.
+  La **aislada de lindero** se pone centrada y se avisa: desde la columna no se sabe hacia qué
+  lado está el vecino.
+- **La soldadura sale del contorno de la pieza dibujada**, no de una tabla de perfiles: la cara de
+  abajo de la columna o la cara del extremo de la viga, ya recortada en la columna. Por eso sirve
+  con OR, IR, canal o cualquier perfil. La sección es el triángulo del filete; si Revit no puede
+  armarlo con ese contorno, sale cuadrada y se avisa.
+
+### Cómo se reconocen y se reemplazan
+
+Todo va como **DirectShape**, con su material propio (`CadLink - Acero`, `- Anclas`,
+`- Soldadura`, `- Grout`, `- Concreto`, `- Plantilla`). En el `ApplicationDataId` lleva la llave
+`CadLink|Placa|<id de la columna>` —o `Zapata`, `Corrida`, `Soldadura|<id>|<extremo>`—, y en
+*Comentarios* y *Marca* lo que es. **Volver a poner** una placa en la misma columna **reemplaza**
+la anterior; no se encima.
+
+- **El codo del ancla** es un barrido a lo largo de su eje, con el mismo radio que redondea el
+  alzado de AutoCAD (`ElevacionPlacaBase.RadioDelDoblez`).
+- **La conexión a momento mide la IR de su dibujo**: peralte, patín y espesores salen de las
+  aristas del contorno del extremo, no de los parámetros del tipo, que cada familia llama distinto.
+  Si el perfil no es una I, se avisa y no se pone.
+
+### Límites
+
+- Los **cartabones** de la placa no se modelan todavía: se avisa cuántos lleva.
+- En la conexión a momento, las soldaduras de las placas a los **patines de la viga** y los
+  **barrenos** no se modelan; solo las soldaduras a la columna y los tornillos.
+- Son DirectShape, **no familias**: no se editan arrastrando ni admiten armado de Revit. Se
+  cambian en CadLink y se vuelven a poner.
+- Solo **muros rectos** para la zapata corrida y **vigas rectas** para la soldadura.
+- La capa de Revit **no se ha ejecutado** en Revit: se compila contra los recortes de
+  `tools/prueba-revit-compila`. Lo primero que conviene revisar es la lista de
+  `Recortes.Detalles.cs`: `DirectShape`, `CreateBlendGeometry`, `CurveLoop.CreateViaOffset` y
+  `BooleanOperationsUtils`.
+
+---
+
 ## Cómo está construido, y por qué
 
 El complemento es el único proyecto de este repositorio que **no se puede compilar sin Revit
@@ -631,7 +727,8 @@ entorno donde se escribió. Lo que más conviene revisar en la primera prueba:
 
 - **Solo Revit 2025 y 2026** (.NET 8). Para 2024 o anterior hace falta otra compilación.
 - **Cinco clases de pieza**: columnas, trabes, diagonales, muros y losas. Es todo lo que un
-  modelo de ETABS entrega. No hay zapatas ni placas base, porque el lector no las trae.
+  modelo de ETABS entrega. Las zapatas y las placas base no llegan por la importación,
+  porque el lector no las trae: se ponen aparte con el panel **Detalles** (ver abajo).
 - **No se exporta armado** ni cargas ni combinaciones.
 - **Los muros cortina y apilados no se ofrecen**: no se pueden crear desde un contorno con un
   espesor, y ofrecerlos sería ofrecer algo que después falla.

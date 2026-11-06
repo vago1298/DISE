@@ -44,7 +44,10 @@ public sealed class ElementId
 {
     public ElementId(long id) => Value = id;
 
-    public static ElementId InvalidElementId => new(-1);
+    /// <summary>Revit API: ElementId(BuiltInCategory). La categoria de un DirectShape.</summary>
+    public ElementId(BuiltInCategory categoria) => Value = (long)categoria;
+
+    public static ElementId InvalidElementId => new(-1L);
 
     public long Value { get; }
 
@@ -75,6 +78,22 @@ public sealed class XYZ
     /// <summary>El vector unitario vertical. Con el se arma el eje de giro de una columna.</summary>
     public static XYZ BasisZ => new(0, 0, 1);
 
+    // Lo que usan las placas, las zapatas y las soldaduras. Revit API: XYZ.BasisX, los
+    // operadores - y *, Normalize, Negate, GetLength y CrossProduct.
+    public static XYZ BasisX => new(1, 0, 0);
+
+    public static XYZ operator -(XYZ a, XYZ b) => new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+
+    public static XYZ operator *(XYZ a, double k) => new(a.X * k, a.Y * k, a.Z * k);
+
+    public XYZ Normalize() => this;
+
+    public XYZ Negate() => new(-X, -Y, -Z);
+
+    public double GetLength() => 0;
+
+    public XYZ CrossProduct(XYZ otro) => this;
+
     public double DistanceTo(XYZ otro) => 0;
 
     public static XYZ operator +(XYZ a, XYZ b) => new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
@@ -86,6 +105,21 @@ public sealed class XYZ
 public abstract class Curve
 {
     public XYZ GetEndPoint(int i) => new(0, 0, 0);
+
+    /// <summary>Revit API: Curve.Tessellate() devuelve IList&lt;XYZ&gt;.</summary>
+    public IList<XYZ> Tessellate() => new List<XYZ>();
+
+    /// <summary>Revit API: Curve.GetEndParameter(int). Donde se cuelga el perfil del barrido.</summary>
+    public double GetEndParameter(int i) => 0;
+}
+
+/// <summary>Revit API: Arc.Create(XYZ centro, double radio, double inicio, double fin, XYZ ejeX, XYZ ejeY).</summary>
+public sealed class Arc : Curve
+{
+    public static Arc Create(XYZ centro, double radio, double inicio, double fin, XYZ ejeX, XYZ ejeY) => new();
+
+    /// <summary>Revit API: Arc.Create(XYZ extremo0, XYZ extremo1, XYZ puntoEnElArco). El codo del ancla.</summary>
+    public static Arc Create(XYZ extremo0, XYZ extremo1, XYZ puntoEnElArco) => new();
 }
 
 public sealed class Line : Curve
@@ -93,9 +127,25 @@ public sealed class Line : Curve
     public static Line CreateBound(XYZ a, XYZ b) => new();
 }
 
-public sealed class CurveLoop
+/// <summary>
+/// Revit API: CurveLoop. Lo de las soldaduras -Append, CreateViaOffset, CreateViaTransform y
+/// GetExactLength- SIN COMPROBAR contra la DLL: de la documentacion de la API.
+/// </summary>
+public sealed class CurveLoop : IEnumerable<Curve>
 {
     public static CurveLoop Create(IList<Curve> curvas) => new();
+
+    public void Append(Curve c) { }
+
+    public static CurveLoop CreateViaOffset(CurveLoop original, double distancia, XYZ normal) => new();
+
+    public static CurveLoop CreateViaTransform(CurveLoop original, Transform t) => new();
+
+    public double GetExactLength() => 0;
+
+    public IEnumerator<Curve> GetEnumerator() => new List<Curve>().GetEnumerator();
+
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }
 
 public enum StorageType { None, Integer, Double, String, ElementId }
@@ -109,6 +159,9 @@ public sealed class Parameter
     public double AsDouble() => 0;
 
     public string? AsString() => null;
+
+    /// <summary>Revit API: Parameter.AsInteger(). La linea de ubicacion de un muro.</summary>
+    public int AsInteger() => 0;
 
     /// <summary>Revit API: Parameter.AsElementId().</summary>
     public ElementId AsElementId() => ElementId.InvalidElementId;
@@ -154,7 +207,7 @@ public sealed class BoundingBoxXYZ
 
 public abstract class Element
 {
-    public ElementId Id => new(0);
+    public ElementId Id => new(0L);
 
     public string? Name { get; set; }
 
@@ -167,7 +220,7 @@ public abstract class Element
     /// <summary>Revit API 2025/2026: Element.get_BoundingBox(View); con null, la del modelo.</summary>
     public BoundingBoxXYZ? get_BoundingBox(View? vista) => new();
 
-    public ElementId GetTypeId() => new(0);
+    public ElementId GetTypeId() => new(0L);
 
     public void ChangeTypeId(ElementId tipo) { }
 
@@ -230,6 +283,9 @@ public sealed class FamilySymbol : ElementType
 /// </summary>
 public sealed class FamilyInstance : Element
 {
+    /// <summary>Revit API: FamilyInstance.StructuralMaterialType. Para no poner placa en un dado de concreto.</summary>
+    public Structure.StructuralMaterialType StructuralMaterialType => Structure.StructuralMaterialType.Steel;
+
     public XYZ HandOrientation => new(1, 0, 0);
 
     public XYZ FacingOrientation => new(0, 1, 0);
@@ -249,6 +305,11 @@ public sealed class WallType : ElementType
 
 public sealed class Wall : Element
 {
+    /// <summary>Revit API: Wall.Width y Wall.Orientation -la normal hacia la cara exterior-.</summary>
+    public double Width => 0;
+
+    public XYZ Orientation => new(0, 1, 0);
+
     /// <summary>
     /// Comprobado en la Revit API 2026: Wall.Create con CONTORNO, no con linea y altura.
     /// Es la que permite un pano de cualquier forma.
@@ -304,7 +365,7 @@ public sealed class Document
     public void Regenerate() { }
 
     /// <summary>Revit API: Document.GetDefaultElementTypeId(ElementTypeGroup). Para el tipo de texto.</summary>
-    public ElementId GetDefaultElementTypeId(ElementTypeGroup grupo) => new(0);
+    public ElementId GetDefaultElementTypeId(ElementTypeGroup grupo) => new(0L);
 
     /// <summary>Revit API 2025/2026: Document.Delete(ICollection&lt;ElementId&gt;).</summary>
     public ICollection<ElementId> Delete(ICollection<ElementId> ids) => ids;
@@ -354,7 +415,12 @@ public enum BuiltInCategory
     OST_Floors,
 
     // El cajetin de las hojas del despiece.
-    OST_TitleBlocks
+    OST_TitleBlocks,
+
+    // Las placas, las zapatas y las soldaduras, como DirectShape.
+    OST_StructConnections,
+    OST_StructuralFoundation,
+    OST_GenericModel
 }
 
 public enum BuiltInParameter
@@ -388,7 +454,11 @@ public enum BuiltInParameter
     KEYNOTE_PARAM,
     ALL_MODEL_MODEL,
     ALL_MODEL_DESCRIPTION,
-    ALL_MODEL_TYPE_MARK
+    ALL_MODEL_TYPE_MARK,
+
+    // La marca de la placa o la zapata, y la linea de ubicacion de un muro.
+    ALL_MODEL_MARK,
+    WALL_KEY_REF_PARAM
 }
 
 /// <summary>
