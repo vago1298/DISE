@@ -580,6 +580,11 @@ la cota salen de la pieza de Revit.
      esquinas y soleras** rodeando la trabe. Lleva su capa de adhesivo epóxico. La sección y el largo
      se miden de la trabe dibujada, de cara a cara de columna y bajo la losa; las vigas de acero se
      saltan. Volver a encamisar la misma trabe reemplaza el anterior.
+   - **Armar muros**: elige todos los muros de concreto a la vez, la varilla y la separación de
+     verticales y horizontales, una o dos parrillas y el gancho de las verticales. Se pone un Area
+     Reinforcement por muro (verticales = Major, horizontales = Minor), de punta a punta y de la base
+     a la corona, con el recubrimiento del muro; recorta solo en puertas y ventanas. Los que no sean
+     estructurales de concreto se saltan. Volver a armar reemplaza el de CadLink.
 
 Si ya había piezas elegidas al pulsar el botón, se usan esas; si no, el botón las pide.
 

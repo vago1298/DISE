@@ -15798,7 +15798,7 @@ def v29_paquete_oficina() -> None:
 # Los iconos de la cinta de Revit, uno por boton (tools/make_iconos_cinta.py).
 ICONOS_CINTA = ("importar-etabs", "armar-modelo", "columna-acero", "columna-corte",
                 "viga-acero", "viga-corte", "armar-tipo", "corte-seccion",
-                "placa-base", "cimentacion", "soldar-viga", "soldar-columna", "encamisar")
+                "placa-base", "cimentacion", "soldar-viga", "soldar-columna", "encamisar", "armar-muros")
 
 def v30_armado_por_tipo() -> None:
     print("\n[30] Revit: armar por tipo, todas las piezas de un jalon")
@@ -17128,6 +17128,11 @@ def v31_detalles_revit() -> None:
     check("encamisado: varias filas en tresbolillo y anclas al concreto abajo y arriba",
           "public static List<double> AlLargo(" in nuc and "if (o.Fondo) { Cara(-g - t, 1); }" in nuc
           and "o.Tresbolillo = tres.IsChecked == true;" in com)
+
+    check("armar muros: Area Reinforcement en todos los muros elegidos, reemplazando el de CadLink",
+          "AreaReinforcement.Create(" in leer(ruta("client/src/CadLink.Revit/ArmadorDeMuros.cs"))
+          and "typeof(ComandoArmarMuros).FullName" in apl
+          and "CadLink.Revit\\ArmadorDeMuros.cs" in compila)
 
     check("la capa de Revit de los detalles se compila contra los recortes",
           "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)

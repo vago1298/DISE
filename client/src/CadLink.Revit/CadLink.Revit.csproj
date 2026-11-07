@@ -178,6 +178,14 @@
     <EmbeddedResource Include="Assets\encamisar-16.png">
       <LogicalName>CadLink.Revit.encamisar-16.png</LogicalName>
     </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\armar-muros-32.png">
+      <LogicalName>CadLink.Revit.armar-muros-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\armar-muros-16.png">
+      <LogicalName>CadLink.Revit.armar-muros-16.png</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <PropertyGroup>

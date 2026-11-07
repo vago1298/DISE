@@ -61,3 +61,16 @@ public sealed class Rebar : Element
 
     public RebarShapeDrivenAccessor GetShapeDrivenAccessor() => new();
 }
+
+// El ARMADO DE MUROS. SIN COMPROBAR contra la DLL: de la documentacion de la API.
+//   AreaReinforcement.Create(Document, Element anfitrion, IList<Curve> contorno, XYZ direccionMayor,
+//       ElementId tipoDeArea, ElementId tipoDeVarilla, ElementId tipoDeGancho)
+//   Y los BuiltInParameter REBAR_SYSTEM_* de las cuatro capas, en Recortes.cs.
+public sealed class AreaReinforcementType : ElementType { }
+
+public sealed class AreaReinforcement : Element
+{
+    public static AreaReinforcement Create(
+        Document doc, Element anfitrion, IList<Curve> contorno, XYZ direccionMayor,
+        ElementId tipoDeArea, ElementId tipoDeVarilla, ElementId tipoDeGancho) => new();
+}

@@ -518,6 +518,85 @@ public sealed class ComandoEncamisar : IExternalCommand
     }
 }
 
+/// <summary>
+/// El boton <b>Armar muros</b>: pone verticales y horizontales, en una o dos parrillas, en TODOS
+/// los muros de concreto elegidos.
+/// </summary>
+[Transaction(TransactionMode.Manual)]
+public sealed class ComandoArmarMuros : IExternalCommand
+{
+    public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+    {
+        var uidoc = commandData?.Application?.ActiveUIDocument;
+        var doc = uidoc?.Document;
+
+        if (uidoc is null || doc is null || doc.IsFamilyDocument)
+        {
+            message = "Abre un proyecto de Revit antes de armar muros.";
+            return Result.Failed;
+        }
+
+        var muros = DetallesEnRevit.Piezas(uidoc, "Elige los muros de concreto que se arman y pulsa Terminar.",
+            BuiltInCategory.OST_Walls).OfType<Wall>().ToList();
+
+        if (muros.Count == 0)
+        {
+            return Result.Cancelled;
+        }
+
+        var varillas = ArmadorDeMuros.Varillas(doc).Keys.OrderBy(n => n).ToList();
+
+        if (varillas.Count == 0)
+        {
+            TaskDialog.Show("CadLink", "El proyecto no tiene tipos de varilla (Rebar Bar). Crea o carga alguno.");
+            return Result.Cancelled;
+        }
+
+        var o = new OpcionesArmadoMuro();
+
+        var ventana = new VentanaDetalle("CadLink - Armar muros",
+            $"Se pone el armado en los {muros.Count} muro(s) elegidos, de punta a punta y de la base a la "
+            + "corona, con el recubrimiento que ya tenga cada muro. Recorta solo en puertas y ventanas. "
+            + "Los muros que no sean estructurales de concreto se saltan y se dicen.\n\n"
+            + "Volver a armar un muro reemplaza el armado de CadLink; el puesto a mano no se toca.");
+
+        var parrillas = ventana.Lista("Parrillas:", new[] { "Dos: una en cada cara", "Una: en la cara exterior" });
+        var vertical = ventana.Lista("Varilla vertical:", varillas);
+        var sepV = ventana.Numero("Separacion de las verticales, en cm:", o.SeparacionVerticalM * 100);
+        var horizontal = ventana.Lista("Varilla horizontal:", varillas);
+        var sepH = ventana.Numero("Separacion de las horizontales, en cm:", o.SeparacionHorizontalM * 100);
+        var gancho = ventana.Lista("Gancho de las verticales:", new[] { "(sin gancho)" }.Concat(ArmadorDeMuros.Ganchos(doc)));
+        var libre = ventana.Numero("Libre en las orillas del muro, en cm (0 = al canto, con su recubrimiento):", 0);
+
+        if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Armar"))
+        {
+            return Result.Cancelled;
+        }
+
+        o.DosParrillas = parrillas.SelectedIndex != 1;
+        o.VarillaVertical = vertical.SelectedItem as string ?? string.Empty;
+        o.VarillaHorizontal = horizontal.SelectedItem as string ?? string.Empty;
+        o.SeparacionVerticalM = VentanaDetalle.Leer(sepV, 20) / 100;
+        o.SeparacionHorizontalM = VentanaDetalle.Leer(sepH, 20) / 100;
+        o.GanchoVertical = gancho.SelectedIndex > 0 ? gancho.SelectedItem as string ?? string.Empty : string.Empty;
+        o.LibreM = VentanaDetalle.Leer(libre, 0) / 100;
+
+        var falta = ArmadoDeMuros.Falta(o);
+
+        if (falta.Count > 0)
+        {
+            TaskDialog.Show("CadLink", "Falta: " + string.Join(", ", falta) + ".");
+            return Result.Cancelled;
+        }
+
+        var r = ArmadorDeMuros.Armar(doc, muros, o);
+
+        TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "muro(s) armado(s)", null));
+
+        return Result.Succeeded;
+    }
+}
+
 /// <summary>Lo comun a los botones: elegir las piezas, abrir el archivo y el informe.</summary>
 internal static class DetallesEnRevit
 {

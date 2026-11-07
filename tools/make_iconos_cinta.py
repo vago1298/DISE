@@ -195,6 +195,17 @@ def soldar_viga():
     return f + lineas(anillo + [anillo[0]], 1.6, ROJO)
 
 
+def armar_muros():
+    # El muro gris con su malla clara: verticales y horizontales.
+    gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
+    f = caja(0, 0, 0, 22, 3, 20, cx=6, cy=22, s=0.9, colores=gris)
+    for x in (4, 9, 14, 19):
+        f.append(linea(iso(x, 3, 1.5, 6, 22, 0.9), iso(x, 3, 18.5, 6, 22, 0.9), 1.0, IZQ))
+    for z in (4, 9, 14):
+        f.append(linea(iso(1.5, 3, z, 6, 22, 0.9), iso(20.5, 3, z, 6, 22, 0.9), 1.0, ROJO))
+    return f
+
+
 def encamisar():
     # La trabe de concreto gris con sus placas azules abrazandola y dos soleras rojas.
     gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
@@ -230,6 +241,7 @@ ICONOS = {
     "soldar-viga": soldar_viga,
     "soldar-columna": soldar_columna,
     "encamisar": encamisar,
+    "armar-muros": armar_muros,
 }
 
 

@@ -458,7 +458,26 @@ public enum BuiltInParameter
 
     // La marca de la placa o la zapata, y la linea de ubicacion de un muro.
     ALL_MODEL_MARK,
-    WALL_KEY_REF_PARAM
+    WALL_KEY_REF_PARAM,
+
+    // Las cuatro capas del Area Reinforcement de un muro: TOP = cara exterior, BOTTOM = interior,
+    // DIR_1 = mayor, DIR_2 = menor. SIN COMPROBAR contra la DLL: de la documentacion de la API.
+    REBAR_SYSTEM_ACTIVE_TOP_DIR_1,
+    REBAR_SYSTEM_BAR_TYPE_TOP_DIR_1,
+    REBAR_SYSTEM_SPACING_TOP_DIR_1,
+    REBAR_SYSTEM_HOOK_TYPE_TOP_DIR_1,
+    REBAR_SYSTEM_ACTIVE_TOP_DIR_2,
+    REBAR_SYSTEM_BAR_TYPE_TOP_DIR_2,
+    REBAR_SYSTEM_SPACING_TOP_DIR_2,
+    REBAR_SYSTEM_HOOK_TYPE_TOP_DIR_2,
+    REBAR_SYSTEM_ACTIVE_BOTTOM_DIR_1,
+    REBAR_SYSTEM_BAR_TYPE_BOTTOM_DIR_1,
+    REBAR_SYSTEM_SPACING_BOTTOM_DIR_1,
+    REBAR_SYSTEM_HOOK_TYPE_BOTTOM_DIR_1,
+    REBAR_SYSTEM_ACTIVE_BOTTOM_DIR_2,
+    REBAR_SYSTEM_BAR_TYPE_BOTTOM_DIR_2,
+    REBAR_SYSTEM_SPACING_BOTTOM_DIR_2,
+    REBAR_SYSTEM_HOOK_TYPE_BOTTOM_DIR_2
 }
 
 /// <summary>

@@ -162,6 +162,15 @@ public sealed class Aplicacion : IExternalApplication
             + "La seccion y el largo se miden de la trabe dibujada, de cara a cara de columna y bajo la "
             + "losa. Volver a encamisar la misma trabe reemplaza el encamisado anterior.",
             "encamisar");
+
+        Boton(detalles, dll, "CadLinkArmarMuros", "Armar\nmuros", typeof(ComandoArmarMuros).FullName,
+            "Pone verticales y horizontales, en una o dos parrillas, en todos los muros de concreto elegidos.",
+            "Un Area Reinforcement por muro, de punta a punta y de la base a la corona, con el "
+            + "recubrimiento del muro: varilla y separacion de las verticales y de las horizontales, una o "
+            + "dos parrillas y el gancho de las verticales. Recorta solo en puertas y ventanas.\n\n"
+            + "Los muros que no sean estructurales de concreto se saltan. Volver a armar reemplaza el "
+            + "armado de CadLink.",
+            "armar-muros");
     }
 
     private static string TextoAcero(string elemento) =>
@@ -224,6 +233,7 @@ public sealed class Aplicacion : IExternalApplication
         "soldar-viga" => (Imagen("CadLink.Revit.soldar-viga-32.png"), Imagen("CadLink.Revit.soldar-viga-16.png")),
         "soldar-columna" => (Imagen("CadLink.Revit.soldar-columna-32.png"), Imagen("CadLink.Revit.soldar-columna-16.png")),
         "encamisar" => (Imagen("CadLink.Revit.encamisar-32.png"), Imagen("CadLink.Revit.encamisar-16.png")),
+        "armar-muros" => (Imagen("CadLink.Revit.armar-muros-32.png"), Imagen("CadLink.Revit.armar-muros-16.png")),
         _ => (null, null)
     };
 
