@@ -854,7 +854,30 @@ public sealed class OpcionesEncamisado
 
     /// <summary>Lo que el acero se queda antes de la cara de la columna, en cada punta.</summary>
     public double LibreEnPuntasM { get; set; }
+
+    /// <summary>Filas de tornillos en las caras laterales. Cero = las que quepan a 20 cm.</summary>
+    public int FilasLaterales { get; set; }
+
+    /// <summary>Las filas en tresbolillo: cada fila corrida media separacion de la anterior.</summary>
+    public bool Tresbolillo { get; set; } = true;
+
+    /// <summary>Anclas al concreto de las placas de abajo y de arriba (1/2"). Cero = sin anclas.</summary>
+    public double AnclaM { get; set; } = 0.0127;
+
+    /// <summary>Lo que el ancla se mete en el concreto.</summary>
+    public double AnclaEmpotreM { get; set; } = 0.10;
 }
+
+/// <summary>
+/// Un tornillo o ancla del encamisado, en los ejes de la trabe.
+/// </summary>
+/// <param name="U">Arranque: la punta que asoma por fuera de la placa.</param>
+/// <param name="DU">Direccion, unitaria: hacia dentro de la trabe.</param>
+/// <param name="Asoma">De la punta a la cara de fuera de la placa: ahi va la tuerca.</param>
+/// <param name="Pasante">Atraviesa la trabe y lleva tuerca tambien en la otra punta.</param>
+public readonly record struct PernoEncamisado(
+    double U, double V, double A, double DU, double DV, double LargoM, double DiametroM,
+    double Asoma, bool Pasante);
 
 /// <summary>
 /// El encamisado de una trabe de concreto con acero, sin nada de Revit.
@@ -874,11 +897,11 @@ public static class Encamisado
 {
     public const string Adhesivo = "adhesivo";
 
-    public static (List<CajaLocal> Piezas, List<TornilloLocal> Tornillos) Piezas(
+    public static (List<CajaLocal> Piezas, List<PernoEncamisado> Tornillos) Piezas(
         double baseM, double altoM, double largoM, OpcionesEncamisado o)
     {
         var piezas = new List<CajaLocal>();
-        var tornillos = new List<TornilloLocal>();
+        var tornillos = new List<PernoEncamisado>();
 
         var b = baseM / 2;
         var h = altoM;
@@ -920,16 +943,45 @@ public static class Encamisado
                 piezas.Add(new CajaLocal("placa lateral", -b - g - t, -b - g, vAbajo, vArriba, a0, a1));
                 piezas.Add(new CajaLocal("placa lateral", b + g, b + g + t, vAbajo, vArriba, a0, a1));
 
-                // Tornillos pasantes a media altura, de lado a lado, a la separacion pedida.
+                // Tornillos PASANTES de lado a lado, en varias filas y en tresbolillo.
                 if (o.TornilloM > 0 && o.SeparacionM > 0)
                 {
                     var asoma = 0.025;
+                    var mitad = b + g + t + asoma;
+                    var filas = Filas(0, h, 0.075, 0.20, o.FilasLaterales, 2);
 
-                    foreach (var a in Repartir(a0, a1, o.SeparacionM))
+                    for (var k = 0; k < filas.Count; k++)
                     {
-                        tornillos.Add(new TornilloLocal(h / 2, a, -b - g - t - asoma, b + g + t + asoma, o.TornilloM));
+                        foreach (var a in AlLargo(a0, a1, o.SeparacionM, o.Tresbolillo && k % 2 == 1))
+                        {
+                            tornillos.Add(new PernoEncamisado(-mitad, filas[k], a, 1, 0, 2 * mitad, o.TornilloM, asoma, true));
+                        }
                     }
                 }
+            }
+
+            // ANCLAS AL CONCRETO en las placas de abajo y de arriba: no pueden ser pasantes -del
+            // otro lado esta la losa o no hay acceso-, asi que se meten en el concreto lo que diga
+            // el empotre. Filas a lo ancho, en tresbolillo con las de al lado.
+            if (o.AnclaM > 0 && o.SeparacionM > 0)
+            {
+                var asoma = 0.015;
+                var largo = asoma + t + g + Math.Max(0.02, o.AnclaEmpotreM);
+                var filas = Filas(-b, b, 0.05, 0.15, 0, 1);
+
+                void Cara(double vFuera, double dv)
+                {
+                    for (var k = 0; k < filas.Count; k++)
+                    {
+                        foreach (var a in AlLargo(a0, a1, o.SeparacionM, o.Tresbolillo && k % 2 == 1))
+                        {
+                            tornillos.Add(new PernoEncamisado(filas[k], vFuera - (dv * asoma), a, 0, dv, largo, o.AnclaM, asoma, false));
+                        }
+                    }
+                }
+
+                if (o.Fondo) { Cara(-g - t, 1); }
+                if (o.Arriba) { Cara(h + g + t, -1); }
             }
 
             return (piezas, tornillos);
@@ -981,6 +1033,46 @@ public static class Encamisado
         }
 
         return (piezas, tornillos);
+    }
+
+    /// <summary>
+    /// Las filas de una cara, de <paramref name="desde"/> a <paramref name="hasta"/>, dejando
+    /// <paramref name="borde"/> en cada orilla y sin pasar de <paramref name="maxSep"/> entre filas.
+    /// </summary>
+    public static List<double> Filas(double desde, double hasta, double borde, double maxSep, int pedidas, int minimo)
+    {
+        var a = desde + borde;
+        var b = hasta - borde;
+
+        if (b - a <= 0.01)
+        {
+            return new List<double> { (desde + hasta) / 2 };
+        }
+
+        var n = pedidas > 0 ? pedidas : Math.Max(minimo, 1 + (int)Math.Ceiling(((b - a) / maxSep) - 1e-9));
+
+        if (n == 1)
+        {
+            return new List<double> { (a + b) / 2 };
+        }
+
+        return Enumerable.Range(0, n).Select(i => a + (i * (b - a) / (n - 1))).ToList();
+    }
+
+    /// <summary>
+    /// Las posiciones a lo largo de una fila. En tresbolillo, a media separacion de las de la fila
+    /// de al lado: en los huecos que esas dejan.
+    /// </summary>
+    public static List<double> AlLargo(double a0, double a1, double separacion, bool corrida)
+    {
+        var base_ = Repartir(a0 + 0.05, a1 - 0.05, separacion);
+
+        if (!corrida || base_.Count < 2)
+        {
+            return base_;
+        }
+
+        return base_.Zip(base_.Skip(1), (x, y) => (x + y) / 2).ToList();
     }
 
     /// <summary>Una caja de un lado: con <paramref name="lado"/> negativo, el espejo en U.</summary>

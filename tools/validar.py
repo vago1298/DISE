@@ -17125,6 +17125,10 @@ def v31_detalles_revit() -> None:
           "public static class Encamisado" in nuc and "Detallador.Encamisar(" in com
           and "typeof(ComandoEncamisar).FullName" in apl and "Geometria.PuntosDelSolido(trabe)" in det)
 
+    check("encamisado: varias filas en tresbolillo y anclas al concreto abajo y arriba",
+          "public static List<double> AlLargo(" in nuc and "if (o.Fondo) { Cara(-g - t, 1); }" in nuc
+          and "o.Tresbolillo = tres.IsChecked == true;" in com)
+
     check("la capa de Revit de los detalles se compila contra los recortes",
           "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)
 

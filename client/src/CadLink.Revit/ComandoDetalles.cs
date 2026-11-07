@@ -460,7 +460,7 @@ public sealed class ComandoEncamisar : IExternalCommand
 
         var tipo = ventana.Lista("Encamisado:", new[]
         {
-            "Placas corridas, con tornillos pasantes",
+            "Placas corridas, con tornillos pasantes en los lados y anclas abajo y arriba",
             "Angulos en las esquinas y soleras"
         });
         var fondo = ventana.Casilla("Cara de abajo", true);
@@ -472,7 +472,12 @@ public sealed class ComandoEncamisar : IExternalCommand
         var solera = ventana.Numero("Soleras: ancho, en mm:", o.AnchoSoleraM * 1000);
         var espSolera = ventana.Numero("Soleras: espesor, en mm:", o.EspesorSoleraM * 1000);
         var sep = ventana.Numero("Separacion de soleras o tornillos, en cm:", o.SeparacionM * 100);
-        var tornillo = ventana.Numero("Placas: diametro de los tornillos, en mm (0 = sin):", o.TornilloM * 1000);
+        var tornillo = ventana.Numero("Placas laterales: diametro de los tornillos pasantes, en mm (0 = sin):", o.TornilloM * 1000);
+        var filas = ventana.Numero("Placas laterales: filas de tornillos (0 = las que quepan a 20 cm):", 0);
+        var ancla = ventana.Numero("Placas de abajo y arriba: diametro de las anclas al concreto, en mm (0 = sin):", o.AnclaM * 1000);
+        var empotre = ventana.Numero("Anclas: lo que se meten en el concreto, en cm:", o.AnclaEmpotreM * 100);
+        var tres = ventana.Casilla("Tornillos y anclas en tresbolillo", true,
+            "Cada fila corrida media separacion de la de al lado, en los huecos que esa deja.");
         var libre = ventana.Numero("Libre antes de la cara de la columna, en cm:", 0);
 
         if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Encamisar"))
@@ -491,6 +496,10 @@ public sealed class ComandoEncamisar : IExternalCommand
         o.EspesorSoleraM = VentanaDetalle.Leer(espSolera, o.EspesorSoleraM * 1000) / 1000;
         o.SeparacionM = VentanaDetalle.Leer(sep, o.SeparacionM * 100) / 100;
         o.TornilloM = VentanaDetalle.Leer(tornillo, o.TornilloM * 1000) / 1000;
+        o.FilasLaterales = (int)Math.Round(VentanaDetalle.Leer(filas, 0));
+        o.AnclaM = VentanaDetalle.Leer(ancla, o.AnclaM * 1000) / 1000;
+        o.AnclaEmpotreM = VentanaDetalle.Leer(empotre, o.AnclaEmpotreM * 100) / 100;
+        o.Tresbolillo = tres.IsChecked == true;
         o.LibreEnPuntasM = VentanaDetalle.Leer(libre, 0) / 100;
 
         var falta = Encamisado.Falta(o);

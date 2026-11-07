@@ -1119,16 +1119,25 @@ internal static class Detallador
                     foreach (var t in tornillos)
                     {
                         var radio = Unidades.AInternas(t.DiametroM / 2);
-                        var centro = origen + (XYZ.BasisZ * Unidades.AInternas(t.V)) + (eje * Unidades.AInternas(t.A));
-                        torn.Add(Solidos.Cilindro(centro + (u * Unidades.AInternas(t.U0)), u,
-                            Unidades.AInternas(t.U1 - t.U0), radio, tornilleria));
+                        var desde = origen + (u * Unidades.AInternas(t.U)) + (XYZ.BasisZ * Unidades.AInternas(t.V))
+                                    + (eje * Unidades.AInternas(t.A));
+                        var dir = ((u * t.DU) + (XYZ.BasisZ * t.DV)).Normalize();
+                        var largo = Unidades.AInternas(t.LargoM);
+                        var asoma = Unidades.AInternas(t.Asoma);
 
-                        // Tuerca de los dos lados, contra la cara de fuera de las placas.
-                        var cara = Unidades.AInternas(t.U1 - 0.025);
+                        torn.Add(Solidos.Cilindro(desde, dir, largo, radio, tornilleria));
+
+                        // La tuerca contra la cara de fuera de la placa; el pasante, de los dos lados.
+                        var plano = Math.Abs(t.DV) > 0.5 ? eje : XYZ.BasisZ;
                         var llave = Unidades.AInternas(1.5 * t.DiametroM);
                         var alto = Unidades.AInternas(0.8 * t.DiametroM);
-                        torn.Add(Solidos.Tuerca(centro + (u * cara), u, XYZ.BasisZ, llave, alto, radio, tornilleria));
-                        torn.Add(Solidos.Tuerca(centro - (u * cara), u.Negate(), XYZ.BasisZ, llave, alto, radio, tornilleria));
+
+                        torn.Add(Solidos.Tuerca(desde + (dir * asoma), dir.Negate(), plano, llave, alto, radio, tornilleria));
+
+                        if (t.Pasante)
+                        {
+                            torn.Add(Solidos.Tuerca(desde + (dir * (largo - asoma)), dir, plano, llave, alto, radio, tornilleria));
+                        }
                     }
 
                     var llaveTrabe = LlaveDetalle.De(ClaseDetalle.Encamisado, trabe.Id.Value);
@@ -1153,7 +1162,9 @@ internal static class Detallador
                     if (torn.Count > 0)
                     {
                         Solidos.Forma(doc, categoria, torn, llaveTrabe + "|tornillos",
-                            $"CadLink: {tornillos.Count} tornillos pasantes de {Mm(o.TornilloM)} mm @ {Cm(o.SeparacionM)} cm",
+                            $"CadLink: {tornillos.Count(x => x.Pasante)} tornillos pasantes de {Mm(o.TornilloM)} mm y "
+                            + $"{tornillos.Count(x => !x.Pasante)} anclas de {Mm(o.AnclaM)} mm, @ {Cm(o.SeparacionM)} cm"
+                            + (o.Tresbolillo ? " en tresbolillo" : string.Empty),
                             string.Empty);
                     }
 
