@@ -46,7 +46,7 @@ public static class ArmadoDeMuros
         var z0 = zBaseM + l;
         var z1 = zAltaM - l;
 
-        if (s1 - s0 < 0.05 || z1 - z0 < 0.05)
+        if (s1 - s0 <= 0.05 || z1 - z0 <= 0.05)
         {
             return new List<(double, double)>();
         }

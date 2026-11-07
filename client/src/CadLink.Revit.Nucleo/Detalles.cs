@@ -625,10 +625,25 @@ public sealed class OpcionesConexion
 
     public double PlacaPatinLargoM { get; set; } = 0.30;
 
+    /// <summary>Ancho de las placas de los patines. Cero = el ancho del patin de la viga.</summary>
+    public double PlacaPatinAnchoM { get; set; }
+
+    /// <summary>Filete de las placas de los patines a la columna. Cero = el filete general.</summary>
+    public double SoldaduraPatinM { get; set; }
+
     /// <summary>Placa de cortante: espesor y largo a lo largo de la viga.</summary>
     public double PlacaCortanteEspesorM { get; set; } = 0.0095;
 
     public double PlacaCortanteLargoM { get; set; } = 0.12;
+
+    /// <summary>
+    /// Alto de la placa de cortante. Cero = el que cabe entre los patines con 2.5 cm de holgura.
+    /// Nunca mas alto que eso: si no, chocaria con los patines.
+    /// </summary>
+    public double PlacaCortanteAltoM { get; set; }
+
+    /// <summary>Filete de la placa de cortante a la columna. Cero = el filete general.</summary>
+    public double SoldaduraCortanteM { get; set; }
 
     /// <summary>Tornillos de la placa de cortante: diametro y separacion vertical (3").</summary>
     public double TornilloM { get; set; } = 0.019;
@@ -718,21 +733,27 @@ public static class Conexion
     /// placa que toca la columna.
     /// </para>
     /// </remarks>
-    public static (List<CajaLocal> Placas, List<TornilloLocal> Tornillos) Momento(MedidasI p, OpcionesConexion o)
+    /// <param name="conPatines">False: solo la placa de cortante, la conexion a CORTANTE.</param>
+    public static (List<CajaLocal> Placas, List<TornilloLocal> Tornillos) Momento(
+        MedidasI p, OpcionesConexion o, bool conPatines = true)
     {
         var placas = new List<CajaLocal>();
         var tornillos = new List<TornilloLocal>();
 
         var mitadD = p.D / 2;
-        var mitadBf = p.Bf / 2;
+        var mitadBf = (o.PlacaPatinAnchoM > 0 ? o.PlacaPatinAnchoM : p.Bf) / 2;
 
-        placas.Add(new CajaLocal("placa del patin superior", -mitadBf, mitadBf,
-            mitadD, mitadD + o.PlacaPatinEspesorM, 0, o.PlacaPatinLargoM));
-        placas.Add(new CajaLocal("placa del patin inferior", -mitadBf, mitadBf,
-            -mitadD - o.PlacaPatinEspesorM, -mitadD, 0, o.PlacaPatinLargoM));
+        if (conPatines)
+        {
+            placas.Add(new CajaLocal("placa del patin superior", -mitadBf, mitadBf,
+                mitadD, mitadD + o.PlacaPatinEspesorM, 0, o.PlacaPatinLargoM));
+            placas.Add(new CajaLocal("placa del patin inferior", -mitadBf, mitadBf,
+                -mitadD - o.PlacaPatinEspesorM, -mitadD, 0, o.PlacaPatinLargoM));
+        }
 
         var holgura = 0.025;
-        var alto = p.D - (2 * p.Tf) - (2 * holgura);
+        var cabe = p.D - (2 * p.Tf) - (2 * holgura);
+        var alto = o.PlacaCortanteAltoM > 0 ? Math.Min(o.PlacaCortanteAltoM, cabe) : cabe;
 
         if (alto <= 0.02 || o.PlacaCortanteLargoM <= 0)
         {

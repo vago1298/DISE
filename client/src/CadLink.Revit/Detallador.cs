@@ -24,7 +24,10 @@ public enum TipoConexion
     Filete,
 
     /// <summary>IR a IR a momento: placa en cada patin y placa de cortante atornillada al alma.</summary>
-    Momento
+    Momento,
+
+    /// <summary>A cortante: solo la placa de cortante atornillada al alma y soldada a la columna.</summary>
+    Cortante
 }
 
 /// <summary>Que extremos de la columna se sueldan.</summary>
@@ -749,9 +752,9 @@ internal static class Detallador
                         {
                             PlacaEmbebida(marco, contorno, lado, o, mat, piezas, r, donde);
                         }
-                        else if (enColumna && o.Conexion == TipoConexion.Momento)
+                        else if (enColumna && o.Conexion is TipoConexion.Momento or TipoConexion.Cortante)
                         {
-                            if (!AMomento(marco, contorno, lado, o, mat, piezas, r, donde))
+                            if (!AMomento(marco, contorno, lado, o, mat, piezas, r, donde, o.Conexion == TipoConexion.Momento))
                             {
                                 continue;
                             }
@@ -868,7 +871,7 @@ internal static class Detallador
     /// <returns>False si la viga no es una I y no se pudo.</returns>
     private static bool AMomento(
         MarcoExtremo m, CurveLoop contorno, double lado, OpcionesDetalle o, Materiales mat,
-        List<(GeometryObject, string)> piezas, ResultadoDetalles r, string donde)
+        List<(GeometryObject, string)> piezas, ResultadoDetalles r, string donde, bool conPatines)
     {
         var horizontales = new List<double>();
         var verticales = new List<double>();
@@ -901,16 +904,23 @@ internal static class Detallador
             return false;
         }
 
-        var (placas, tornillos) = Conexion.Momento(perfil.Value, o.MedidasDeConexion);
+        var mc = o.MedidasDeConexion;
+        var (placas, tornillos) = Conexion.Momento(perfil.Value, mc, conPatines);
 
         foreach (var c in placas)
         {
             var local = AInternas(c);
             piezas.Add((Solidos.Caja(m.Origen, m.U, m.V, m.A, local, mat.Acero), c.Que));
 
-            // Cada placa soldada a la columna todo alrededor de la cara que la toca.
-            piezas.Add((Filete(Solidos.CaraInicial(m.Origen, m.U, m.V, m.A, local), m.A, lado, mat.Soldadura, r, donde),
-                $"filete de {Mm(o.SoldaduraM)} mm de la {c.Que} a la columna"));
+            // Cada placa soldada a la columna todo alrededor de la cara que la toca, con SU filete.
+            var propio = c.Que.StartsWith("placa del patin", StringComparison.Ordinal)
+                ? mc.SoldaduraPatinM
+                : mc.SoldaduraCortanteM;
+            var filete = propio > 0 ? propio : o.SoldaduraM;
+
+            piezas.Add((Filete(Solidos.CaraInicial(m.Origen, m.U, m.V, m.A, local), m.A,
+                    Unidades.AInternas(filete), mat.Soldadura, r, donde),
+                $"filete de {Mm(filete)} mm de la {c.Que} a la columna"));
         }
 
         foreach (var t in tornillos)

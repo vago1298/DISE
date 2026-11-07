@@ -17134,6 +17134,10 @@ def v31_detalles_revit() -> None:
           and "typeof(ComandoArmarMuros).FullName" in apl
           and "CadLink.Revit\\ArmadorDeMuros.cs" in compila)
 
+    check("conexion a momento y a cortante con ancho, largo, espesor y filete de cada placa",
+          "public double PlacaPatinAnchoM { get; set; }" in nuc and "public double SoldaduraCortanteM { get; set; }" in nuc
+          and "2 => TipoConexion.Cortante," in com and "mc.SoldaduraPatinM" in det)
+
     check("la capa de Revit de los detalles se compila contra los recortes",
           "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)
 

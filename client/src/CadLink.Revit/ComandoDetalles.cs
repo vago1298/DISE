@@ -269,18 +269,25 @@ public sealed class ComandoSoldarVigas : IExternalCommand
         var tipo = ventana.Lista("Conexion a la columna:", new[]
         {
             "Filete todo alrededor del perfil",
-            "A momento, IR a IR: placas en los patines y placa de cortante atornillada"
+            "A momento, IR a IR: placas en los patines y placa de cortante atornillada",
+            "A cortante, IR a columna: solo la placa de cortante atornillada al alma"
         });
         var extremos = ventana.Lista("Extremos:", new[]
         {
             "Los dos extremos de cada viga",
             "Uno: das clic en cada viga cerca del extremo; se conecta con cada clic y Esc termina"
         });
-        var lado = ventana.Numero("Tamaño del filete, en mm:", Cordon.PorOmisionM * 1000);
-        var patin = ventana.Numero("A momento: espesor de las placas de los patines, en mm:", medidas.PlacaPatinEspesorM * 1000);
-        var largoPatin = ventana.Numero("A momento: largo de las placas de los patines, en cm:", medidas.PlacaPatinLargoM * 100);
-        var cortante = ventana.Numero("A momento: espesor de la placa de cortante, en mm:", medidas.PlacaCortanteEspesorM * 1000);
-        var tornillo = ventana.Numero("A momento: diametro de los tornillos, en mm:", medidas.TornilloM * 1000);
+        var lado = ventana.Numero("Filete general (perfil, placa embebida), en mm:", Cordon.PorOmisionM * 1000);
+        var anchoPatin = ventana.Numero("Placas de patin: ancho, en cm (0 = el del patin de la viga):", 0);
+        var largoPatin = ventana.Numero("Placas de patin: largo, en cm:", medidas.PlacaPatinLargoM * 100);
+        var patin = ventana.Numero("Placas de patin: espesor, en mm:", medidas.PlacaPatinEspesorM * 1000);
+        var soldPatin = ventana.Numero("Placas de patin: filete a la columna, en mm (0 = el general):", 0);
+        var altoCortante = ventana.Numero("Placa de cortante: alto, en cm (0 = el que cabe entre patines):", 0);
+        var largoCortante = ventana.Numero("Placa de cortante: largo, en cm:", medidas.PlacaCortanteLargoM * 100);
+        var cortante = ventana.Numero("Placa de cortante: espesor, en mm:", medidas.PlacaCortanteEspesorM * 1000);
+        var soldCortante = ventana.Numero("Placa de cortante: filete a la columna, en mm (0 = el general):", 0);
+        var tornillo = ventana.Numero("Placa de cortante: diametro de los tornillos, en mm:", medidas.TornilloM * 1000);
+        var sepTornillo = ventana.Numero("Placa de cortante: separacion de los tornillos, en cm:", medidas.SeparacionTornillosM * 100);
         var enMuro = ventana.Casilla("En los muros: placa embebida con anclas", true,
             "Apagado, la viga que llega a un muro solo se suelda todo alrededor, sin placa.");
         var soloApoyos = ventana.Casilla("Solo los extremos que llegan a una columna o a un muro", true,
@@ -294,6 +301,13 @@ public sealed class ComandoSoldarVigas : IExternalCommand
         medidas.PlacaPatinEspesorM = VentanaDetalle.Leer(patin, medidas.PlacaPatinEspesorM * 1000) / 1000;
         medidas.PlacaPatinLargoM = VentanaDetalle.Leer(largoPatin, medidas.PlacaPatinLargoM * 100) / 100;
         medidas.PlacaCortanteEspesorM = VentanaDetalle.Leer(cortante, medidas.PlacaCortanteEspesorM * 1000) / 1000;
+        medidas.PlacaPatinAnchoM = VentanaDetalle.Leer(anchoPatin, 0) / 100;
+        medidas.SoldaduraPatinM = VentanaDetalle.Leer(soldPatin, 0) / 1000;
+        medidas.PlacaCortanteAltoM = VentanaDetalle.Leer(altoCortante, 0) / 100;
+        medidas.PlacaCortanteLargoM = VentanaDetalle.Leer(largoCortante, medidas.PlacaCortanteLargoM * 100) / 100;
+        medidas.SoldaduraCortanteM = VentanaDetalle.Leer(soldCortante, 0) / 1000;
+        var sep = VentanaDetalle.Leer(sepTornillo, medidas.SeparacionTornillosM * 100) / 100;
+        medidas.SeparacionTornillosM = sep >= 0.03 ? sep : medidas.SeparacionTornillosM;
         medidas.TornilloM = VentanaDetalle.Leer(tornillo, medidas.TornilloM * 1000) / 1000;
 
         var o = new OpcionesDetalle
@@ -301,7 +315,12 @@ public sealed class ComandoSoldarVigas : IExternalCommand
             SoldaduraM = VentanaDetalle.Leer(lado, Cordon.PorOmisionM * 1000) / 1000,
             SoloEnApoyos = soloApoyos.IsChecked == true,
             PlacaEnMuro = enMuro.IsChecked == true,
-            Conexion = tipo.SelectedIndex == 1 ? TipoConexion.Momento : TipoConexion.Filete,
+            Conexion = tipo.SelectedIndex switch
+            {
+                1 => TipoConexion.Momento,
+                2 => TipoConexion.Cortante,
+                _ => TipoConexion.Filete
+            },
             MedidasDeConexion = medidas
         };
 

@@ -595,7 +595,7 @@ Si ya había piezas elegidas al pulsar el botón, se usan esas; si no, el botón
 | Placas base | Placa con sus barrenos, anclas con su **codo redondo** y tuerca **con chaflán**, cama de grout y filete de la columna **todo alrededor** |
 | Cimentación, columnas | Zapata, dado (rectangular o circular) y plantilla |
 | Cimentación, muros | Zapata corrida con su contratrabe o, sin ella, el muro de enrase; y la plantilla |
-| Conectar vigas, a una columna | Filete todo alrededor del perfil, **o a momento IR a IR**: placa sobre el patín de arriba y bajo el de abajo, placa de cortante al alma con su hilera de tornillos a 3", y cada placa soldada a la columna |
+| Conectar vigas, a una columna | Filete todo alrededor del perfil, **o a momento IR a IR**: placa sobre el patín de arriba y bajo el de abajo, placa de cortante al alma con su hilera de tornillos, y cada placa soldada a la columna. **O a cortante**: solo la placa de cortante. Se eligen ancho, largo, espesor y filete de las placas de patín, y alto, largo, espesor, filete, diámetro y separación de tornillos de la de cortante |
 | Conectar vigas, a un muro | **Placa embebida** a paño del muro, con sus anclas hacia dentro, y la viga soldada a ella |
 | Soldar columnas | Filete todo alrededor en la base o en la cabeza, sobre lo que tenga: placa, losa, dado o la columna de abajo |
 
