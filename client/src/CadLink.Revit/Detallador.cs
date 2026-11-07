@@ -921,6 +921,18 @@ internal static class Detallador
             piezas.Add((Filete(Solidos.CaraInicial(m.Origen, m.U, m.V, m.A, local), m.A,
                     Unidades.AInternas(filete), mat.Soldadura, r, donde),
                 $"filete de {Mm(filete)} mm de la {c.Que} a la columna"));
+
+            // La placa de cortante SOLDADA: un filete todo alrededor de la placa, sobre el alma.
+            // La cara de la placa que toca el alma es la de U0; el filete crece en el alma y sube
+            // por el canto de la placa, hacia +U.
+            if (c.Que == "placa de cortante" && mc.CortanteSoldada)
+            {
+                var alAlma = mc.SoldaduraAlmaM > 0 ? mc.SoldaduraAlmaM : o.SoldaduraM;
+
+                piezas.Add((Filete(Solidos.CaraEnU0(m.Origen, m.U, m.V, m.A, local), m.U,
+                        Unidades.AInternas(alAlma), mat.Soldadura, r, donde),
+                    $"filete de {Mm(alAlma)} mm de la placa de cortante al alma, todo alrededor"));
+            }
         }
 
         foreach (var t in tornillos)

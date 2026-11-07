@@ -645,6 +645,14 @@ public sealed class OpcionesConexion
     /// <summary>Filete de la placa de cortante a la columna. Cero = el filete general.</summary>
     public double SoldaduraCortanteM { get; set; }
 
+    /// <summary>
+    /// La placa de cortante SOLDADA al alma de la viga, sin tornillos. Apagado: atornillada.
+    /// </summary>
+    public bool CortanteSoldada { get; set; }
+
+    /// <summary>Filete de la placa de cortante al alma, todo alrededor. Cero = el filete general.</summary>
+    public double SoldaduraAlmaM { get; set; }
+
     /// <summary>Tornillos de la placa de cortante: diametro y separacion vertical (3").</summary>
     public double TornilloM { get; set; } = 0.019;
 
@@ -763,6 +771,12 @@ public static class Conexion
         var u0 = p.Tw / 2;
         var u1 = u0 + o.PlacaCortanteEspesorM;
         placas.Add(new CajaLocal("placa de cortante", u0, u1, -alto / 2, alto / 2, 0, o.PlacaCortanteLargoM));
+
+        // Soldada al alma: sin tornillos. El filete lo pone la capa de Revit, alrededor de la placa.
+        if (o.CortanteSoldada)
+        {
+            return (placas, tornillos);
+        }
 
         // La hilera de tornillos, centrada en la placa, a 3" y a 4 cm de los bordes.
         var borde = 0.04;

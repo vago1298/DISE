@@ -17138,6 +17138,10 @@ def v31_detalles_revit() -> None:
           "public double PlacaPatinAnchoM { get; set; }" in nuc and "public double SoldaduraCortanteM { get; set; }" in nuc
           and "2 => TipoConexion.Cortante," in com and "mc.SoldaduraPatinM" in det)
 
+    check("la placa de cortante se puede soldar al alma, sin tornillos",
+          "public bool CortanteSoldada { get; set; }" in nuc and "mc.CortanteSoldada" in det
+          and "medidas.CortanteSoldada = union.SelectedIndex == 1;" in com)
+
     check("la capa de Revit de los detalles se compila contra los recortes",
           "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)
 

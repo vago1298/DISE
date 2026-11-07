@@ -286,8 +286,14 @@ public sealed class ComandoSoldarVigas : IExternalCommand
         var largoCortante = ventana.Numero("Placa de cortante: largo, en cm:", medidas.PlacaCortanteLargoM * 100);
         var cortante = ventana.Numero("Placa de cortante: espesor, en mm:", medidas.PlacaCortanteEspesorM * 1000);
         var soldCortante = ventana.Numero("Placa de cortante: filete a la columna, en mm (0 = el general):", 0);
-        var tornillo = ventana.Numero("Placa de cortante: diametro de los tornillos, en mm:", medidas.TornilloM * 1000);
-        var sepTornillo = ventana.Numero("Placa de cortante: separacion de los tornillos, en cm:", medidas.SeparacionTornillosM * 100);
+        var union = ventana.Lista("Placa de cortante al alma de la viga:", new[]
+        {
+            "Atornillada",
+            "Soldada, todo alrededor de la placa (sin tornillos)"
+        });
+        var soldAlma = ventana.Numero("Placa de cortante soldada: filete al alma, en mm (0 = el general):", 0);
+        var tornillo = ventana.Numero("Placa de cortante atornillada: diametro de los tornillos, en mm:", medidas.TornilloM * 1000);
+        var sepTornillo = ventana.Numero("Placa de cortante atornillada: separacion de los tornillos, en cm:", medidas.SeparacionTornillosM * 100);
         var enMuro = ventana.Casilla("En los muros: placa embebida con anclas", true,
             "Apagado, la viga que llega a un muro solo se suelda todo alrededor, sin placa.");
         var soloApoyos = ventana.Casilla("Solo los extremos que llegan a una columna o a un muro", true,
@@ -306,6 +312,8 @@ public sealed class ComandoSoldarVigas : IExternalCommand
         medidas.PlacaCortanteAltoM = VentanaDetalle.Leer(altoCortante, 0) / 100;
         medidas.PlacaCortanteLargoM = VentanaDetalle.Leer(largoCortante, medidas.PlacaCortanteLargoM * 100) / 100;
         medidas.SoldaduraCortanteM = VentanaDetalle.Leer(soldCortante, 0) / 1000;
+        medidas.CortanteSoldada = union.SelectedIndex == 1;
+        medidas.SoldaduraAlmaM = VentanaDetalle.Leer(soldAlma, 0) / 1000;
         var sep = VentanaDetalle.Leer(sepTornillo, medidas.SeparacionTornillosM * 100) / 100;
         medidas.SeparacionTornillosM = sep >= 0.03 ? sep : medidas.SeparacionTornillosM;
         medidas.TornilloM = VentanaDetalle.Leer(tornillo, medidas.TornilloM * 1000) / 1000;

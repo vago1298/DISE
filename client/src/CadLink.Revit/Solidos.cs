@@ -431,6 +431,16 @@ internal static class Solidos
             new SolidOptions(material, ElementId.InvalidElementId));
     }
 
+    /// <summary>La cara de la caja que mira hacia U0: con ella se suelda la placa de cortante al alma.</summary>
+    public static CurveLoop CaraEnU0(XYZ origen, XYZ u, XYZ v, XYZ a, CajaLocal c) =>
+        Poligono(new List<XYZ>
+        {
+            origen + (u * c.U0) + (v * c.V0) + (a * c.A0),
+            origen + (u * c.U0) + (v * c.V0) + (a * c.A1),
+            origen + (u * c.U0) + (v * c.V1) + (a * c.A1),
+            origen + (u * c.U0) + (v * c.V1) + (a * c.A0)
+        });
+
     /// <summary>La cara de la caja que mira hacia A0: con ella se suelda la placa a la columna.</summary>
     public static CurveLoop CaraInicial(XYZ origen, XYZ u, XYZ v, XYZ a, CajaLocal c) =>
         Poligono(new List<XYZ>
