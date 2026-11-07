@@ -57,6 +57,9 @@ public sealed class OpcionesDetalle
     /// </summary>
     public bool Contraplaca { get; set; }
 
+    /// <summary>El espesor del grout, en metros. Null = el de la hoja de CadLink.</summary>
+    public double? GroutM { get; set; }
+
     /// <summary>La plantilla bajo las zapatas, en metros. Cero = sin plantilla.</summary>
     public double PlantillaM { get; set; } = Cimentacion.PlantillaPorOmisionM;
 
@@ -109,7 +112,12 @@ internal static class Detallador
             var grout = Solidos.Grout(doc);
             var categoria = Solidos.Categoria(
                 doc, BuiltInCategory.OST_StructConnections, BuiltInCategory.OST_GenericModel);
-            var apoyos = o.SobreElApoyo ? Apoyos(doc) : new List<(ElementId Id, BoundingBoxXYZ Caja)>();
+            var apoyos = o.SobreElApoyo ? Apoyos(doc) : new List<(ElementId Id, BoundingBoxXYZ Caja, bool EsLosa)>();
+
+            if (o.GroutM is double grueso)
+            {
+                placa.GroutM = Math.Max(0, grueso);
+            }
 
             if (placa.Cartabones > 0)
             {
@@ -148,10 +156,20 @@ internal static class Detallador
 
                     if (o.SobreElApoyo)
                     {
-                        var caras = apoyos
+                        // PRIMERO EL DADO, LA COLUMNA DE CONCRETO, EL MURO O LA ZAPATA; la losa solo si no
+                        // hay nada de eso. Antes contaba igual la losa del firme que rodea a la columna:
+                        // si quedaba mas alta que el dado, la placa se ponia sobre la losa y entre la
+                        // placa y el dado quedaba un hueco que parecia el grout sin modelar.
+                        var debajo = apoyos
                             .Where(a => a.Id != col.Id && Contiene(a.Caja, m.Centro, Unidades.AInternas(0.01)))
-                            .Select(a => Unidades.AMetros(a.Caja.Max.Z));
-                        apoyo = PlacaBase.CaraDelApoyo(caras, Unidades.AMetros(m.BaseZ));
+                            .ToList();
+
+                        apoyo = PlacaBase.CaraDelApoyo(
+                                    debajo.Where(a => !a.EsLosa).Select(a => Unidades.AMetros(a.Caja.Max.Z)),
+                                    Unidades.AMetros(m.BaseZ))
+                                ?? PlacaBase.CaraDelApoyo(
+                                    debajo.Where(a => a.EsLosa).Select(a => Unidades.AMetros(a.Caja.Max.Z)),
+                                    Unidades.AMetros(m.BaseZ));
 
                         if (apoyo is null)
                         {
@@ -253,9 +271,14 @@ internal static class Detallador
                     }
 
                     // ---- El grout, de la placa al dado ----
-                    Solid? solidoGrout = placa.GroutM > 0
+                    Solid? solidoGrout = caraInf - fondoGrout > Unidades.AInternas(0.0005)
                         ? Solidos.Prisma(planta, fondoGrout, caraInf, grout)
                         : null;
+
+                    if (solidoGrout is null && o.SobreElApoyo)
+                    {
+                        r.Avisos.Add($"«{nombre}»: Sin grout: la placa se apoya directo en el concreto. Escribe su espesor en el cuadro.");
+                    }
 
                     // ---- La soldadura de la columna, todo alrededor, sobre la cara de la placa ----
                     Solid? filete = null;
@@ -353,9 +376,9 @@ internal static class Detallador
     /// termina. Las formas de CadLink de la categoria de conexiones -las placas ya puestas- no
     /// estan en estas categorias, asi que no se toman por apoyo.
     /// </remarks>
-    private static List<(ElementId Id, BoundingBoxXYZ Caja)> Apoyos(Document doc)
+    private static List<(ElementId Id, BoundingBoxXYZ Caja, bool EsLosa)> Apoyos(Document doc)
     {
-        var res = new List<(ElementId, BoundingBoxXYZ)>();
+        var res = new List<(ElementId, BoundingBoxXYZ, bool)>();
 
         foreach (var c in new[]
                  {
@@ -367,7 +390,7 @@ internal static class Detallador
             {
                 if (e.get_BoundingBox(null) is { } caja)
                 {
-                    res.Add((e.Id, caja));
+                    res.Add((e.Id, caja, c == BuiltInCategory.OST_Floors));
                 }
             }
         }

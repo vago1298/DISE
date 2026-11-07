@@ -19,11 +19,35 @@ public sealed class OpcionesArmadoMuro
 
     public double SeparacionHorizontalM { get; set; } = 0.20;
 
-    /// <summary>El tipo de gancho de las verticales. Vacio = sin gancho.</summary>
-    public string GanchoVertical { get; set; } = string.Empty;
+    /// <summary>
+    /// El gancho del extremo de ABAJO de las verticales -el que entra a la zapata- y el de ARRIBA.
+    /// El largo va en diametros: es la longitud de desarrollo de la pata.
+    /// </summary>
+    public GanchoMuro GanchoInferior { get; set; } = new(90, 40);
+
+    public GanchoMuro GanchoSuperior { get; set; } = new(90, 12);
+
+    /// <summary>
+    /// Con los dos ganchos iguales el armado se queda como Area Reinforcement. Distintos, hay que
+    /// soltarlo en varillas: el Area Reinforcement lleva un solo gancho por capa, para las dos puntas.
+    /// </summary>
+    public bool MismosGanchos => GanchoInferior == GanchoSuperior;
 
     /// <summary>Lo que el contorno se queda antes del canto del muro en cada orilla. Cero = al canto.</summary>
     public double LibreM { get; set; }
+}
+
+/// <summary>Un gancho: su angulo y lo que mide su pata, en diametros de la varilla.</summary>
+public readonly record struct GanchoMuro(int AnguloGrados, double Diametros)
+{
+    public static readonly int[] Angulos = { 0, 90, 135, 180 };
+
+    public bool Ninguno => AnguloGrados <= 0 || Diametros <= 0;
+
+    /// <summary>El nombre del tipo de gancho de Revit que CadLink crea si no existe.</summary>
+    public string Nombre => Ninguno
+        ? string.Empty
+        : $"CadLink {AnguloGrados}° - {Diametros.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}d";
 }
 
 /// <summary>Las cuentas del armado de muros, sin nada de Revit.</summary>
@@ -54,6 +78,12 @@ public static class ArmadoDeMuros
         return new List<(double, double)> { (s0, z0), (s1, z0), (s1, z1), (s0, z1) };
     }
 
+    /// <summary>Cual punta de una varilla es la de abajo: la 0 si arranca abajo, la 1 si no.</summary>
+    public static int ExtremoDeAbajo(double zInicio, double zFin) => zInicio <= zFin ? 0 : 1;
+
+    /// <summary>¿La varilla es vertical? Sube mas de lo que avanza.</summary>
+    public static bool EsVertical(double dz, double enPlanta) => Math.Abs(dz) > Math.Abs(enPlanta);
+
     /// <summary>Cuantas varillas caben, para el informe.</summary>
     public static int Cuantas(double tramoM, double separacionM) =>
         separacionM <= 0 || tramoM <= 0 ? 0 : 1 + (int)Math.Floor((tramoM / separacionM) + 1e-9);
@@ -67,6 +97,12 @@ public static class ArmadoDeMuros
         if (o.VarillaHorizontal.Trim().Length == 0) { f.Add("la varilla horizontal"); }
         if (o.SeparacionVerticalM < 0.05) { f.Add("una separacion vertical de al menos 5 cm"); }
         if (o.SeparacionHorizontalM < 0.05) { f.Add("una separacion horizontal de al menos 5 cm"); }
+
+        foreach (var g in new[] { o.GanchoInferior, o.GanchoSuperior })
+        {
+            if (!GanchoMuro.Angulos.Contains(g.AnguloGrados)) { f.Add("ganchos de 90, 135 o 180 grados"); break; }
+            if (g.AnguloGrados > 0 && g.Diametros <= 0) { f.Add("el largo de cada gancho, en diametros"); break; }
+        }
 
         return f;
     }

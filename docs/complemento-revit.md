@@ -627,6 +627,18 @@ Si ya había piezas elegidas al pulsar el botón, se usan esas; si no, el botón
   con OR, IR, canal o cualquier perfil. La sección es el triángulo del filete; si Revit no puede
   armarlo con ese contorno, sale cuadrada y se avisa.
 
+### Los croquis de guía
+
+Cada cuadro trae a la derecha un croquis con una **letra roja** por medida; el renglón que la pide
+empieza con la misma letra: «(A) Placas de patín: ancho…». Son esquemas, no a escala.
+
+### Ganchos distintos en los muros
+
+En **Armar muros** se elige el gancho de **arriba (A)** y el de **abajo (B)** de las verticales, cada uno
+con su ángulo y su largo en diámetros (por omisión 12d arriba y 40d abajo). CadLink crea el tipo de
+gancho «CadLink 90° - 40d» si no existe. Con los dos iguales queda como Area Reinforcement; distintos,
+el armado se suelta en varillas, porque el Area Reinforcement solo admite un gancho por capa.
+
 ### Cómo se reconocen y se reemplazan
 
 Todo va como **DirectShape**, con su material propio (`CadLink - Acero`, `- Anclas`,

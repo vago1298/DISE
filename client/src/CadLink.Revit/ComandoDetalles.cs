@@ -75,12 +75,22 @@ public sealed class ComandoPlacasBase : IExternalCommand
             "Sobre el dado o el muro de concreto, con su grout",
             "Embebida: su cara de arriba a paño del arranque de la columna"
         });
+        var grout = ventana.Numero("(A) Grout bajo la placa, espesor en cm (0 = sin grout):",
+            GroutPorOmision(archivo.Placas[0]));
+        lista.SelectionChanged += (_, _) =>
+        {
+            if (lista.SelectedIndex >= 0)
+            {
+                grout.Text = GroutPorOmision(archivo.Placas[lista.SelectedIndex]).ToString("0.##");
+            }
+        };
         var subir = ventana.Casilla("Subir el arranque de la columna a la cara de la placa", true,
             "Solo con la placa sobre el apoyo. Apagado, la columna se queda donde esta y atraviesa la placa.");
-        var soldar = ventana.Casilla("Soldar la columna a la placa, todo alrededor", true);
-        var contra = ventana.Casilla("Con contraplaca al fondo de las anclas", false,
+        var soldar = ventana.Casilla("(C) Soldar la columna a la placa, todo alrededor", true);
+        var contra = ventana.Casilla("(B) Con contraplaca al fondo de las anclas", false,
             "Una segunda placa ahogada en el dado, al fondo de las anclas, con su tuerca abajo. Con ella las anclas van rectas.");
         var girar = ventana.Casilla("Girar la placa 90° sobre la columna", false);
+        ventana.Guia("Guia", 255, 250, CroquisDeGuia.PlacaBase);
 
         if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Poner placas") || lista.SelectedIndex < 0)
         {
@@ -102,13 +112,20 @@ public sealed class ComandoPlacasBase : IExternalCommand
             SobreElApoyo = posicion.SelectedIndex != 1,
             SubirColumna = subir.IsChecked == true,
             SoldarColumna = soldar.IsChecked == true,
-            Contraplaca = contra.IsChecked == true
+            Contraplaca = contra.IsChecked == true,
+            GroutM = VentanaDetalle.Leer(grout, GroutPorOmision(placa)) / 100
         });
 
         TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "columna(s) con su placa base", archivo.Avisos));
 
         return Result.Succeeded;
     }
+
+    /// <summary>
+    /// El grout que se propone: el de la hoja; si la hoja dice que no lleva, 2.5 cm, que es lo que
+    /// se construye. Se puede poner en 0.
+    /// </summary>
+    private static double GroutPorOmision(PlacaBaseJson p) => p.GroutM > 0 ? p.GroutM * 100 : 2.5;
 
     private static string Describir(PlacaBaseJson p) =>
         $"{p.Marca}  -  {p.LadoXM * 100:0.#} x {p.LadoYM * 100:0.#} cm, {p.Anclas.Count} anclas"
@@ -185,8 +202,9 @@ public sealed class ComandoCimentacion : IExternalCommand
                 + (z.Contratrabe.Length > 0 ? $", contratrabe {z.Contratrabe}" : string.Empty)))
             : null;
 
-        var plantilla = ventana.Numero("Plantilla de concreto pobre, en cm (0 = sin plantilla):",
+        var plantilla = ventana.Numero("(A) Plantilla de concreto pobre, en cm (0 = sin plantilla):",
             Cimentacion.PlantillaPorOmisionM * 100);
+        ventana.Guia("Guia", 230, 235, CroquisDeGuia.Cimentacion);
 
         if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Poner cimentacion"))
         {
@@ -277,27 +295,29 @@ public sealed class ComandoSoldarVigas : IExternalCommand
             "Los dos extremos de cada viga",
             "Uno: das clic en cada viga cerca del extremo; se conecta con cada clic y Esc termina"
         });
-        var lado = ventana.Numero("Filete general (perfil, placa embebida), en mm:", Cordon.PorOmisionM * 1000);
-        var anchoPatin = ventana.Numero("Placas de patin: ancho, en cm (0 = el del patin de la viga):", 0);
-        var largoPatin = ventana.Numero("Placas de patin: largo, en cm:", medidas.PlacaPatinLargoM * 100);
-        var patin = ventana.Numero("Placas de patin: espesor, en mm:", medidas.PlacaPatinEspesorM * 1000);
-        var soldPatin = ventana.Numero("Placas de patin: filete a la columna, en mm (0 = el general):", 0);
-        var altoCortante = ventana.Numero("Placa de cortante: alto, en cm (0 = el que cabe entre patines):", 0);
-        var largoCortante = ventana.Numero("Placa de cortante: largo, en cm:", medidas.PlacaCortanteLargoM * 100);
-        var cortante = ventana.Numero("Placa de cortante: espesor, en mm:", medidas.PlacaCortanteEspesorM * 1000);
-        var soldCortante = ventana.Numero("Placa de cortante: filete a la columna, en mm (0 = el general):", 0);
+        var lado = ventana.Numero("Filete general (perfil soldado, placa embebida), en mm:", Cordon.PorOmisionM * 1000);
+        var anchoPatin = ventana.Numero("(A) Placas de patin: ancho, en cm (0 = el del patin de la viga):", 0);
+        var largoPatin = ventana.Numero("(B) Placas de patin: largo, en cm:", medidas.PlacaPatinLargoM * 100);
+        var patin = ventana.Numero("(C) Placas de patin: espesor, en mm:", medidas.PlacaPatinEspesorM * 1000);
+        var soldPatin = ventana.Numero("(D) Placas de patin: filete a la columna, en mm (0 = el general):", 0);
+        var altoCortante = ventana.Numero("(E) Placa de cortante: alto, en cm (0 = el que cabe entre patines):", 0);
+        var largoCortante = ventana.Numero("(F) Placa de cortante: largo, en cm:", medidas.PlacaCortanteLargoM * 100);
+        var cortante = ventana.Numero("(G) Placa de cortante: espesor, en mm:", medidas.PlacaCortanteEspesorM * 1000);
+        var soldCortante = ventana.Numero("(H) Placa de cortante: filete a la columna, en mm (0 = el general):", 0);
         var union = ventana.Lista("Placa de cortante al alma de la viga:", new[]
         {
             "Atornillada",
             "Soldada, todo alrededor de la placa (sin tornillos)"
         });
-        var soldAlma = ventana.Numero("Placa de cortante soldada: filete al alma, en mm (0 = el general):", 0);
-        var tornillo = ventana.Numero("Placa de cortante atornillada: diametro de los tornillos, en mm:", medidas.TornilloM * 1000);
-        var sepTornillo = ventana.Numero("Placa de cortante atornillada: separacion de los tornillos, en cm:", medidas.SeparacionTornillosM * 100);
+        var soldAlma = ventana.Numero("(I) Placa de cortante soldada: filete al alma, en mm (0 = el general):", 0);
+        var tornillo = ventana.Numero("(J) Placa de cortante atornillada: diametro de los tornillos, en mm:", medidas.TornilloM * 1000);
+        var sepTornillo = ventana.Numero("(K) Placa de cortante atornillada: separacion de los tornillos, en cm:", medidas.SeparacionTornillosM * 100);
         var enMuro = ventana.Casilla("En los muros: placa embebida con anclas", true,
             "Apagado, la viga que llega a un muro solo se suelda todo alrededor, sin placa.");
         var soloApoyos = ventana.Casilla("Solo los extremos que llegan a una columna o a un muro", true,
             "Apagado, se conectan los extremos elegidos lleguen a donde lleguen.");
+        ventana.Guia("Guia: la conexion de lado", 300, 235, CroquisDeGuia.ConexionAlzado);
+        ventana.Guia("Guia: corte de la viga", 170, 195, CroquisDeGuia.ConexionCorte);
 
         if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Elegir vigas"))
         {
@@ -412,7 +432,8 @@ public sealed class ComandoSoldarColumnas : IExternalCommand
             + "dibujada.\n\nLa placa base de CadLink ya trae su soldadura: este boton es para lo demas.");
 
         var donde = ventana.Lista("Donde:", new[] { "En la base", "En la cabeza", "En la base y en la cabeza" });
-        var lado = ventana.Numero("Tamaño del filete, en mm:", Cordon.PorOmisionM * 1000);
+        var lado = ventana.Numero("(A) Tamaño del filete, en mm:", Cordon.PorOmisionM * 1000);
+        ventana.Guia("Guia", 160, 155, CroquisDeGuia.SoldarColumna);
 
         if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Soldar"))
         {
@@ -493,19 +514,22 @@ public sealed class ComandoEncamisar : IExternalCommand
         var fondo = ventana.Casilla("Cara de abajo", true);
         var lados = ventana.Casilla("Caras laterales", true);
         var arriba = ventana.Casilla("Cara de arriba", false, "Casi siempre la trabe tiene la losa encima.");
-        var espesor = ventana.Numero("Espesor de las placas o los angulos, en mm:", o.EspesorM * 1000);
-        var adhesivo = ventana.Numero("Adhesivo epoxico o grout entre concreto y acero, en mm (0 = sin):", o.AdhesivoM * 1000);
-        var lado = ventana.Numero("Angulos: lado, en mm:", o.LadoAnguloM * 1000);
-        var solera = ventana.Numero("Soleras: ancho, en mm:", o.AnchoSoleraM * 1000);
-        var espSolera = ventana.Numero("Soleras: espesor, en mm:", o.EspesorSoleraM * 1000);
-        var sep = ventana.Numero("Separacion de soleras o tornillos, en cm:", o.SeparacionM * 100);
-        var tornillo = ventana.Numero("Placas laterales: diametro de los tornillos pasantes, en mm (0 = sin):", o.TornilloM * 1000);
-        var filas = ventana.Numero("Placas laterales: filas de tornillos (0 = las que quepan a 20 cm):", 0);
-        var ancla = ventana.Numero("Placas de abajo y arriba: diametro de las anclas al concreto, en mm (0 = sin):", o.AnclaM * 1000);
-        var empotre = ventana.Numero("Anclas: lo que se meten en el concreto, en cm:", o.AnclaEmpotreM * 100);
+        var espesor = ventana.Numero("(A) Espesor de las placas o los angulos, en mm:", o.EspesorM * 1000);
+        var adhesivo = ventana.Numero("(B) Adhesivo epoxico o grout entre concreto y acero, en mm (0 = sin):", o.AdhesivoM * 1000);
+        var lado = ventana.Numero("(C) Angulos: lado, en mm:", o.LadoAnguloM * 1000);
+        var solera = ventana.Numero("(D) Soleras: ancho, en mm:", o.AnchoSoleraM * 1000);
+        var espSolera = ventana.Numero("(E) Soleras: espesor, en mm:", o.EspesorSoleraM * 1000);
+        var sep = ventana.Numero("(F) Separacion de soleras o tornillos, en cm:", o.SeparacionM * 100);
+        var tornillo = ventana.Numero("(G) Placas laterales: diametro de los tornillos pasantes, en mm (0 = sin):", o.TornilloM * 1000);
+        var filas = ventana.Numero("(H) Placas laterales: filas de tornillos (0 = las que quepan a 20 cm):", 0);
+        var ancla = ventana.Numero("(I) Placas de abajo y arriba: diametro de las anclas al concreto, en mm (0 = sin):", o.AnclaM * 1000);
+        var empotre = ventana.Numero("(J) Anclas: lo que se meten en el concreto, en cm:", o.AnclaEmpotreM * 100);
         var tres = ventana.Casilla("Tornillos y anclas en tresbolillo", true,
             "Cada fila corrida media separacion de la de al lado, en los huecos que esa deja.");
-        var libre = ventana.Numero("Libre antes de la cara de la columna, en cm:", 0);
+        var libre = ventana.Numero("(K) Libre antes de la cara de la columna, en cm:", 0);
+        ventana.Guia("Guia: corte con placas", 230, 225, CroquisDeGuia.EncamisadoPlacas);
+        ventana.Guia("Guia: corte con angulos y soleras", 230, 160, CroquisDeGuia.EncamisadoAngulos);
+        ventana.Guia("Guia: la trabe de lado", 230, 120, CroquisDeGuia.EncamisadoAlzado);
 
         if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Encamisar"))
         {
@@ -585,15 +609,27 @@ public sealed class ComandoArmarMuros : IExternalCommand
             $"Se pone el armado en los {muros.Count} muro(s) elegidos, de punta a punta y de la base a la "
             + "corona, con el recubrimiento que ya tenga cada muro. Recorta solo en puertas y ventanas. "
             + "Los muros que no sean estructurales de concreto se saltan y se dicen.\n\n"
-            + "Volver a armar un muro reemplaza el armado de CadLink; el puesto a mano no se toca.");
+            + "Volver a armar un muro reemplaza el armado de CadLink; el puesto a mano no se toca.\n\n"
+            + "Con el gancho de arriba distinto del de abajo, el armado queda en varillas sueltas en lugar de "
+            + "Area Reinforcement: es la unica forma de que cada punta lleve el suyo.");
 
         var parrillas = ventana.Lista("Parrillas:", new[] { "Dos: una en cada cara", "Una: en la cara exterior" });
         var vertical = ventana.Lista("Varilla vertical:", varillas);
-        var sepV = ventana.Numero("Separacion de las verticales, en cm:", o.SeparacionVerticalM * 100);
+        var sepV = ventana.Numero("(C) Separacion de las verticales, en cm:", o.SeparacionVerticalM * 100);
         var horizontal = ventana.Lista("Varilla horizontal:", varillas);
-        var sepH = ventana.Numero("Separacion de las horizontales, en cm:", o.SeparacionHorizontalM * 100);
-        var gancho = ventana.Lista("Gancho de las verticales:", new[] { "(sin gancho)" }.Concat(ArmadorDeMuros.Ganchos(doc)));
+        var sepH = ventana.Numero("(D) Separacion de las horizontales, en cm:", o.SeparacionHorizontalM * 100);
+
+        // Los ganchos de cada punta de las verticales, con su largo en diametros: el de arriba
+        // (A) y el de abajo (B), que entra a la zapata y suele llevar la longitud de desarrollo.
+        var angulos = new[] { "Sin gancho", "90°", "135°", "180°" };
+        var ganchoArriba = ventana.Lista("(A) Gancho de arriba de las verticales:", angulos);
+        ganchoArriba.SelectedIndex = 1;
+        var largoArriba = ventana.Numero("(A) Largo del gancho de arriba, en diametros de la varilla:", o.GanchoSuperior.Diametros);
+        var ganchoAbajo = ventana.Lista("(B) Gancho de abajo de las verticales:", angulos);
+        ganchoAbajo.SelectedIndex = 1;
+        var largoAbajo = ventana.Numero("(B) Largo del gancho de abajo, en diametros (desarrollo):", o.GanchoInferior.Diametros);
         var libre = ventana.Numero("Libre en las orillas del muro, en cm (0 = al canto, con su recubrimiento):", 0);
+        ventana.Guia("Guia", 300, 260, CroquisDeGuia.ArmadoMuro);
 
         if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Armar"))
         {
@@ -605,7 +641,10 @@ public sealed class ComandoArmarMuros : IExternalCommand
         o.VarillaHorizontal = horizontal.SelectedItem as string ?? string.Empty;
         o.SeparacionVerticalM = VentanaDetalle.Leer(sepV, 20) / 100;
         o.SeparacionHorizontalM = VentanaDetalle.Leer(sepH, 20) / 100;
-        o.GanchoVertical = gancho.SelectedIndex > 0 ? gancho.SelectedItem as string ?? string.Empty : string.Empty;
+        o.GanchoSuperior = new GanchoMuro(GanchoMuro.Angulos[Math.Max(0, ganchoArriba.SelectedIndex)],
+            VentanaDetalle.Leer(largoArriba, o.GanchoSuperior.Diametros));
+        o.GanchoInferior = new GanchoMuro(GanchoMuro.Angulos[Math.Max(0, ganchoAbajo.SelectedIndex)],
+            VentanaDetalle.Leer(largoAbajo, o.GanchoInferior.Diametros));
         o.LibreM = VentanaDetalle.Leer(libre, 0) / 100;
 
         var falta = ArmadoDeMuros.Falta(o);

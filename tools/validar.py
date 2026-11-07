@@ -17142,6 +17142,15 @@ def v31_detalles_revit() -> None:
           "public bool CortanteSoldada { get; set; }" in nuc and "mc.CortanteSoldada" in det
           and "medidas.CortanteSoldada = union.SelectedIndex == 1;" in com)
 
+    check("los cuadros llevan croquis de guia con la letra de cada renglon",
+          "public void Guia(" in ven and "internal sealed class Croquis" in ven
+          and com.count("ventana.Guia(") >= 6 and '"(A) Placas de patin: ancho' in com)
+    check("armar muros: gancho distinto arriba y abajo, con su largo en diametros",
+          "public readonly record struct GanchoMuro(" in leer(ruta("client/src/CadLink.Revit.Nucleo/ArmadoDeMuros.cs"))
+          and "RemoveAreaReinforcementSystem(" in leer(ruta("client/src/CadLink.Revit/ArmadorDeMuros.cs")))
+    check("el grout se apoya en el dado antes que en la losa, y su espesor se elige",
+          "debajo.Where(a => !a.EsLosa)" in det and "GroutM = VentanaDetalle.Leer(grout" in com)
+
     check("la capa de Revit de los detalles se compila contra los recortes",
           "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)
 

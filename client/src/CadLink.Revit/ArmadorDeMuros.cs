@@ -28,8 +28,6 @@ internal static class ArmadorDeMuros
 
         var tipoArea = new FilteredElementCollector(doc).OfClass(typeof(AreaReinforcementType)).FirstElementId();
         var varillas = Varillas(doc);
-        var ganchos = new FilteredElementCollector(doc).OfClass(typeof(RebarHookType))
-            .Cast<Element>().ToDictionary(e => e.Name ?? string.Empty, e => e.Id, StringComparer.OrdinalIgnoreCase);
 
         if (tipoArea == ElementId.InvalidElementId)
         {
@@ -43,10 +41,6 @@ internal static class ArmadorDeMuros
             return r;
         }
 
-        var gancho = o.GanchoVertical.Length > 0 && ganchos.TryGetValue(o.GanchoVertical, out var g)
-            ? g
-            : ElementId.InvalidElementId;
-
         using var t = new Transaction(doc, "Armado de muros de CadLink");
         t.Start();
 
@@ -58,6 +52,10 @@ internal static class ArmadorDeMuros
 
         try
         {
+            // Los ganchos se buscan por su nombre -«CadLink 90° - 40d»- y se crean si no estan.
+            var inferior = Gancho(doc, o.GanchoInferior);
+            var superior = Gancho(doc, o.GanchoSuperior);
+
             foreach (var muro in muros)
             {
                 var nombre = $"muro {muro.Id.Value}";
@@ -116,7 +114,7 @@ internal static class ArmadorDeMuros
 
                     // MAJOR VERTICAL: la direccion mayor es la de las barras verticales. POSICIONALES,
                     // como todas las llamadas a la Revit API del complemento (validar.py §26).
-                    var area = AreaReinforcement.Create(doc, muro, curvas, XYZ.BasisZ, tipoArea, vertical, gancho);
+                    var area = AreaReinforcement.Create(doc, muro, curvas, XYZ.BasisZ, tipoArea, vertical, inferior);
 
                     Capa(area, BuiltInParameter.REBAR_SYSTEM_ACTIVE_TOP_DIR_1, BuiltInParameter.REBAR_SYSTEM_BAR_TYPE_TOP_DIR_1,
                         BuiltInParameter.REBAR_SYSTEM_SPACING_TOP_DIR_1, true, vertical, o.SeparacionVerticalM);
@@ -132,6 +130,53 @@ internal static class ArmadorDeMuros
                     area.get_Parameter(BuiltInParameter.REBAR_SYSTEM_HOOK_TYPE_BOTTOM_DIR_2)?.Set(ElementId.InvalidElementId);
 
                     area.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.Set(ArmadoDeMuros.Llave(muro.Id.Value));
+
+                    // GANCHOS DISTINTOS EN CADA PUNTA: se suelta el Area Reinforcement en varillas y a
+                    // cada vertical se le pone el de arriba en su punta de arriba. La de abajo ya trae
+                    // el inferior, con la orientacion del sistema -hacia dentro-, y la de arriba copia
+                    // esa orientacion.
+                    if (!o.MismosGanchos)
+                    {
+                        doc.Regenerate();
+                        var sueltas = AreaReinforcement.RemoveAreaReinforcementSystem(doc, area);
+                        var llave = ArmadoDeMuros.Llave(muro.Id.Value);
+
+                        foreach (var id in sueltas)
+                        {
+                            if (doc.GetElement(id) is not Rebar varilla)
+                            {
+                                continue;
+                            }
+
+                            varilla.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.Set(llave);
+
+                            var eje = varilla.GetCenterlineCurves(false, true, true, MultiplanarOption.IncludeOnlyPlanarCurves, 0);
+
+                            if (eje.Count == 0)
+                            {
+                                continue;
+                            }
+
+                            var a = eje[0].GetEndPoint(0);
+                            var b = eje[eje.Count - 1].GetEndPoint(1);
+                            var enPlanta = Math.Sqrt(Math.Pow(b.X - a.X, 2) + Math.Pow(b.Y - a.Y, 2));
+
+                            if (!ArmadoDeMuros.EsVertical(b.Z - a.Z, enPlanta))
+                            {
+                                continue;
+                            }
+
+                            var abajo = ArmadoDeMuros.ExtremoDeAbajo(a.Z, b.Z);
+                            var arriba = 1 - abajo;
+
+                            varilla.SetHookTypeId(abajo, inferior);
+                            varilla.SetHookTypeId(arriba, superior);
+                            varilla.SetHookOrientation(arriba, varilla.GetHookOrientation(abajo));
+                        }
+
+                        r.Avisos.Add($"«{nombre}»: Lleva ganchos distintos arriba y abajo, asi que va en varillas sueltas "
+                                     + "y no como Area Reinforcement: ya no se edita con su contorno.");
+                    }
 
                     if (reemplazadas > 0)
                     {
@@ -178,17 +223,41 @@ internal static class ArmadorDeMuros
             .GroupBy(e => e.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Los tipos de gancho del proyecto, por nombre.</summary>
-    public static List<string> Ganchos(Document doc) =>
-        new FilteredElementCollector(doc).OfClass(typeof(RebarHookType)).Cast<Element>()
-            .Select(e => e.Name ?? string.Empty).Where(n => n.Length > 0).OrderBy(n => n).ToList();
+    /// <summary>
+    /// El tipo de gancho de Revit para ese angulo y ese largo en diametros: el de CadLink con ese
+    /// nombre, o uno nuevo. El largo es el multiplicador de la pata, asi que se ajusta solo a cada
+    /// diametro de varilla.
+    /// </summary>
+    private static ElementId Gancho(Document doc, GanchoMuro g)
+    {
+        if (g.Ninguno)
+        {
+            return ElementId.InvalidElementId;
+        }
+
+        foreach (var e in new FilteredElementCollector(doc).OfClass(typeof(RebarHookType)))
+        {
+            if (string.Equals(e.Name, g.Nombre, StringComparison.OrdinalIgnoreCase))
+            {
+                return e.Id;
+            }
+        }
+
+        var nuevo = RebarHookType.Create(doc, g.AnguloGrados * Math.PI / 180, g.Diametros);
+        nuevo.Name = g.Nombre;
+        nuevo.Style = RebarStyle.Standard;
+
+        return nuevo.Id;
+    }
 
     /// <summary>Borra el Area Reinforcement que CadLink ya le habia puesto a este muro.</summary>
     private static int BorrarLasDeCadLink(Document doc, ElementId muro)
     {
         var llave = ArmadoDeMuros.Llave(muro.Value);
 
+        // El Area Reinforcement y, si se solto en varillas por llevar ganchos distintos, sus varillas.
         var ids = new FilteredElementCollector(doc).OfClass(typeof(AreaReinforcement))
+            .Concat(new FilteredElementCollector(doc).OfClass(typeof(Rebar)))
             .Where(e => e.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.AsString() == llave)
             .Select(e => e.Id)
             .ToList();
