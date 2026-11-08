@@ -760,15 +760,19 @@ internal static class Detallador
                             continue;
                         }
 
-                        var enColumna = Toca(cajasColumnas, cara.Origin, holgura);
-                        var enMuro = !enColumna && Toca(cajasMuros, cara.Origin, holgura);
+                        // SE MIDE EN EL CENTRO DE LA CARA, no en cara.Origin. Origin es un punto del PLANO
+                        // de la cara que Revit no garantiza dentro de ella: podia caer fuera de la caja
+                        // de la columna, y ese extremo se saltaba sin decir nada.
+                        var marco = MarcoDeExtremo(cara, contorno);
+                        var enColumna = Toca(cajasColumnas, marco.Origen, holgura);
+                        var enMuro = !enColumna && Toca(cajasMuros, marco.Origen, holgura);
 
                         if (o.SoloEnApoyos && !enColumna && !enMuro)
                         {
+                            r.Avisos.Add($"{donde}: No llega a una columna ni a un muro; no se conecto.");
                             continue;
                         }
 
-                        var marco = MarcoDeExtremo(cara, contorno);
                         var piezas = new List<(GeometryObject Solido, string Que)>();
 
                         if (enMuro && o.PlacaEnMuro)
@@ -777,7 +781,7 @@ internal static class Detallador
                         }
                         else if (enColumna && o.Conexion is TipoConexion.Momento or TipoConexion.Cortante)
                         {
-                            if (!AMomento(marco, contorno, lado, o, mat, piezas, r, donde, o.Conexion == TipoConexion.Momento))
+                            if (!AMomento(marco, contorno, caras, lado, o, mat, piezas, r, donde, o.Conexion == TipoConexion.Momento))
                             {
                                 continue;
                             }
@@ -893,39 +897,41 @@ internal static class Detallador
     /// </summary>
     /// <returns>False si la viga no es una I y no se pudo.</returns>
     private static bool AMomento(
-        MarcoExtremo m, CurveLoop contorno, double lado, OpcionesDetalle o, Materiales mat,
-        List<(GeometryObject, string)> piezas, ResultadoDetalles r, string donde, bool conPatines)
+        MarcoExtremo m0, CurveLoop contorno, List<PlanarFace> caras, double lado, OpcionesDetalle o,
+        Materiales mat, List<(GeometryObject, string)> piezas, ResultadoDetalles r, string donde, bool conPatines)
     {
-        var horizontales = new List<double>();
-        var verticales = new List<double>();
+        // EL PERFIL SE MIDE DE LA CARA DEL EXTREMO, Y SI NO SALE UNA I, DE CUALQUIER OTRA CARA DE
+        // PUNTA DE LA VIGA. Cuando Revit recorta la viga contra la columna -patines despatinados para
+        // que entre entre los de la columna-, la cara de ese extremo ya no tiene forma de I y antes la
+        // conexion no se ponia. La seccion de la viga es la misma en toda su longitud, asi que la
+        // del otro extremo sirve.
+        var perfil = MedirI(contorno, m0);
 
-        foreach (var c in contorno)
+        foreach (var otra in caras)
         {
-            if (c is not Line l)
+            if (perfil is not null)
             {
-                continue;
+                break;
             }
 
-            var a = l.GetEndPoint(0) - m.Origen;
-            var b = l.GetEndPoint(1) - m.Origen;
-
-            if (Math.Abs(a.DotProduct(m.V) - b.DotProduct(m.V)) < 1e-6)
+            if (ContornoExterior(otra) is { } c)
             {
-                horizontales.Add(Unidades.AMetros(a.DotProduct(m.V)));
-            }
-            else if (Math.Abs(a.DotProduct(m.U) - b.DotProduct(m.U)) < 1e-6)
-            {
-                verticales.Add(Unidades.AMetros(a.DotProduct(m.U)));
+                perfil = MedirI(c, m0);
             }
         }
-
-        var perfil = Conexion.MedirI(horizontales, verticales);
 
         if (perfil is null)
         {
-            r.Errores.Add($"{donde}: No es un perfil I; la conexion a momento es de IR a columna. Usa el filete.");
+            r.Errores.Add($"{donde}: No es un perfil I; la conexion a momento y a cortante son de IR a columna. Usa el filete.");
             return false;
         }
+
+        // El centro del perfil medido, por si la cara del extremo esta recortada y su centro no es
+        // el de la seccion.
+        var m = m0 with
+        {
+            Origen = m0.Origen + (m0.U * Unidades.AInternas(perfil.Value.CU)) + (m0.V * Unidades.AInternas(perfil.Value.CV))
+        };
 
         var mc = o.MedidasDeConexion;
         var (placas, tornillos) = Conexion.Momento(perfil.Value, mc, conPatines);
@@ -952,7 +958,13 @@ internal static class Detallador
             {
                 var alAlma = mc.SoldaduraAlmaM > 0 ? mc.SoldaduraAlmaM : o.SoldaduraM;
 
-                piezas.Add((Filete(Solidos.CaraEnU0(m.Origen, m.U, m.V, m.A, local), m.U,
+                // La de la otra cara toca el alma con su cara de U1 y su filete crece hacia -U.
+                var otraCara = c.U1 <= 0;
+                var cara = otraCara
+                    ? Solidos.CaraEnU1(m.Origen, m.U, m.V, m.A, local)
+                    : Solidos.CaraEnU0(m.Origen, m.U, m.V, m.A, local);
+
+                piezas.Add((Filete(cara, otraCara ? m.U.Negate() : m.U,
                         Unidades.AInternas(alAlma), mat.Soldadura, r, donde),
                     $"filete de {Mm(alAlma)} mm de la placa de cortante al alma, todo alrededor"));
             }
@@ -970,7 +982,9 @@ internal static class Detallador
             // Cabeza de un lado y tuerca del otro, contra la placa y contra el alma.
             var llave = Unidades.AInternas(1.5 * t.DiametroM);
             var alto = Unidades.AInternas(0.7 * t.DiametroM);
-            var almaU = Unidades.AInternas(-perfil.Value.Tw / 2);
+            // La tuerca contra el alma o, con placa en las dos caras, contra la otra placa.
+            var almaU = Unidades.AInternas(-(perfil.Value.Tw / 2)
+                - (o.MedidasDeConexion.CortanteDosCaras ? o.MedidasDeConexion.PlacaCortanteEspesorM : 0));
             var placaU = Unidades.AInternas((perfil.Value.Tw / 2) + o.MedidasDeConexion.PlacaCortanteEspesorM);
 
             piezas.Add((Solidos.Tuerca(centro + (m.U * placaU), m.U, m.V, llave, alto, radio, mat.Anclas), "cabeza del tornillo"));
@@ -978,6 +992,35 @@ internal static class Detallador
         }
 
         return true;
+    }
+
+    /// <summary>Las aristas rectas del contorno, como alturas y posiciones, y de ahi la I.</summary>
+    private static MedidasI? MedirI(CurveLoop contorno, MarcoExtremo m)
+    {
+        var horizontales = new List<double>();
+        var verticales = new List<double>();
+
+        foreach (var c in contorno)
+        {
+            if (c is not Line l)
+            {
+                continue;
+            }
+
+            var a = l.GetEndPoint(0) - m.Origen;
+            var b = l.GetEndPoint(1) - m.Origen;
+
+            if (Math.Abs(a.DotProduct(m.V) - b.DotProduct(m.V)) < 1e-6)
+            {
+                horizontales.Add(Unidades.AMetros(a.DotProduct(m.V)));
+            }
+            else if (Math.Abs(a.DotProduct(m.U) - b.DotProduct(m.U)) < 1e-6)
+            {
+                verticales.Add(Unidades.AMetros(a.DotProduct(m.U)));
+            }
+        }
+
+        return Conexion.MedirI(horizontales, verticales);
     }
 
     private static Solid Filete(

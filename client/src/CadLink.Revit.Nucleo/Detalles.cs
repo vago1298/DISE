@@ -601,7 +601,9 @@ public static class Cordon
 }
 
 /// <summary>Las medidas de un perfil I leidas de su contorno: peralte, patin y espesores.</summary>
-public readonly record struct MedidasI(double D, double Bf, double Tf, double Tw);
+/// <param name="CU">Donde queda el centro del perfil, en U, respecto al cero de las medidas.</param>
+/// <param name="CV">Lo mismo en V.</param>
+public readonly record struct MedidasI(double D, double Bf, double Tf, double Tw, double CU = 0, double CV = 0);
 
 /// <summary>Una caja en los ejes del extremo de la viga, en metros.</summary>
 /// <remarks>
@@ -649,6 +651,9 @@ public sealed class OpcionesConexion
     /// La placa de cortante SOLDADA al alma de la viga, sin tornillos. Apagado: atornillada.
     /// </summary>
     public bool CortanteSoldada { get; set; }
+
+    /// <summary>Placa de cortante en LAS DOS caras del alma. Apagado: en una sola.</summary>
+    public bool CortanteDosCaras { get; set; }
 
     /// <summary>Filete de la placa de cortante al alma, todo alrededor. Cero = el filete general.</summary>
     public double SoldaduraAlmaM { get; set; }
@@ -708,7 +713,7 @@ public static class Conexion
             return null;
         }
 
-        return new MedidasI(d, bf, tf, tw);
+        return new MedidasI(d, bf, tf, tw, (u[0] + u[3]) / 2, (v[0] + v[3]) / 2);
     }
 
     private static List<double> Distintos(IEnumerable<double> valores)
@@ -772,6 +777,12 @@ public static class Conexion
         var u1 = u0 + o.PlacaCortanteEspesorM;
         placas.Add(new CajaLocal("placa de cortante", u0, u1, -alto / 2, alto / 2, 0, o.PlacaCortanteLargoM));
 
+        // La de la otra cara, en espejo: el alma queda en medio de las dos.
+        if (o.CortanteDosCaras)
+        {
+            placas.Add(new CajaLocal("placa de cortante", -u1, -u0, -alto / 2, alto / 2, 0, o.PlacaCortanteLargoM));
+        }
+
         // Soldada al alma: sin tornillos. El filete lo pone la capa de Revit, alrededor de la placa.
         if (o.CortanteSoldada)
         {
@@ -788,7 +799,8 @@ public static class Conexion
         for (var i = 0; i < n; i++)
         {
             var v = n == 1 ? 0 : (-(n - 1) * o.SeparacionTornillosM / 2) + (i * o.SeparacionTornillosM);
-            tornillos.Add(new TornilloLocal(v, a, -u0 - largoTornillo, u1 + largoTornillo, o.TornilloM));
+            var desde = o.CortanteDosCaras ? -u1 : -u0;
+            tornillos.Add(new TornilloLocal(v, a, desde - largoTornillo, u1 + largoTornillo, o.TornilloM));
         }
 
         return (placas, tornillos);

@@ -441,6 +441,10 @@ internal static class Solidos
             origen + (u * c.U0) + (v * c.V1) + (a * c.A0)
         });
 
+    /// <summary>La cara de la caja que mira hacia U1: la placa de cortante de la otra cara del alma.</summary>
+    public static CurveLoop CaraEnU1(XYZ origen, XYZ u, XYZ v, XYZ a, CajaLocal c) =>
+        CaraEnU0(origen, u, v, a, c with { U0 = c.U1 });
+
     /// <summary>La cara de la caja que mira hacia A0: con ella se suelda la placa a la columna.</summary>
     public static CurveLoop CaraInicial(XYZ origen, XYZ u, XYZ v, XYZ a, CajaLocal c) =>
         Poligono(new List<XYZ>

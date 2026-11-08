@@ -309,6 +309,11 @@ public sealed class ComandoSoldarVigas : IExternalCommand
             "Atornillada",
             "Soldada, todo alrededor de la placa (sin tornillos)"
         });
+        var dosCaras = ventana.Lista("Placa de cortante en:", new[]
+        {
+            "Una cara del alma",
+            "Las dos caras del alma"
+        });
         var soldAlma = ventana.Numero("(I) Placa de cortante soldada: filete al alma, en mm (0 = el general):", 0);
         var tornillo = ventana.Numero("(J) Placa de cortante atornillada: diametro de los tornillos, en mm:", medidas.TornilloM * 1000);
         var sepTornillo = ventana.Numero("(K) Placa de cortante atornillada: separacion de los tornillos, en cm:", medidas.SeparacionTornillosM * 100);
@@ -333,6 +338,7 @@ public sealed class ComandoSoldarVigas : IExternalCommand
         medidas.PlacaCortanteLargoM = VentanaDetalle.Leer(largoCortante, medidas.PlacaCortanteLargoM * 100) / 100;
         medidas.SoldaduraCortanteM = VentanaDetalle.Leer(soldCortante, 0) / 1000;
         medidas.CortanteSoldada = union.SelectedIndex == 1;
+        medidas.CortanteDosCaras = dosCaras.SelectedIndex == 1;
         medidas.SoldaduraAlmaM = VentanaDetalle.Leer(soldAlma, 0) / 1000;
         var sep = VentanaDetalle.Leer(sepTornillo, medidas.SeparacionTornillosM * 100) / 100;
         medidas.SeparacionTornillosM = sep >= 0.03 ? sep : medidas.SeparacionTornillosM;

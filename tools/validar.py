@@ -17151,6 +17151,10 @@ def v31_detalles_revit() -> None:
     check("el grout se apoya en el dado antes que en la losa, y su espesor se elige",
           "debajo.Where(a => !a.EsLosa)" in det and "GroutM = VentanaDetalle.Leer(grout" in com)
 
+    check("conexiones: el extremo se mide en el centro de su cara, la I se busca en otra cara si esta recortada, y cortante en las dos caras",
+          "Toca(cajasColumnas, marco.Origen, holgura)" in det and "perfil = MedirI(c, m0);" in det
+          and "public bool CortanteDosCaras { get; set; }" in nuc)
+
     check("la capa de Revit de los detalles se compila contra los recortes",
           "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)
 
