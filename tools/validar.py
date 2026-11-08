@@ -17111,7 +17111,7 @@ def v31_detalles_revit() -> None:
     # Tercera vuelta: la placa salia duplicada, el grout negro y la viga no se soldaba.
     check("la placa base no se pone en los dados de concreto modelados como columna",
           "public static bool EsDeConcreto(FamilyInstance col)" in det
-          and "columnas = elegidas.Where(c => !Detallador.EsDeConcreto(c))" in com)
+          and "var deAcero = elegidas.Where(c => !Detallador.EsDeConcreto(c))" in com)
     check("la contraplaca solo si se pide, al fondo de las anclas",
           "public bool Contraplaca { get; set; }" in det and "Contraplaca = contra.IsChecked == true" in com)
     check("los materiales de CadLink toman la apariencia de uno del proyecto (el grout no sale negro)",

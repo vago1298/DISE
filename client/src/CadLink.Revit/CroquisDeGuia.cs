@@ -82,8 +82,8 @@ internal static class CroquisDeGuia
 
         foreach (var (x, pata) in new[] { (75.0, 25.0), (185.0, -25.0) })
         {
-            c.Linea(x, 100, x, 225, Croquis.Varilla, 2.5);
-            c.Linea(x, 225, x + pata, 225, Croquis.Varilla, 2.5);
+            c.Linea(x, 100, x, 225, Croquis.ColorVarilla, 2.5);
+            c.Linea(x, 225, x + pata, 225, Croquis.ColorVarilla, 2.5);
             c.Rect(x - 6, 104, 12, 6, Croquis.AceroOscuro);
         }
 
@@ -180,9 +180,9 @@ internal static class CroquisDeGuia
         c.Rect(135, 125, 30, 8, Croquis.Placa);
         c.Rect(157, 95, 8, 38, Croquis.Placa);
 
-        c.Rect(59, 15, 4, 124, Croquis.Varilla);
-        c.Rect(167, 15, 4, 124, Croquis.Varilla);
-        c.Rect(59, 135, 112, 4, Croquis.Varilla);
+        c.Rect(59, 15, 4, 124, Croquis.ColorVarilla);
+        c.Rect(167, 15, 4, 124, Croquis.ColorVarilla);
+        c.Rect(59, 135, 112, 4, Croquis.ColorVarilla);
 
         c.Cota(65, 150, 95, 150, "C");
         c.Llamada(61, 60, 25, 60, "E");
@@ -198,7 +198,7 @@ internal static class CroquisDeGuia
 
         foreach (var x in new[] { 40.0, 100, 160 })
         {
-            c.Rect(x, 20, 10, 75, Croquis.Varilla);
+            c.Rect(x, 20, 10, 75, Croquis.ColorVarilla);
         }
 
         c.Cota(25, 10, 40, 10, "K");
@@ -215,12 +215,12 @@ internal static class CroquisDeGuia
         c.Rect(10, 215, 130, 40, Croquis.Concreto);
         c.Rect(55, 20, 40, 195, Croquis.Concreto);
 
-        c.Linea(62, 30, 62, 240, Croquis.Varilla, 2);
-        c.Linea(88, 30, 88, 240, Croquis.Varilla, 2);
-        c.Linea(62, 30, 79, 30, Croquis.Varilla, 2);
-        c.Linea(88, 30, 71, 30, Croquis.Varilla, 2);
-        c.Linea(62, 240, 30, 240, Croquis.Varilla, 2);
-        c.Linea(88, 240, 120, 240, Croquis.Varilla, 2);
+        c.Linea(62, 30, 62, 240, Croquis.ColorVarilla, 2);
+        c.Linea(88, 30, 88, 240, Croquis.ColorVarilla, 2);
+        c.Linea(62, 30, 79, 30, Croquis.ColorVarilla, 2);
+        c.Linea(88, 30, 71, 30, Croquis.ColorVarilla, 2);
+        c.Linea(62, 240, 30, 240, Croquis.ColorVarilla, 2);
+        c.Linea(88, 240, 120, 240, Croquis.ColorVarilla, 2);
 
         c.Llamada(75, 30, 120, 30, "A");
         c.Llamada(40, 240, 22, 200, "B");
@@ -231,12 +231,12 @@ internal static class CroquisDeGuia
 
         foreach (var x in new[] { 178.0, 203, 228, 253, 278 })
         {
-            c.Linea(x, 25, x, 210, Croquis.Varilla, 1.5);
+            c.Linea(x, 25, x, 210, Croquis.ColorVarilla, 1.5);
         }
 
         foreach (var y in new[] { 45.0, 80, 115, 150, 185 })
         {
-            c.Linea(168, y, 287, y, Croquis.Varilla, 1.5);
+            c.Linea(168, y, 287, y, Croquis.ColorVarilla, 1.5);
         }
 
         c.Cota(178, 10, 203, 10, "C");
@@ -252,18 +252,18 @@ internal static class CroquisDeGuia
         c.Rect(20, 60, 220, 90, Croquis.Concreto);
         c.Rect(110, 5, 40, 55, Croquis.Concreto);
 
-        c.Linea(30, 138, 230, 138, Croquis.Varilla, 2);
-        c.Linea(30, 138, 30, 82, Croquis.Varilla, 2);
-        c.Linea(230, 138, 230, 82, Croquis.Varilla, 2);
+        c.Linea(30, 138, 230, 138, Croquis.ColorVarilla, 2);
+        c.Linea(30, 138, 30, 82, Croquis.ColorVarilla, 2);
+        c.Linea(230, 138, 230, 82, Croquis.ColorVarilla, 2);
 
         foreach (var x in new[] { 45.0, 75, 105, 135, 165, 195, 225 })
         {
-            c.Circulo(x, 132, 2.5, Croquis.Varilla);
+            c.Circulo(x, 132, 2.5, Croquis.ColorVarilla);
         }
 
-        c.Linea(30, 72, 230, 72, Croquis.Varilla, 1.5, true);
-        c.Linea(30, 72, 30, 118, Croquis.Varilla, 1.5, true);
-        c.Linea(230, 72, 230, 118, Croquis.Varilla, 1.5, true);
+        c.Linea(30, 72, 230, 72, Croquis.ColorVarilla, 1.5, true);
+        c.Linea(30, 72, 30, 118, Croquis.ColorVarilla, 1.5, true);
+        c.Linea(230, 72, 230, 118, Croquis.ColorVarilla, 1.5, true);
 
         c.Llamada(140, 138, 140, 180, "A");
         c.Llamada(75, 132, 75, 180, "B");

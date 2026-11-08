@@ -197,7 +197,7 @@ internal sealed class Croquis
     public static readonly Brush Concreto = Pincel(212, 212, 206);
     public static readonly Brush Grout = Pincel(205, 180, 120);
     public static readonly Brush Soldadura = Pincel(30, 30, 30);
-    public static readonly Brush Varilla = Pincel(200, 50, 50);
+    public static readonly Brush ColorVarilla = Pincel(200, 50, 50);
     public static readonly Brush Rojo = Pincel(190, 40, 40);
     public static readonly Brush Gris = Pincel(60, 60, 60);
 
