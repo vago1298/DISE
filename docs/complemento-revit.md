@@ -644,6 +644,15 @@ varillas de Zapatas Aisladas y Zapatas Corridas); las zapatas de CadLink toman s
 CadLink, que son DirectShape y Revit no acepta como anfitrión de armado, van **como sólidos** que se
 ven pero no se cuantifican.
 
+### Armar columnas y trabes escrito en Revit
+
+**Acero** (Columnas y Vigas) y **Armar por tipo** preguntan primero de dónde sale el armado: de la
+hoja de CadLink (`.cadlink-armado.json`, como siempre) o **escrito en Revit**. Escrito: se eligen las
+piezas de concreto y se escriben recubrimiento, estribo con sus separaciones en extremos (L/4) y al
+centro (L/2), y las varillas —arriba, abajo y laterales en trabes; por cara en X y en Y en columnas—,
+cada una con su tipo de varilla de Revit. La base y el peralte salen del tipo de cada pieza, así que
+un mismo armado se acomoda a tipos de distinto tamaño. Lo coloca el mismo armador que la hoja.
+
 ### Los croquis de guía
 
 Cada cuadro trae a la derecha un croquis con una **letra roja** por medida; el renglón que la pide

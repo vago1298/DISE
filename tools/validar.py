@@ -17172,6 +17172,10 @@ def v31_detalles_revit() -> None:
           "public static ArmadoZapataJson ConParrillas(" in nuc and "ModoParrillas.Doble" in com
           and "parrillas.SelectedIndex == 1" in com)
 
+    check("armar columnas y trabes: de la hoja de CadLink o escrito en Revit",
+          "ArmadoEscritoEnRevit.Ejecutar(commandData, Solo)" in leer(ruta("client/src/CadLink.Revit/ComandoArmarPorTipo.cs"))
+          and "public static ArmadoJson Columna(" in leer(ruta("client/src/CadLink.Revit.Nucleo/ArmadoEscrito.cs")))
+
     check("la capa de Revit de los detalles se compila contra los recortes",
           "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)
 

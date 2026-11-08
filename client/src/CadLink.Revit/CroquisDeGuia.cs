@@ -273,5 +273,60 @@ internal static class CroquisDeGuia
         c.Llamada(30, 100, 8, 100, "F");
         c.Texto(20, 205, "Corte; arriba (punteada) solo con doble parrilla", 9);
     }
+
+    // ------------------------------------------------------------------ Armar escrito
+
+    public static void ArmadoSeccion(Croquis c)
+    {
+        // La trabe, a la izquierda.
+        c.Rect(20, 20, 100, 170, Croquis.Concreto);
+        c.Rect(30, 30, 80, 150, Brushes.Transparent);
+        c.Linea(30, 30, 110, 30, Croquis.ColorVarilla, 1.5);
+        c.Linea(30, 180, 110, 180, Croquis.ColorVarilla, 1.5);
+        c.Linea(30, 30, 30, 180, Croquis.ColorVarilla, 1.5);
+        c.Linea(110, 30, 110, 180, Croquis.ColorVarilla, 1.5);
+
+        foreach (var x in new[] { 37.0, 103 })
+        {
+            c.Circulo(x, 37, 4, Croquis.ColorVarilla);
+        }
+
+        foreach (var x in new[] { 37.0, 70, 103 })
+        {
+            c.Circulo(x, 173, 4, Croquis.ColorVarilla);
+        }
+
+        c.Circulo(37, 105, 3, Croquis.ColorVarilla);
+        c.Circulo(103, 105, 3, Croquis.ColorVarilla);
+
+        c.Cota(8, 180, 8, 190, "A");
+        c.Llamada(110, 60, 135, 60, "B");
+        c.Llamada(70, 37, 70, 8, "E");
+        c.Llamada(70, 173, 70, 210, "F");
+        c.Llamada(103, 105, 135, 110, "G");
+        c.Texto(40, 196, "Trabe", 9);
+
+        // La columna, a la derecha.
+        c.Rect(165, 50, 120, 120, Croquis.Concreto);
+        c.Linea(175, 60, 275, 60, Croquis.ColorVarilla, 1.5);
+        c.Linea(175, 160, 275, 160, Croquis.ColorVarilla, 1.5);
+        c.Linea(175, 60, 175, 160, Croquis.ColorVarilla, 1.5);
+        c.Linea(275, 60, 275, 160, Croquis.ColorVarilla, 1.5);
+
+        foreach (var x in new[] { 182.0, 225, 268 })
+        {
+            c.Circulo(x, 67, 4, Croquis.ColorVarilla);
+            c.Circulo(x, 153, 4, Croquis.ColorVarilla);
+        }
+
+        c.Circulo(182, 110, 4, Croquis.ColorVarilla);
+        c.Circulo(268, 110, 4, Croquis.ColorVarilla);
+
+        c.Cota(182, 40, 268, 40, "H");
+        c.Cota(292, 67, 292, 153, "I");
+        c.Llamada(225, 153, 225, 190, "J");
+        c.Texto(200, 200, "Columna (X, Y)", 9);
+        c.Texto(140, 215, "C y D: estribos, de lado", 9);
+    }
 }
 
