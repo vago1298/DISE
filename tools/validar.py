@@ -17165,6 +17165,9 @@ def v31_detalles_revit() -> None:
           and "Armado = ArmadoDe(" in app and "CadLink.Revit\\ArmadorDeZapatas.cs" in compila
           and "typeof(ComandoArmarCimentacion).FullName" in apl)
 
+    check("armar cimentacion acepta zapatas modeladas como Floor",
+          "BuiltInCategory.OST_StructuralFoundation, BuiltInCategory.OST_Floors)" in com)
+
     check("la capa de Revit de los detalles se compila contra los recortes",
           "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)
 

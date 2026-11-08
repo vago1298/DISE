@@ -84,6 +84,16 @@ internal static class ArmadorDeZapatas
                     var nativa = zapata is not DirectShape
                                  && RebarHostData.GetRebarHostData(zapata) is { } datos && datos.IsValidHost();
 
+                    // Una zapata de Revit que no admite armado no se llena de solidos: casi siempre es
+                    // un Floor sin la casilla Structural o con un material que no es de concreto, y
+                    // eso se arregla en un clic. Se dice y se salta.
+                    if (!nativa && zapata is not DirectShape)
+                    {
+                        r.Errores.Add($"«{nombre}»: No admite armado. Si es un Floor, marca «Structural» en sus "
+                                      + "propiedades y revisa que su material sea de clase concreto.");
+                        continue;
+                    }
+
                     if (nativa)
                     {
                         foreach (var c in capas)

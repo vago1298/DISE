@@ -727,10 +727,11 @@ public sealed class ComandoArmarCimentacion : IExternalCommand
             return Result.Failed;
         }
 
-        // Las zapatas: las de Revit y las de CadLink, sin el dado, la plantilla ni la contratrabe de
-        // estas, que van en la misma categoria.
-        var zapatas = DetallesEnRevit.Piezas(uidoc, "Elige las zapatas que se arman y pulsa Terminar.",
-                BuiltInCategory.OST_StructuralFoundation)
+        // Las zapatas: las de Revit -de cimentacion o modeladas como FLOOR, que es como muchos las
+        // modelan para poder editar su contorno- y las de CadLink, sin el dado, la plantilla ni la
+        // contratrabe de estas, que van en la misma categoria.
+        var zapatas = DetallesEnRevit.Piezas(uidoc, "Elige las zapatas (de cimentacion o Floor) que se arman y pulsa Terminar.",
+                BuiltInCategory.OST_StructuralFoundation, BuiltInCategory.OST_Floors)
             .Where(e => !EsPiezaAuxiliar(e))
             .ToList();
 

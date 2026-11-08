@@ -432,7 +432,10 @@ internal static class Detallador
         foreach (var c in new[]
                  {
                      BuiltInCategory.OST_Walls, BuiltInCategory.OST_StructuralFoundation,
-                     BuiltInCategory.OST_StructuralColumns, BuiltInCategory.OST_StructuralFraming
+                     BuiltInCategory.OST_StructuralColumns, BuiltInCategory.OST_StructuralFraming,
+
+                     // Un cabezal o un dado modelado como Floor tambien recibe la placa de la viga.
+                     BuiltInCategory.OST_Floors
                  })
         {
             foreach (var e in new FilteredElementCollector(doc).OfCategory(c).WhereElementIsNotElementType())

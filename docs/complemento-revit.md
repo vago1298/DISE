@@ -640,7 +640,7 @@ embebida de **Conectar vigas**, que ahora también toma cabezales y columnas de 
 Parrilla de abajo y, si se pide, la de arriba, en las dos direcciones y con sus patas. El armado se
 **escribe en el cuadro** o se **lee de la hoja de CadLink** (el `.cadlink-detalles.json` ya lleva las
 varillas de Zapatas Aisladas y Zapatas Corridas); las zapatas de CadLink toman su fila por su marca.
-«Largas» corren a lo largo del lado mayor. En zapatas de Revit van **varillas nativas**; en las de
+«Largas» corren a lo largo del lado mayor. Las zapatas pueden estar modeladas como cimentación o como **Floor** (estructural). En zapatas de Revit van **varillas nativas**; en las de
 CadLink, que son DirectShape y Revit no acepta como anfitrión de armado, van **como sólidos** que se
 ven pero no se cuantifican.
 
