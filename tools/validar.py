@@ -17168,6 +17168,10 @@ def v31_detalles_revit() -> None:
     check("armar cimentacion acepta zapatas modeladas como Floor",
           "BuiltInCategory.OST_StructuralFoundation, BuiltInCategory.OST_Floors)" in com)
 
+    check("armar cimentacion: una o doble parrilla se elige primero, tambien desde la hoja",
+          "public static ArmadoZapataJson ConParrillas(" in nuc and "ModoParrillas.Doble" in com
+          and "parrillas.SelectedIndex == 1" in com)
+
     check("la capa de Revit de los detalles se compila contra los recortes",
           "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)
 

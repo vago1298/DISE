@@ -1244,9 +1244,51 @@ public sealed record CapaRepartida(
     string Que, bool Larga, List<double> Posiciones, double Z, double Desde, double Hasta,
     double Pata, bool PataArriba, double DiametroM, double SeparacionM);
 
+/// <summary>Con cuantas parrillas se arma.</summary>
+public enum ModoParrillas
+{
+    /// <summary>Lo que diga la fila: doble si trae la de arriba.</summary>
+    ComoLaHoja,
+
+    /// <summary>Doble siempre: si la fila no trae la de arriba, se repite la de abajo.</summary>
+    Doble,
+
+    /// <summary>Solo la de abajo, aunque la fila traiga la de arriba.</summary>
+    Una
+}
+
 /// <summary>Las parrillas de una zapata, sin nada de Revit.</summary>
 public static class ArmadoZapata
 {
+    public static bool EsDoble(ArmadoZapataJson a) => a.SupLargas is not null || a.SupCortas is not null;
+
+    /// <summary>El armado con las parrillas pedidas. No toca el original: se comparte entre zapatas.</summary>
+    public static ArmadoZapataJson ConParrillas(ArmadoZapataJson a, ModoParrillas modo)
+    {
+        var copia = new ArmadoZapataJson
+        {
+            InfLargas = a.InfLargas,
+            InfCortas = a.InfCortas,
+            SupLargas = a.SupLargas,
+            SupCortas = a.SupCortas,
+            RecM = a.RecM,
+            Ganchos = a.Ganchos
+        };
+
+        if (modo == ModoParrillas.Una)
+        {
+            copia.SupLargas = null;
+            copia.SupCortas = null;
+        }
+        else if (modo == ModoParrillas.Doble && !EsDoble(a))
+        {
+            copia.SupLargas = a.InfLargas;
+            copia.SupCortas = a.InfCortas;
+        }
+
+        return copia;
+    }
+
     /// <summary>
     /// Reparte las capas en una zapata de <paramref name="mayor"/> por <paramref name="menor"/> y
     /// <paramref name="alto"/>. Abajo, las largas en el lecho de abajo y las cortas encima; arriba, al

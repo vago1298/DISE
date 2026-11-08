@@ -128,6 +128,11 @@ internal static class ArmadorDeZapatas
                                      + "las varillas van como solidos, se ven pero no se cuantifican.");
                     }
 
+                    // Que quede dicho con cuantas parrillas salio cada una: es lo primero que se revisa.
+                    r.Avisos.Add(capas.Any(c => !c.PataArriba)
+                        ? $"«{nombre}»: Armada con DOBLE parrilla: {Resumen(armado)}."
+                        : $"«{nombre}»: Armada con UNA parrilla, solo abajo: {Resumen(armado)}.");
+
                     r.Hechas++;
                 }
                 catch (Exception e)

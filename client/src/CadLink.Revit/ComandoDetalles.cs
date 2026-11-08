@@ -824,28 +824,46 @@ public sealed class ComandoArmarCimentacion : IExternalCommand
         }
 
         var sinFila = zapatas.Count(z => PorMarca(z) is null);
-        ArmadoZapataJson? general = null;
 
-        if (sinFila > 0)
+        var ventana = new VentanaDetalle("CadLink - Armar cimentacion",
+            sinFila == 0
+                ? "Todas las zapatas elegidas son de CadLink y toman su fila por su marca."
+                : $"{zapatas.Count - sinFila} zapata(s) de CadLink toman su fila por su marca. Para las otras "
+                  + $"{sinFila}, elige la fila de la hoja.");
+
+        var parrillas = ventana.Lista("Parrillas:", new[]
         {
-            var ventana = new VentanaDetalle("CadLink - Armar cimentacion",
-                $"{zapatas.Count - sinFila} zapata(s) de CadLink toman su fila por su marca. Para las otras "
-                + $"{sinFila}, elige la fila de la hoja.");
-            var lista = ventana.Lista("Fila:", filas.Select(f =>
-                $"{f.Id} ({f.Item2})  -  {ArmadorDeZapatas.Resumen(f.Item3)}"));
+            "Como dice la hoja (doble si la fila trae la de arriba)",
+            "Doble: abajo y arriba (si la fila no trae la de arriba, se repite la de abajo)",
+            "Una: solo abajo"
+        });
 
-            if (!ventana.Mostrar(dueno, "Armar") || lista.SelectedIndex < 0)
-            {
-                return null;
-            }
+        var lista = sinFila > 0
+            ? ventana.Lista("Fila:", filas.Select(f =>
+                $"{f.Id} ({f.Item2})  -  {(ArmadoZapata.EsDoble(f.Item3) ? "doble" : "una")} parrilla: "
+                + ArmadorDeZapatas.Resumen(f.Item3)))
+            : null;
 
-            general = filas[lista.SelectedIndex].Item3;
+        if (!ventana.Mostrar(dueno, "Armar") || (lista is not null && lista.SelectedIndex < 0))
+        {
+            return null;
         }
+
+        var modo = parrillas.SelectedIndex switch
+        {
+            1 => ModoParrillas.Doble,
+            2 => ModoParrillas.Una,
+            _ => ModoParrillas.ComoLaHoja
+        };
+
+        var general = lista is null ? null : filas[lista.SelectedIndex].Item3;
+
+        ArmadoZapataJson? Con(ArmadoZapataJson? a) => a is null ? null : ArmadoZapata.ConParrillas(a, modo);
 
         return zapatas
             .Select(z => PorMarca(z) is { } propio
-                ? new ArmadorDeZapatas.ZapataElegida(z, propio, "su marca")
-                : new ArmadorDeZapatas.ZapataElegida(z, general, "la fila elegida"))
+                ? new ArmadorDeZapatas.ZapataElegida(z, Con(propio), "su marca")
+                : new ArmadorDeZapatas.ZapataElegida(z, Con(general), "la fila elegida"))
             .ToList();
     }
 
@@ -870,14 +888,18 @@ public sealed class ComandoArmarCimentacion : IExternalCommand
             "Las «largas» corren a lo largo del lado MAYOR de la zapata y las «cortas» a lo largo del menor. "
             + "Las separaciones son maximas: las varillas se reparten parejo de recubrimiento a recubrimiento.");
 
+        var parrillas = ventana.Lista("Parrillas:", new[]
+        {
+            "Una: solo abajo (A y B)",
+            "Doble: abajo (A y B) y arriba (C y D)"
+        });
         var infL = ventana.Lista("(A) Abajo, varillas largas:", nombres);
         var sepInfL = ventana.Numero("(A) Su separacion, en cm:", 15);
         var infC = ventana.Lista("(B) Abajo, varillas cortas:", nombres);
         var sepInfC = ventana.Numero("(B) Su separacion, en cm:", 15);
-        var doble = ventana.Casilla("Con parrilla de arriba (doble parrilla)", false);
-        var supL = ventana.Lista("(C) Arriba, varillas largas:", nombres);
+        var supL = ventana.Lista("(C) Arriba, varillas largas (solo doble):", nombres);
         var sepSupL = ventana.Numero("(C) Su separacion, en cm:", 20);
-        var supC = ventana.Lista("(D) Arriba, varillas cortas:", nombres);
+        var supC = ventana.Lista("(D) Arriba, varillas cortas (solo doble):", nombres);
         var sepSupC = ventana.Numero("(D) Su separacion, en cm:", 20);
         var rec = ventana.Numero("(E) Recubrimiento, en cm:", 5);
         var ganchos = ventana.Casilla("(F) Con patas en las puntas, hasta la otra parrilla", true);
@@ -909,8 +931,8 @@ public sealed class ComandoArmarCimentacion : IExternalCommand
         {
             InfLargas = Capa(infL, sepInfL, true),
             InfCortas = Capa(infC, sepInfC, true),
-            SupLargas = Capa(supL, sepSupL, doble.IsChecked == true),
-            SupCortas = Capa(supC, sepSupC, doble.IsChecked == true),
+            SupLargas = Capa(supL, sepSupL, parrillas.SelectedIndex == 1),
+            SupCortas = Capa(supC, sepSupC, parrillas.SelectedIndex == 1),
             RecM = VentanaDetalle.Leer(rec, 5) / 100,
             Ganchos = ganchos.IsChecked == true
         };
