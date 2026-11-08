@@ -195,6 +195,16 @@ def soldar_viga():
     return f + lineas(anillo + [anillo[0]], 1.6, ROJO)
 
 
+def armar_cimentacion():
+    # La zapata gris con su parrilla roja y el dado encima.
+    gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
+    f = caja(0, 0, 0, 18, 18, 5, cx=16, cy=17, s=0.95, colores=gris)
+    for t in (4, 9, 14):
+        f.append(linea(iso(t, 1, 5.2, 16, 17, 0.95), iso(t, 17, 5.2, 16, 17, 0.95), 1.0, ROJO))
+        f.append(linea(iso(1, t, 5.2, 16, 17, 0.95), iso(17, t, 5.2, 16, 17, 0.95), 1.0, ROJO))
+    return f + caja(6, 6, 5, 6, 6, 8, cx=16, cy=17, s=0.95, colores=gris)
+
+
 def armar_muros():
     # El muro gris con su malla clara: verticales y horizontales.
     gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
@@ -242,6 +252,7 @@ ICONOS = {
     "soldar-columna": soldar_columna,
     "encamisar": encamisar,
     "armar-muros": armar_muros,
+    "armar-cimentacion": armar_cimentacion,
 }
 
 

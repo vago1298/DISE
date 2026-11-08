@@ -32,19 +32,24 @@ public sealed class ComandoPlacasBase : IExternalCommand
             return Result.Failed;
         }
 
-        var elegidas = DetallesEnRevit.Piezas(uidoc, "Elige las columnas de acero que llevan la placa y pulsa Terminar.",
-            BuiltInCategory.OST_StructuralColumns).OfType<FamilyInstance>().ToList();
+        var elegidas = DetallesEnRevit.Piezas(uidoc,
+            "Elige las columnas o las vigas de ACERO que llevan placa y pulsa Terminar.",
+            BuiltInCategory.OST_StructuralColumns, BuiltInCategory.OST_StructuralFraming)
+            .OfType<FamilyInstance>().ToList();
 
-        // Los dados modelados como columna de concreto se quedan fuera: la placa es de la columna
-        // de acero que se apoya en ellos. Elegir con ventana se los lleva, y antes salia una
-        // segunda placa en el fondo del dado.
-        var columnas = elegidas.Where(c => !Detallador.EsDeConcreto(c)).ToList();
+        // La placa es de la pieza de ACERO; el concreto en que se apoya -dado, muro, cabezal- se
+        // encuentra solo. Elegir con ventana se lleva tambien el concreto, y se salta.
+        var deAcero = elegidas.Where(c => !Detallador.EsDeConcreto(c)).ToList();
+        var columnas = deAcero.Where(c => c.Category?.BuiltInCategory == BuiltInCategory.OST_StructuralColumns).ToList();
+        var vigas = deAcero.Where(c => c.Category?.BuiltInCategory == BuiltInCategory.OST_StructuralFraming).ToList();
 
-        if (columnas.Count == 0)
+        if (columnas.Count + vigas.Count == 0)
         {
             if (elegidas.Count > 0)
             {
-                TaskDialog.Show("CadLink", "Las columnas elegidas son de concreto. La placa base va en la columna de acero.");
+                TaskDialog.Show("CadLink",
+                    "Lo elegido es de concreto. Elige la columna o la viga de ACERO: la placa se apoya sola en "
+                    + "el dado, el muro o el cabezal que tiene debajo.");
             }
 
             return Result.Cancelled;
@@ -65,7 +70,11 @@ public sealed class ComandoPlacasBase : IExternalCommand
         }
 
         var ventana = new VentanaDetalle("CadLink - Placas base",
-            $"Se pone la placa elegida bajo las {columnas.Count} columna(s): la placa con sus barrenos, "
+            $"Columnas de acero: {columnas.Count}. Vigas de acero: {vigas.Count}.\n\n"
+            + "En las columnas la placa va en su base. En las vigas va bajo cada extremo que se APOYA en un "
+            + "muro, un cabezal, una columna de concreto o una zapata, con su cara de arriba en el patin; si "
+            + "la viga llega al costado del muro, usa «Conectar vigas».\n\n"
+            + "Se modela la placa con sus barrenos, "
             + "las anclas con su tuerca y su doblez, el grout y el filete de la columna todo alrededor.\n\n"
             + "La placa se orienta sola, midiendo la columna. Si queda girada, marca la casilla.");
 
@@ -86,7 +95,7 @@ public sealed class ComandoPlacasBase : IExternalCommand
         };
         var subir = ventana.Casilla("Subir el arranque de la columna a la cara de la placa", true,
             "Solo con la placa sobre el apoyo. Apagado, la columna se queda donde esta y atraviesa la placa.");
-        var soldar = ventana.Casilla("(C) Soldar la columna a la placa, todo alrededor", true);
+        var soldar = ventana.Casilla("(C) Soldar la columna -o el patin de la viga- a la placa", true);
         var contra = ventana.Casilla("(B) Con contraplaca al fondo de las anclas", false,
             "Una segunda placa ahogada en el dado, al fondo de las anclas, con su tuerca abajo. Con ella las anclas van rectas.");
         var girar = ventana.Casilla("Girar la placa 90° sobre la columna", false);
@@ -106,7 +115,7 @@ public sealed class ComandoPlacasBase : IExternalCommand
             return Result.Cancelled;
         }
 
-        var r = Detallador.Placas(doc, columnas, placa, new OpcionesDetalle
+        var opciones = new OpcionesDetalle
         {
             Girar = girar.IsChecked == true,
             SobreElApoyo = posicion.SelectedIndex != 1,
@@ -114,9 +123,32 @@ public sealed class ComandoPlacasBase : IExternalCommand
             SoldarColumna = soldar.IsChecked == true,
             Contraplaca = contra.IsChecked == true,
             GroutM = VentanaDetalle.Leer(grout, GroutPorOmision(placa)) / 100
-        });
+        };
 
-        TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "columna(s) con su placa base", archivo.Avisos));
+        var texto = new StringBuilder();
+
+        if (columnas.Count > 0)
+        {
+            texto.AppendLine(DetallesEnRevit.Informe(
+                Detallador.Placas(doc, columnas, placa, opciones), "columna(s) con su placa base", null, false));
+        }
+
+        if (vigas.Count > 0)
+        {
+            if (texto.Length > 0)
+            {
+                texto.AppendLine();
+            }
+
+            texto.AppendLine(DetallesEnRevit.Informe(
+                Detallador.PlacasDeViga(doc, vigas, placa, opciones), "viga(s) con su placa de apoyo", null, false));
+        }
+
+        texto.AppendLine().Append(columnas.Count > 0 && vigas.Count > 0
+            ? "Ctrl+Z deshace las placas de las vigas; un segundo Ctrl+Z, las de las columnas."
+            : "Un solo Ctrl+Z deshace todo lo de este boton.");
+
+        TaskDialog.Show("CadLink", DetallesEnRevit.ConAvisos(texto.ToString().TrimEnd(), archivo.Avisos));
 
         return Result.Succeeded;
     }
@@ -317,7 +349,7 @@ public sealed class ComandoSoldarVigas : IExternalCommand
         var soldAlma = ventana.Numero("(I) Placa de cortante soldada: filete al alma, en mm (0 = el general):", 0);
         var tornillo = ventana.Numero("(J) Placa de cortante atornillada: diametro de los tornillos, en mm:", medidas.TornilloM * 1000);
         var sepTornillo = ventana.Numero("(K) Placa de cortante atornillada: separacion de los tornillos, en cm:", medidas.SeparacionTornillosM * 100);
-        var enMuro = ventana.Casilla("En los muros: placa embebida con anclas", true,
+        var enMuro = ventana.Casilla("En muros, cabezales y columnas de concreto: placa embebida con anclas", true,
             "Apagado, la viga que llega a un muro solo se suelda todo alrededor, sin placa.");
         var soloApoyos = ventana.Casilla("Solo los extremos que llegan a una columna o a un muro", true,
             "Apagado, se conectan los extremos elegidos lleguen a donde lleguen.");
@@ -364,8 +396,16 @@ public sealed class ComandoSoldarVigas : IExternalCommand
             return Result.Cancelled;
         }
 
-        var columnas = DetallesEnRevit.Todas(doc, BuiltInCategory.OST_StructuralColumns);
-        var muros = DetallesEnRevit.Todas(doc, BuiltInCategory.OST_Walls);
+        // Las columnas de ACERO reciben la conexion; el concreto -muros, columnas de concreto y
+        // cabezales- recibe la placa embebida. Antes una columna de concreto contaba como de acero y
+        // se le ponia la conexion a momento encima.
+        var todasLasColumnas = DetallesEnRevit.Todas(doc, BuiltInCategory.OST_StructuralColumns);
+        var columnas = todasLasColumnas.Where(c => c is not FamilyInstance fi || !Detallador.EsDeConcreto(fi)).ToList();
+        var muros = DetallesEnRevit.Todas(doc, BuiltInCategory.OST_Walls)
+            .Concat(todasLasColumnas.OfType<FamilyInstance>().Where(Detallador.EsDeConcreto))
+            .Concat(DetallesEnRevit.Todas(doc, BuiltInCategory.OST_StructuralFraming)
+                .OfType<FamilyInstance>().Where(Detallador.EsDeConcreto))
+            .ToList();
 
         ResultadoDetalles r;
 
@@ -666,6 +706,215 @@ public sealed class ComandoArmarMuros : IExternalCommand
         TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "muro(s) armado(s)", null));
 
         return Result.Succeeded;
+    }
+}
+
+/// <summary>
+/// El boton <b>Armar cimentacion</b>: las parrillas de las zapatas elegidas, escritas aqui o leidas
+/// de la hoja de CadLink.
+/// </summary>
+[Transaction(TransactionMode.Manual)]
+public sealed class ComandoArmarCimentacion : IExternalCommand
+{
+    public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+    {
+        var uidoc = commandData?.Application?.ActiveUIDocument;
+        var doc = uidoc?.Document;
+
+        if (uidoc is null || doc is null || doc.IsFamilyDocument)
+        {
+            message = "Abre un proyecto de Revit antes de armar la cimentacion.";
+            return Result.Failed;
+        }
+
+        // Las zapatas: las de Revit y las de CadLink, sin el dado, la plantilla ni la contratrabe de
+        // estas, que van en la misma categoria.
+        var zapatas = DetallesEnRevit.Piezas(uidoc, "Elige las zapatas que se arman y pulsa Terminar.",
+                BuiltInCategory.OST_StructuralFoundation)
+            .Where(e => !EsPiezaAuxiliar(e))
+            .ToList();
+
+        if (zapatas.Count == 0)
+        {
+            return Result.Cancelled;
+        }
+
+        var dueno = commandData!.Application?.MainWindowHandle;
+
+        var fuente = new VentanaDetalle("CadLink - Armar cimentacion",
+            $"Se arman {zapatas.Count} zapata(s). ¿De donde sale el armado?\n\n"
+            + "En las zapatas de Revit van varillas nativas, que se cuantifican. En las de CadLink -que son "
+            + "DirectShape y Revit no acepta como anfitrion de armado- van como solidos que se ven pero no "
+            + "se cuantifican.");
+        var deDonde = fuente.Lista("Armado:", new[]
+        {
+            "Escribirlo aqui",
+            "De la hoja de CadLink (.cadlink-detalles.json)"
+        });
+
+        if (!fuente.Mostrar(dueno, "Siguiente"))
+        {
+            return Result.Cancelled;
+        }
+
+        var elegidas = deDonde.SelectedIndex == 1
+            ? DeArchivo(doc, zapatas, dueno)
+            : Escrito(doc, zapatas, dueno);
+
+        if (elegidas is null)
+        {
+            return Result.Cancelled;
+        }
+
+        var r = ArmadorDeZapatas.Armar(doc, elegidas);
+
+        TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "zapata(s) armada(s)", null));
+
+        return Result.Succeeded;
+    }
+
+    /// <summary>¿Es el dado, la plantilla, la contratrabe o el enrase de una zapata de CadLink?</summary>
+    private static bool EsPiezaAuxiliar(Element e)
+    {
+        if (e is not DirectShape)
+        {
+            return false;
+        }
+
+        var c = e.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.AsString() ?? string.Empty;
+
+        return new[] { ", dado", ", plantilla", ", contratrabe", ", enrase" }
+            .Any(x => c.Contains(x, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// De la hoja de CadLink: las zapatas de CadLink toman SU fila por su marca; las demas, la que se
+    /// elija en el cuadro.
+    /// </summary>
+    private static List<ArmadorDeZapatas.ZapataElegida>? DeArchivo(Document doc, List<Element> zapatas, IntPtr? dueno)
+    {
+        var archivo = DetallesEnRevit.Archivo();
+
+        if (archivo is null)
+        {
+            return null;
+        }
+
+        var filas = archivo.Zapatas.Where(z => z.Armado is not null).Select(z => (z.Id, "aislada", z.Armado!))
+            .Concat(archivo.Corridas.Where(z => z.Armado is not null).Select(z => (z.Id, "corrida", z.Armado!)))
+            .ToList();
+
+        if (filas.Count == 0)
+        {
+            TaskDialog.Show("CadLink",
+                "El archivo no trae armado de zapatas. En CadLink, llena las varillas de las hojas Zapatas "
+                + "Aisladas o Zapatas Corridas y vuelve a pulsar «Para Revit…».");
+            return null;
+        }
+
+        ArmadoZapataJson? PorMarca(Element e)
+        {
+            var marca = e.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)?.AsString() ?? string.Empty;
+
+            return e is DirectShape && marca.Length > 0
+                ? filas.Where(f => string.Equals(f.Id, marca, StringComparison.OrdinalIgnoreCase))
+                    .Select(f => f.Item3).FirstOrDefault()
+                : null;
+        }
+
+        var sinFila = zapatas.Count(z => PorMarca(z) is null);
+        ArmadoZapataJson? general = null;
+
+        if (sinFila > 0)
+        {
+            var ventana = new VentanaDetalle("CadLink - Armar cimentacion",
+                $"{zapatas.Count - sinFila} zapata(s) de CadLink toman su fila por su marca. Para las otras "
+                + $"{sinFila}, elige la fila de la hoja.");
+            var lista = ventana.Lista("Fila:", filas.Select(f =>
+                $"{f.Id} ({f.Item2})  -  {ArmadorDeZapatas.Resumen(f.Item3)}"));
+
+            if (!ventana.Mostrar(dueno, "Armar") || lista.SelectedIndex < 0)
+            {
+                return null;
+            }
+
+            general = filas[lista.SelectedIndex].Item3;
+        }
+
+        return zapatas
+            .Select(z => PorMarca(z) is { } propio
+                ? new ArmadorDeZapatas.ZapataElegida(z, propio, "su marca")
+                : new ArmadorDeZapatas.ZapataElegida(z, general, "la fila elegida"))
+            .ToList();
+    }
+
+    /// <summary>Escrito en el cuadro, igual para todas las zapatas elegidas.</summary>
+    private static List<ArmadorDeZapatas.ZapataElegida>? Escrito(Document doc, List<Element> zapatas, IntPtr? dueno)
+    {
+        var tipos = ArmadorDeZapatas.TiposDeVarilla(doc)
+            .GroupBy(t => t.Tipo.Name ?? string.Empty)
+            .Select(g => g.First())
+            .OrderBy(t => t.DiametroM).ThenBy(t => t.Tipo.Name)
+            .ToList();
+
+        if (tipos.Count == 0)
+        {
+            TaskDialog.Show("CadLink", "El proyecto no tiene tipos de varilla (Rebar Bar). Crea o carga alguno.");
+            return null;
+        }
+
+        var nombres = tipos.Select(t => $"{t.Tipo.Name}  (Ø{t.DiametroM * 1000:0.#} mm)").ToList();
+
+        var ventana = new VentanaDetalle("CadLink - Armar cimentacion",
+            "Las «largas» corren a lo largo del lado MAYOR de la zapata y las «cortas» a lo largo del menor. "
+            + "Las separaciones son maximas: las varillas se reparten parejo de recubrimiento a recubrimiento.");
+
+        var infL = ventana.Lista("(A) Abajo, varillas largas:", nombres);
+        var sepInfL = ventana.Numero("(A) Su separacion, en cm:", 15);
+        var infC = ventana.Lista("(B) Abajo, varillas cortas:", nombres);
+        var sepInfC = ventana.Numero("(B) Su separacion, en cm:", 15);
+        var doble = ventana.Casilla("Con parrilla de arriba (doble parrilla)", false);
+        var supL = ventana.Lista("(C) Arriba, varillas largas:", nombres);
+        var sepSupL = ventana.Numero("(C) Su separacion, en cm:", 20);
+        var supC = ventana.Lista("(D) Arriba, varillas cortas:", nombres);
+        var sepSupC = ventana.Numero("(D) Su separacion, en cm:", 20);
+        var rec = ventana.Numero("(E) Recubrimiento, en cm:", 5);
+        var ganchos = ventana.Casilla("(F) Con patas en las puntas, hasta la otra parrilla", true);
+        ventana.Guia("Guia", 260, 230, CroquisDeGuia.ArmadoZapata);
+
+        if (!ventana.Mostrar(dueno, "Armar"))
+        {
+            return null;
+        }
+
+        CapaZapataJson? Capa(System.Windows.Controls.ComboBox lista, System.Windows.Controls.TextBox sep, bool usar)
+        {
+            if (!usar || lista.SelectedIndex < 0)
+            {
+                return null;
+            }
+
+            var t = tipos[lista.SelectedIndex];
+
+            return new CapaZapataJson
+            {
+                Varilla = t.Tipo.Name ?? string.Empty,
+                DiametroM = t.DiametroM,
+                SeparacionM = VentanaDetalle.Leer(sep, 0) / 100
+            };
+        }
+
+        var armado = new ArmadoZapataJson
+        {
+            InfLargas = Capa(infL, sepInfL, true),
+            InfCortas = Capa(infC, sepInfC, true),
+            SupLargas = Capa(supL, sepSupL, doble.IsChecked == true),
+            SupCortas = Capa(supC, sepSupC, doble.IsChecked == true),
+            RecM = VentanaDetalle.Leer(rec, 5) / 100,
+            Ganchos = ganchos.IsChecked == true
+        };
+
+        return zapatas.Select(z => new ArmadorDeZapatas.ZapataElegida(z, armado, "el cuadro")).ToList();
     }
 }
 

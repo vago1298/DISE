@@ -243,4 +243,35 @@ internal static class CroquisDeGuia
         c.Cota(157, 45, 157, 80, "D");
         c.Texto(230, 222, "Alzado", 9);
     }
+
+    // ------------------------------------------------------------------ Armar cimentacion
+
+    public static void ArmadoZapata(Croquis c)
+    {
+        // Corte a lo largo del lado mayor: la zapata, las dos parrillas y sus patas.
+        c.Rect(20, 60, 220, 90, Croquis.Concreto);
+        c.Rect(110, 5, 40, 55, Croquis.Concreto);
+
+        c.Linea(30, 138, 230, 138, Croquis.Varilla, 2);
+        c.Linea(30, 138, 30, 82, Croquis.Varilla, 2);
+        c.Linea(230, 138, 230, 82, Croquis.Varilla, 2);
+
+        foreach (var x in new[] { 45.0, 75, 105, 135, 165, 195, 225 })
+        {
+            c.Circulo(x, 132, 2.5, Croquis.Varilla);
+        }
+
+        c.Linea(30, 72, 230, 72, Croquis.Varilla, 1.5, true);
+        c.Linea(30, 72, 30, 118, Croquis.Varilla, 1.5, true);
+        c.Linea(230, 72, 230, 118, Croquis.Varilla, 1.5, true);
+
+        c.Llamada(140, 138, 140, 180, "A");
+        c.Llamada(75, 132, 75, 180, "B");
+        c.Llamada(140, 72, 200, 40, "C");
+        c.Llamada(60, 78, 25, 40, "D");
+        c.Cota(245, 138, 245, 150, "E");
+        c.Llamada(30, 100, 8, 100, "F");
+        c.Texto(20, 205, "Corte; arriba (punteada) solo con doble parrilla", 9);
+    }
 }
+

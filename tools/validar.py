@@ -15798,7 +15798,7 @@ def v29_paquete_oficina() -> None:
 # Los iconos de la cinta de Revit, uno por boton (tools/make_iconos_cinta.py).
 ICONOS_CINTA = ("importar-etabs", "armar-modelo", "columna-acero", "columna-corte",
                 "viga-acero", "viga-corte", "armar-tipo", "corte-seccion",
-                "placa-base", "cimentacion", "soldar-viga", "soldar-columna", "encamisar", "armar-muros")
+                "placa-base", "cimentacion", "soldar-viga", "soldar-columna", "encamisar", "armar-muros", "armar-cimentacion")
 
 def v30_armado_por_tipo() -> None:
     print("\n[30] Revit: armar por tipo, todas las piezas de un jalon")
@@ -17154,6 +17154,16 @@ def v31_detalles_revit() -> None:
     check("conexiones: el extremo se mide en el centro de su cara, la I se busca en otra cara si esta recortada, y cortante en las dos caras",
           "Toca(cajasColumnas, marco.Origen, holgura)" in det and "perfil = MedirI(c, m0);" in det
           and "public bool CortanteDosCaras { get; set; }" in nuc)
+
+    check("placa de apoyo de viga de acero sobre muro, cabezal o columna de concreto",
+          "public static ResultadoDetalles PlacasDeViga(" in det and "Detallador.PlacasDeViga(doc, vigas" in com
+          and "public static CotasPlaca CotasDeApoyoDeViga(" in nuc)
+    check("conectar vigas: cabezales y columnas de concreto reciben la placa embebida, no la conexion de acero",
+          ".Where(Detallador.EsDeConcreto))" in com)
+    check("armar cimentacion: escrito en Revit o de la hoja de CadLink, nativo o como solidos",
+          "public sealed class ComandoArmarCimentacion" in com and "DeArchivo(doc, zapatas, dueno)" in com
+          and "Armado = ArmadoDe(" in app and "CadLink.Revit\\ArmadorDeZapatas.cs" in compila
+          and "typeof(ComandoArmarCimentacion).FullName" in apl)
 
     check("la capa de Revit de los detalles se compila contra los recortes",
           "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)

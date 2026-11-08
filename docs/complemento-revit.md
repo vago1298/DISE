@@ -627,6 +627,23 @@ Si ya había piezas elegidas al pulsar el botón, se usan esas; si no, el botón
   con OR, IR, canal o cualquier perfil. La sección es el triángulo del filete; si Revit no puede
   armarlo con ese contorno, sale cuadrada y se avisa.
 
+### Placa de apoyo de viga sobre muro o cabezal
+
+En **Placas base** también se pueden elegir **vigas de acero**. En cada extremo que se **apoya** en
+concreto —muro, cabezal, columna de concreto o zapata— va la placa con su cara de arriba en el patín
+de abajo: la viga no se mueve, el grout llena hasta el concreto y las anclas bajan a él. El patín se
+suelda a la placa. Si la viga llega al **costado** del muro o del cabezal, se avisa: eso es la placa
+embebida de **Conectar vigas**, que ahora también toma cabezales y columnas de concreto.
+
+### Armar cimentación
+
+Parrilla de abajo y, si se pide, la de arriba, en las dos direcciones y con sus patas. El armado se
+**escribe en el cuadro** o se **lee de la hoja de CadLink** (el `.cadlink-detalles.json` ya lleva las
+varillas de Zapatas Aisladas y Zapatas Corridas); las zapatas de CadLink toman su fila por su marca.
+«Largas» corren a lo largo del lado mayor. En zapatas de Revit van **varillas nativas**; en las de
+CadLink, que son DirectShape y Revit no acepta como anfitrión de armado, van **como sólidos** que se
+ven pero no se cuantifican.
+
 ### Los croquis de guía
 
 Cada cuadro trae a la derecha un croquis con una **letra roja** por medida; el renglón que la pide

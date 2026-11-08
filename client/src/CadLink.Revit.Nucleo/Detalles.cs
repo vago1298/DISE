@@ -170,6 +170,41 @@ public sealed class ZapataAisladaJson
     public bool DadoCircular { get; set; }
 
     public string Fc { get; set; } = string.Empty;
+
+    /// <summary>Las parrillas de la hoja. Null = la fila no trae armado.</summary>
+    public ArmadoZapataJson? Armado { get; set; }
+}
+
+/// <summary>Una capa de varillas de una parrilla: su varilla, su diametro y su separacion.</summary>
+public sealed class CapaZapataJson
+{
+    /// <summary>Como se escribio en la hoja: «#4». Solo para el informe.</summary>
+    public string Varilla { get; set; } = string.Empty;
+
+    public double DiametroM { get; set; }
+
+    public double SeparacionM { get; set; }
+}
+
+/// <summary>
+/// Las parrillas de una zapata. «Largas» corren a lo largo del lado MAYOR de la zapata y «Cortas» a
+/// lo largo del menor: asi no importa como este girada en Revit ni como se llamen sus lados.
+/// </summary>
+public sealed class ArmadoZapataJson
+{
+    public CapaZapataJson? InfLargas { get; set; }
+
+    public CapaZapataJson? InfCortas { get; set; }
+
+    /// <summary>La parrilla de arriba. Null = sin doble parrilla.</summary>
+    public CapaZapataJson? SupLargas { get; set; }
+
+    public CapaZapataJson? SupCortas { get; set; }
+
+    public double RecM { get; set; } = 0.05;
+
+    /// <summary>Las varillas doblan en sus puntas: las de abajo hacia arriba y las de arriba hacia abajo.</summary>
+    public bool Ganchos { get; set; } = true;
 }
 
 /// <summary>Una zapata corrida, con su contratrabe o su muro de enrase.</summary>
@@ -201,6 +236,9 @@ public sealed class ZapataCorridaJson
     public double EnraseM { get; set; }
 
     public string Fc { get; set; } = string.Empty;
+
+    /// <summary>Las parrillas de la hoja. Null = la fila no trae armado.</summary>
+    public ArmadoZapataJson? Armado { get; set; }
 }
 
 /// <summary>Leer y escribir el <c>.cadlink-detalles.json</c>.</summary>
@@ -310,7 +348,7 @@ public static class ArchivoDetalles
 /// momento o la placa embebida en el muro-, para que cambiar de una a otra quite la anterior.
 /// <c>SoldaduraColumna</c> es el filete de la base o de la cabeza de una columna.
 /// </remarks>
-public enum ClaseDetalle { Placa, Zapata, Corrida, Soldadura, SoldaduraColumna, Encamisado }
+public enum ClaseDetalle { Placa, Zapata, Corrida, Soldadura, SoldaduraColumna, Encamisado, PlacaViga, ArmadoZapata }
 
 /// <summary>
 /// La llave de lo que CadLink pone sobre una pieza del modelo: <c>CadLink|Placa|123456</c>.
@@ -528,6 +566,31 @@ public static class PlacaBase
 
         return new CotasPlaca(concreto, concreto + grout, concreto + grout + p.EspesorM);
     }
+
+    /// <summary>
+    /// La placa de APOYO de una viga sobre un muro o un cabezal: su cara de arriba en el patin de
+    /// abajo de la viga, que no se mueve.
+    /// </summary>
+    /// <remarks>
+    /// Si entre la placa y el concreto queda hueco, el grout lo llena -aunque mida mas que el de la
+    /// hoja-. Si la viga ya esta apoyada en el concreto, la placa y su grout se meten en el.
+    /// </remarks>
+    public static CotasPlaca CotasDeApoyoDeViga(PlacaBaseJson p, double fondoVigaM, double caraConcretoM)
+    {
+        var caraInf = fondoVigaM - p.EspesorM;
+        var conGrout = caraInf - Math.Max(0, p.GroutM);
+        var fondo = caraConcretoM < conGrout ? caraConcretoM : conGrout;
+
+        return new CotasPlaca(fondo, caraInf, fondoVigaM);
+    }
+
+    /// <summary>
+    /// ¿Se apoya la viga en ese concreto, o llega a su costado? Se apoya si la cara de arriba del
+    /// concreto esta bajo el patin de abajo -hasta 30 cm, lo que puede llenar un grout grueso o un
+    /// dado- o apenas por encima, porque la viga se modelo metida.
+    /// </summary>
+    public static bool SeApoya(double fondoVigaM, double caraConcretoM) =>
+        caraConcretoM <= fondoVigaM + 0.05 && caraConcretoM >= fondoVigaM - 0.30;
 
     /// <summary>
     /// De los apoyos que hay bajo la columna, la cara de arriba que le toca, o null si ninguno.
@@ -1167,6 +1230,110 @@ public static class Encamisado
         }
 
         return f;
+    }
+}
+
+/// <summary>Una capa de varillas de la parrilla, ya repartida, en los ejes de la zapata.</summary>
+/// <param name="Larga">Corre a lo largo del lado mayor.</param>
+/// <param name="Posiciones">Donde va cada varilla, a lo largo del OTRO lado, desde su orilla.</param>
+/// <param name="Z">La altura de su eje, desde el fondo de la zapata.</param>
+/// <param name="Desde">Donde empieza y termina, a lo largo de su lado.</param>
+/// <param name="Pata">Lo que mide la pata de cada punta. Cero = recta.</param>
+/// <param name="PataArriba">Las de abajo doblan hacia arriba; las de arriba, hacia abajo.</param>
+public sealed record CapaRepartida(
+    string Que, bool Larga, List<double> Posiciones, double Z, double Desde, double Hasta,
+    double Pata, bool PataArriba, double DiametroM, double SeparacionM);
+
+/// <summary>Las parrillas de una zapata, sin nada de Revit.</summary>
+public static class ArmadoZapata
+{
+    /// <summary>
+    /// Reparte las capas en una zapata de <paramref name="mayor"/> por <paramref name="menor"/> y
+    /// <paramref name="alto"/>. Abajo, las largas en el lecho de abajo y las cortas encima; arriba, al
+    /// reves: las cortas en el lecho de arriba y las largas debajo de ellas.
+    /// </summary>
+    public static List<CapaRepartida> Repartir(double mayor, double menor, double alto, ArmadoZapataJson a)
+    {
+        var res = new List<CapaRepartida>();
+        var rec = Math.Max(0, a.RecM);
+
+        double D(CapaZapataJson? c) => c is null || c.SeparacionM <= 0 ? 0 : Math.Max(0, c.DiametroM);
+
+        var dInfL = D(a.InfLargas);
+        var dInfC = D(a.InfCortas);
+        var dSupL = D(a.SupLargas);
+        var dSupC = D(a.SupCortas);
+
+        // La pata llega hasta la otra parrilla, o hasta el recubrimiento de arriba si no hay.
+        var libre = alto - (2 * rec);
+
+        void Capa(string que, CapaZapataJson? c, bool larga, double z, bool arriba, double estorbo)
+        {
+            if (c is null || c.SeparacionM <= 0 || c.DiametroM <= 0)
+            {
+                return;
+            }
+
+            var d = c.DiametroM;
+            var suLado = larga ? mayor : menor;
+            var otroLado = larga ? menor : mayor;
+            var desde = rec + (d / 2);
+            var hasta = suLado - rec - (d / 2);
+
+            if (hasta - desde <= 0.05 || otroLado - (2 * rec) - d <= 0)
+            {
+                return;
+            }
+
+            var pata = a.Ganchos ? Math.Max(0, libre - estorbo - d) : 0;
+
+            res.Add(new CapaRepartida(que, larga, Posiciones(otroLado, rec, d, c.SeparacionM), z, desde, hasta,
+                pata, arriba, d, c.SeparacionM));
+        }
+
+        Capa("parrilla inferior, varillas largas", a.InfLargas, true, rec + (dInfL / 2), true, dSupC + dSupL);
+        Capa("parrilla inferior, varillas cortas", a.InfCortas, false, rec + dInfL + (dInfC / 2), true, dSupC + dSupL);
+        Capa("parrilla superior, varillas cortas", a.SupCortas, false, alto - rec - (dSupC / 2), false, dInfL + dInfC);
+        Capa("parrilla superior, varillas largas", a.SupLargas, true, alto - rec - dSupC - (dSupL / 2), false, dInfL + dInfC);
+
+        return res;
+    }
+
+    /// <summary>
+    /// Las posiciones a lo ancho de un lado: de recubrimiento a recubrimiento, a la separacion pedida
+    /// o menos, repartidas parejo -la primera y la ultima justo en el recubrimiento-.
+    /// </summary>
+    public static List<double> Posiciones(double lado, double rec, double d, double sep)
+    {
+        var a = rec + (d / 2);
+        var b = lado - rec - (d / 2);
+
+        if (b <= a)
+        {
+            return new List<double> { lado / 2 };
+        }
+
+        var n = 1 + (int)Math.Ceiling(((b - a) / sep) - 1e-9);
+        n = Math.Max(2, n);
+
+        return Enumerable.Range(0, n).Select(i => a + (i * (b - a) / (n - 1))).ToList();
+    }
+
+    /// <summary>La separacion «15» o «15-20» de la hoja, en metros: el primer numero.</summary>
+    public static double Separacion(string? texto)
+    {
+        var t = (texto ?? string.Empty).Trim();
+        var i = 0;
+
+        while (i < t.Length && (char.IsDigit(t[i]) || t[i] == '.' || t[i] == ','))
+        {
+            i++;
+        }
+
+        return double.TryParse(t[..i].Replace(',', '.'), System.Globalization.NumberStyles.Float,
+                   System.Globalization.CultureInfo.InvariantCulture, out var cm) && cm > 0
+            ? cm / 100
+            : 0;
     }
 }
 

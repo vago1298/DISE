@@ -420,7 +420,8 @@ public enum BuiltInCategory
     // Las placas, las zapatas y las soldaduras, como DirectShape.
     OST_StructConnections,
     OST_StructuralFoundation,
-    OST_GenericModel
+    OST_GenericModel,
+    OST_Rebar
 }
 
 public enum BuiltInParameter

@@ -171,6 +171,15 @@ public sealed class Aplicacion : IExternalApplication
             + "Los muros que no sean estructurales de concreto se saltan. Volver a armar reemplaza el "
             + "armado de CadLink.",
             "armar-muros");
+
+        Boton(detalles, dll, "CadLinkArmarCimentacion", "Armar\ncimentación", typeof(ComandoArmarCimentacion).FullName,
+            "Pone las parrillas de las zapatas elegidas, escritas en Revit o leidas de la hoja de CadLink.",
+            "Parrilla de abajo y, si se pide, la de arriba, en las dos direcciones, con sus patas. El armado "
+            + "se escribe en el cuadro o se lee del .cadlink-detalles.json; las zapatas de CadLink toman su "
+            + "fila por su marca.\n\n"
+            + "En las zapatas de Revit van varillas nativas, que se cuantifican. En las de CadLink -DirectShape, "
+            + "que Revit no acepta como anfitrion de armado- van como solidos que se ven pero no se cuantifican.",
+            "armar-cimentacion");
     }
 
     private static string TextoAcero(string elemento) =>
@@ -234,6 +243,7 @@ public sealed class Aplicacion : IExternalApplication
         "soldar-columna" => (Imagen("CadLink.Revit.soldar-columna-32.png"), Imagen("CadLink.Revit.soldar-columna-16.png")),
         "encamisar" => (Imagen("CadLink.Revit.encamisar-32.png"), Imagen("CadLink.Revit.encamisar-16.png")),
         "armar-muros" => (Imagen("CadLink.Revit.armar-muros-32.png"), Imagen("CadLink.Revit.armar-muros-16.png")),
+        "armar-cimentacion" => (Imagen("CadLink.Revit.armar-cimentacion-32.png"), Imagen("CadLink.Revit.armar-cimentacion-16.png")),
         _ => (null, null)
     };
 

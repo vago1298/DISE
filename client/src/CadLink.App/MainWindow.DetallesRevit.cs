@@ -251,8 +251,58 @@ public partial class MainWindow
         DadoXM = z.AnchoDadoCm / 100,
         DadoYM = z.AnchoDadoCm / 100,
         DadoCircular = z.DadoCircular,
-        Fc = z.Fc
+        Fc = z.Fc,
+
+        // VarInf corre a lo LARGO (LargoM) y VarInfTrans a lo ancho. En el archivo van como
+        // «largas» -a lo largo del lado MAYOR- y «cortas», asi que si el largo es el lado menor se
+        // cambian.
+        Armado = ArmadoDe(z.LargoM >= z.AnchoM,
+            z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans,
+            z.DobleParrilla, z.VarSup, z.SepSup, z.VarSupTrans, z.SepSupTrans, z.RecM)
     };
+
+    /// <summary>
+    /// Las parrillas de una fila, en metros. <paramref name="primeraEsLarga"/>: la primera varilla de
+    /// cada parrilla corre a lo largo del lado mayor. Null si la fila no trae ninguna varilla valida.
+    /// </summary>
+    private static ArmadoZapataJson? ArmadoDe(
+        bool primeraEsLarga, string var1, string sep1, string var2, string sep2,
+        bool doble, string varSup1, string sepSup1, string varSup2, string sepSup2, double rec)
+    {
+        CapaZapataJson? Capa(string varilla, string sep)
+        {
+            var s = ArmadoZapata.Separacion(sep);
+
+            return Varilla.TryDiametroCm(varilla, out var cm) && s > 0
+                ? new CapaZapataJson { Varilla = Varilla.Normalizar(varilla), DiametroM = cm / 100, SeparacionM = s }
+                : null;
+        }
+
+        var a = Capa(var1, sep1);
+        var b = Capa(var2, sep2);
+
+        if (a is null && b is null)
+        {
+            return null;
+        }
+
+        var armado = new ArmadoZapataJson
+        {
+            InfLargas = primeraEsLarga ? a : b,
+            InfCortas = primeraEsLarga ? b : a,
+            RecM = rec > 0 ? rec : 0.05
+        };
+
+        if (doble)
+        {
+            var c = Capa(varSup1, sepSup1);
+            var d = Capa(varSup2, sepSup2);
+            armado.SupLargas = primeraEsLarga ? c : d;
+            armado.SupCortas = primeraEsLarga ? d : c;
+        }
+
+        return armado;
+    }
 
     /// <summary>
     /// La zapata corrida, con las medidas de su contratrabe tomadas de la hoja de secciones de
@@ -268,7 +318,13 @@ public partial class MainWindow
             AnchoM = z.AnchoM,
             EspesorM = z.EspesorM,
             ProfundidadM = z.ProfundidadM,
-            Fc = z.Fc
+            Fc = z.Fc,
+
+            // En la corrida, VarInf corre en el plano del corte -a lo ancho- y VarInfTrans a lo largo
+            // del muro, que es el lado mayor.
+            Armado = ArmadoDe(false,
+                z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans,
+                z.DobleParrilla, z.VarSup, z.SepSup, z.VarSupTrans, z.SepSupTrans, z.RecM)
         };
 
         if (z.HayContratrabe)

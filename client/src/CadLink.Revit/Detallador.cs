@@ -183,120 +183,13 @@ internal static class Detallador
                     var caraSup = Unidades.AInternas(cotas.CaraSuperiorM);
                     var centro = new XYZ(m.Centro.X, m.Centro.Y, caraInf);
 
-                    var planta = Solidos.Rectangulo(
-                        centro, ex, ey, Unidades.AInternas(placa.LadoXM), Unidades.AInternas(placa.LadoYM));
-
-                    // ---- La placa, con sus barrenos ----
-                    var solidoPlaca = Solidos.Prisma(planta, caraInf, caraSup, acero);
-                    var piezasAncla = new List<GeometryObject>();
-                    var espesor = caraSup - caraInf;
-
-                    // ---- La contraplaca, al fondo de las anclas: la placa misma, con su tuerca abajo ----
-                    Solid? contraplaca = null;
-                    var fondoAnclas = placa.Anclas
-                        .Where(a => a.PuntaM - a.FondoM > 0.001)
-                        .Select(a => caraInf + Unidades.AInternas(a.FondoM))
-                        .DefaultIfEmpty(double.NaN)
-                        .Max();
-                    var tuercaAbajo = Unidades.AInternas(placa.Anclas.Select(a => a.TuercaAltoM).DefaultIfEmpty(0).Max());
-                    var caraContra = fondoAnclas + tuercaAbajo;
-
-                    if (o.Contraplaca && !double.IsNaN(fondoAnclas))
-                    {
-                        contraplaca = Solidos.Prisma(planta, caraContra, caraContra + espesor, acero);
-                    }
-
-                    foreach (var a in placa.Anclas)
-                    {
-                        var eje = centro + (ex * Unidades.AInternas(a.X)) + (ey * Unidades.AInternas(a.Y));
-                        var radio = Unidades.AInternas(a.DiametroM / 2);
-                        var radioBarreno = Unidades.AInternas((a.AgujeroM > 0 ? a.AgujeroM : a.DiametroM) / 2);
-
-                        // El barreno atraviesa la placa con holgura arriba y abajo, para que la
-                        // resta no deje una pelicula de espesor cero.
-                        var holgura = Unidades.AInternas(0.002);
-                        var barreno = Solidos.Cilindro(
-                            new XYZ(eje.X, eje.Y, caraInf - holgura), XYZ.BasisZ,
-                            (caraSup - caraInf) + (2 * holgura), radioBarreno, acero);
-                        solidoPlaca = Solidos.Restar(solidoPlaca, barreno);
-
-                        if (contraplaca is not null)
-                        {
-                            contraplaca = Solidos.Restar(contraplaca, Solidos.Cilindro(
-                                new XYZ(eje.X, eje.Y, caraContra - holgura), XYZ.BasisZ,
-                                espesor + (2 * holgura), radioBarreno, acero));
-                        }
-
-                        // Sin alzado -ni ahogo ni longitud en la hoja- el detalle de AutoCAD no
-                        // dibuja el vastago, y aqui tampoco se modela: queda el barreno.
-                        if (radio <= 0 || a.PuntaM - a.FondoM <= 0.001)
-                        {
-                            continue;
-                        }
-
-                        // ---- El ancla con su codo y su pata, HACIA EL CENTRO de la placa ----
-                        //
-                        // Hacia el centro y no a lo largo de su hilera: asi la pata se mete en el
-                        // nucleo del dado y nunca se sale por una de sus caras. Con contraplaca va
-                        // recta: la contraplaca ya ancla.
-                        var punta = new XYZ(eje.X, eje.Y, caraInf + Unidades.AInternas(a.PuntaM));
-                        var hacia = (ex * -a.X) + (ey * -a.Y);
-                        hacia = hacia.GetLength() < 1e-9
-                            ? ((ex * a.PataX) + (ey * a.PataY)).GetLength() < 1e-9 ? ex : ((ex * a.PataX) + (ey * a.PataY)).Normalize()
-                            : hacia.Normalize();
-                        var pata = contraplaca is null ? Unidades.AInternas(a.PataM) : 0;
-
-                        foreach (var pieza in Solidos.AnclaDoblada(
-                                     punta, caraInf + Unidades.AInternas(a.FondoM), hacia,
-                                     pata, Unidades.AInternas(a.RadioDobleM), radio, anclas))
-                        {
-                            piezasAncla.Add(pieza);
-                        }
-
-                        // La tuerca de abajo de la contraplaca, colgando de su cara de abajo.
-                        if (contraplaca is not null && a.TuercaM > 0 && a.TuercaAltoM > 0)
-                        {
-                            piezasAncla.Add(Solidos.Tuerca(
-                                new XYZ(eje.X, eje.Y, caraContra), XYZ.BasisZ.Negate(), ex,
-                                Unidades.AInternas(a.TuercaM), Unidades.AInternas(a.TuercaAltoM), radio, anclas));
-                        }
-
-                        // ---- La tuerca sobre la placa, con su chaflan y su barreno ----
-                        if (a.TuercaM > 0 && a.TuercaAltoM > 0)
-                        {
-                            piezasAncla.Add(Solidos.Tuerca(
-                                new XYZ(eje.X, eje.Y, caraSup), XYZ.BasisZ, ex, Unidades.AInternas(a.TuercaM),
-                                Unidades.AInternas(a.TuercaAltoM), radio, anclas));
-                        }
-                    }
-
-                    // ---- El grout, de la placa al dado ----
-                    Solid? solidoGrout = caraInf - fondoGrout > Unidades.AInternas(0.0005)
-                        ? Solidos.Prisma(planta, fondoGrout, caraInf, grout)
+                    var contornoSoldadura = o.SoldarColumna
+                        ? CurveLoop.CreateViaTransform(
+                            m.Contorno, Transform.CreateTranslation(new XYZ(0, 0, caraSup - m.BaseZ)))
                         : null;
 
-                    if (solidoGrout is null && o.SobreElApoyo)
-                    {
-                        r.Avisos.Add($"«{nombre}»: Sin grout: la placa se apoya directo en el concreto. Escribe su espesor en el cuadro.");
-                    }
-
-                    // ---- La soldadura de la columna, todo alrededor, sobre la cara de la placa ----
-                    Solid? filete = null;
-
-                    if (o.SoldarColumna && placa.SoldaduraM > 0)
-                    {
-                        var contorno = CurveLoop.CreateViaTransform(
-                            m.Contorno, Transform.CreateTranslation(new XYZ(0, 0, caraSup - m.BaseZ)));
-
-                        filete = Solidos.Filete(
-                            contorno, XYZ.BasisZ, Unidades.AInternas(placa.SoldaduraM), soldadura, out var cuadrado);
-
-                        if (cuadrado)
-                        {
-                            r.Avisos.Add($"«{nombre}»: Soldadura de seccion cuadrada. Revit no pudo hacer el "
-                                         + "triangulo del filete con el contorno de la columna.");
-                        }
-                    }
+                    var pz = PiezasDePlaca(placa, centro, ex, ey, caraInf, caraSup, fondoGrout,
+                        contornoSoldadura, o, acero, anclas, soldadura, grout, r, nombre);
 
                     // ---- Ya todo calculado: se cambia lo anterior y se crea ----
                     var llave = LlaveDetalle.De(ClaseDetalle.Placa, col.Id.Value);
@@ -306,40 +199,7 @@ internal static class Detallador
                         r.Reemplazadas++;
                     }
 
-                    var marca = placa.Marca;
-                    var texto = $"CadLink: placa base {placa.Marca}";
-
-                    Solidos.Forma(doc, categoria, new List<GeometryObject> { solidoPlaca }, llave,
-                        $"{texto} {TextoDeMedidas(placa)}", marca);
-
-                    // Las anclas y la contraplaca van como PARTE de la llave: se borran con la placa,
-                    // pero no cuentan para saber donde termina el dado.
-                    var llaveAnclas = llave + "|anclas";
-
-                    if (piezasAncla.Count > 0)
-                    {
-                        Solidos.Forma(doc, categoria, piezasAncla, llaveAnclas,
-                            $"{texto}, {placa.Anclas.Count} anclas", marca);
-                    }
-
-                    if (solidoGrout is not null)
-                    {
-                        Solidos.Forma(doc, categoria, new List<GeometryObject> { solidoGrout }, llave,
-                            $"{texto}, grout {Cm(placa.GroutM)} cm", marca);
-                    }
-
-                    if (contraplaca is not null)
-                    {
-                        Solidos.Forma(doc, categoria, new List<GeometryObject> { contraplaca }, llaveAnclas,
-                            $"{texto}, contraplaca", marca);
-                    }
-
-                    if (filete is not null)
-                    {
-                        Solidos.Forma(doc, categoria, new List<GeometryObject> { filete }, llave,
-                            $"{texto}, filete {Mm(placa.SoldaduraM)} mm todo alrededor {placa.Electrodo}".TrimEnd(),
-                            marca);
-                    }
+                    CrearPlaca(doc, categoria, llave, placa, pz, "placa base");
 
                     // ---- Sobre el apoyo: la columna arranca en la cara de la placa ----
                     var subir = caraSup - m.BaseZ;
@@ -366,6 +226,396 @@ internal static class Detallador
                 }
             }
         });
+    }
+
+    // ======================================================================
+    //  PLACA DE APOYO DE VIGA SOBRE MURO O CABEZAL
+    // ======================================================================
+
+    /// <summary>
+    /// La placa bajo cada extremo de viga de acero que se APOYA en concreto: un muro, un cabezal,
+    /// una columna de concreto o una zapata.
+    /// </summary>
+    /// <remarks>
+    /// La viga no se mueve: la placa queda con su cara de arriba en el patin de abajo, el grout llena
+    /// hasta el concreto y las anclas bajan a el. El patin se suelda a la placa alrededor de lo que
+    /// toca. La X de la placa va a lo largo de la viga.
+    /// </remarks>
+    public static ResultadoDetalles PlacasDeViga(
+        Document doc, IReadOnlyList<FamilyInstance> vigas, PlacaBaseJson placa, OpcionesDetalle o)
+    {
+        return EnTransaccion(doc, "Placas de apoyo de vigas de CadLink", r =>
+        {
+            var acero = Solidos.Acero(doc);
+            var anclas = Solidos.Anclas(doc);
+            var soldadura = Solidos.Soldadura(doc);
+            var grout = Solidos.Grout(doc);
+            var categoria = Solidos.Categoria(
+                doc, BuiltInCategory.OST_StructConnections, BuiltInCategory.OST_GenericModel);
+
+            if (o.GroutM is double grueso)
+            {
+                placa.GroutM = Math.Max(0, grueso);
+            }
+
+            var apoyos = ApoyosDeConcreto(doc);
+
+            foreach (var viga in vigas)
+            {
+                var nombre = $"viga {viga.Id.Value}";
+
+                try
+                {
+                    if (viga.Location is not LocationCurve lc || lc.Curve is not Line linea)
+                    {
+                        r.Errores.Add($"«{nombre}»: Viga curva. Solo se ponen placas a vigas rectas.");
+                        continue;
+                    }
+
+                    var p0 = linea.GetEndPoint(0);
+                    var p1 = linea.GetEndPoint(1);
+                    var eje = new XYZ(p1.X - p0.X, p1.Y - p0.Y, 0);
+
+                    if (eje.GetLength() < 1e-6)
+                    {
+                        r.Errores.Add($"«{nombre}»: Es vertical; para una columna usa la placa base de columna.");
+                        continue;
+                    }
+
+                    eje = eje.Normalize();
+                    var lado = XYZ.BasisZ.CrossProduct(eje).Normalize();
+                    var puntos = Geometria.PuntosDelSolido(viga);
+
+                    if (puntos.Count < 4)
+                    {
+                        r.Errores.Add($"«{nombre}»: Sin geometria.");
+                        continue;
+                    }
+
+                    var origen = new XYZ(p0.X, p0.Y, 0);
+                    var t0 = puntos.Min(q => (q - origen).DotProduct(eje));
+                    var t1 = puntos.Max(q => (q - origen).DotProduct(eje));
+                    var u0 = puntos.Min(q => (q - origen).DotProduct(lado));
+                    var u1 = puntos.Max(q => (q - origen).DotProduct(lado));
+                    var fondo = puntos.Min(q => q.Z);
+                    var hechos = 0;
+
+                    for (var extremo = 0; extremo <= 1; extremo++)
+                    {
+                        var donde = $"«{nombre}, extremo {extremo + 1}»";
+                        var punta = origen + (eje * (extremo == 0 ? t0 : t1)) + (lado * ((u0 + u1) / 2));
+
+                        // El concreto de ese extremo: el de cara de arriba mas alta que todavia quede
+                        // bajo el patin de abajo.
+                        (ElementId Id, double S0, double S1, double Cara)? mejor = null;
+                        var alCostado = false;
+
+                        foreach (var (id, caja) in apoyos)
+                        {
+                            if (id == viga.Id || !Contiene(caja, punta, Unidades.AInternas(0.02)))
+                            {
+                                continue;
+                            }
+
+                            var cara = Unidades.AMetros(caja.Max.Z);
+
+                            if (!PlacaBase.SeApoya(Unidades.AMetros(fondo), cara))
+                            {
+                                alCostado |= cara > Unidades.AMetros(fondo) + 0.05 && caja.Min.Z < fondo;
+                                continue;
+                            }
+
+                            var esquinas = new[]
+                            {
+                                caja.Min, new XYZ(caja.Max.X, caja.Min.Y, 0), caja.Max, new XYZ(caja.Min.X, caja.Max.Y, 0)
+                            };
+                            var s0 = esquinas.Min(q => (new XYZ(q.X, q.Y, 0) - origen).DotProduct(eje));
+                            var s1 = esquinas.Max(q => (new XYZ(q.X, q.Y, 0) - origen).DotProduct(eje));
+
+                            if (mejor is null || cara > mejor.Value.Cara)
+                            {
+                                mejor = (id, s0, s1, cara);
+                            }
+                        }
+
+                        if (mejor is null)
+                        {
+                            if (alCostado)
+                            {
+                                r.Avisos.Add($"{donde}: Llega al costado del muro o cabezal, no encima; para eso usa «Conectar vigas» (placa embebida).");
+                            }
+
+                            continue;
+                        }
+
+                        // A lo largo de la viga, la placa va en el tramo donde viga y concreto se enciman.
+                        var a = Math.Max(mejor.Value.S0, t0);
+                        var b = Math.Min(mejor.Value.S1, t1);
+
+                        if (b - a < Unidades.AInternas(0.02))
+                        {
+                            continue;
+                        }
+
+                        var cotas = PlacaBase.CotasDeApoyoDeViga(placa, Unidades.AMetros(fondo), mejor.Value.Cara);
+                        var caraInf = Unidades.AInternas(cotas.CaraInferiorM);
+                        var caraSup = Unidades.AInternas(cotas.CaraSuperiorM);
+                        var fondoGrout = Unidades.AInternas(cotas.FondoGroutM);
+
+                        var centro = origen + (eje * ((a + b) / 2)) + (lado * ((u0 + u1) / 2));
+                        centro = new XYZ(centro.X, centro.Y, caraInf);
+
+                        var (ex, ey) = o.Girar ? (lado, eje.Negate()) : (eje, lado);
+
+                        // El filete del patin a la placa: alrededor del rectangulo que el patin le
+                        // toca, del ancho de la viga y del largo de la placa o del apoyo.
+                        CurveLoop? contorno = null;
+
+                        if (o.SoldarColumna && placa.SoldaduraM > 0)
+                        {
+                            var largo = Math.Min(b - a, Unidades.AInternas(o.Girar ? placa.LadoYM : placa.LadoXM));
+                            contorno = Solidos.Poligono(Solidos.Rectangulo(
+                                new XYZ(centro.X, centro.Y, caraSup), eje, lado, largo, u1 - u0));
+                        }
+
+                        var pz = PiezasDePlaca(placa, centro, ex, ey, caraInf, caraSup, fondoGrout,
+                            contorno, o, acero, anclas, soldadura, grout, r, donde.Trim('«', '»'));
+
+                        var bajoElPatin = placa.Anclas.Count(q =>
+                        {
+                            var enPlanta = centro + (ex * Unidades.AInternas(q.X)) + (ey * Unidades.AInternas(q.Y));
+                            var u = (enPlanta - origen).DotProduct(lado);
+                            return u > u0 && u < u1;
+                        });
+
+                        if (bajoElPatin > 0)
+                        {
+                            r.Avisos.Add($"{donde}: {bajoElPatin} ancla(s) quedan bajo el patin de la viga; su tuerca choca con el. Usa una placa mas ancha que el patin.");
+                        }
+
+                        var llave = LlaveDetalle.De(ClaseDetalle.PlacaViga, viga.Id.Value, extremo);
+
+                        if (Solidos.Borrar(doc, llave) > 0)
+                        {
+                            r.Reemplazadas++;
+                        }
+
+                        CrearPlaca(doc, categoria, llave, placa, pz, "placa de apoyo");
+                        hechos++;
+                    }
+
+                    if (hechos > 0)
+                    {
+                        r.Hechas++;
+                    }
+                    else
+                    {
+                        r.Avisos.Add($"«{nombre}»: Ningun extremo se apoya en concreto: muro, cabezal, columna de concreto o zapata.");
+                    }
+                }
+                catch (Exception e)
+                {
+                    r.Errores.Add($"«{nombre}»: No se pudo poner la placa. {e.Message}");
+                }
+            }
+        });
+    }
+
+    /// <summary>
+    /// El concreto en que se puede apoyar una viga: muros, zapatas, y columnas y vigas de concreto
+    /// -los cabezales-.
+    /// </summary>
+    public static List<(ElementId Id, BoundingBoxXYZ Caja)> ApoyosDeConcreto(Document doc)
+    {
+        var res = new List<(ElementId, BoundingBoxXYZ)>();
+
+        foreach (var c in new[]
+                 {
+                     BuiltInCategory.OST_Walls, BuiltInCategory.OST_StructuralFoundation,
+                     BuiltInCategory.OST_StructuralColumns, BuiltInCategory.OST_StructuralFraming
+                 })
+        {
+            foreach (var e in new FilteredElementCollector(doc).OfCategory(c).WhereElementIsNotElementType())
+            {
+                var concreto = e is not FamilyInstance fi || EsDeConcreto(fi);
+
+                if (concreto && e is not DirectShape && e.get_BoundingBox(null) is { } caja)
+                {
+                    res.Add((e.Id, caja));
+                }
+            }
+        }
+
+        return res;
+    }
+
+    /// <summary>Los solidos de una placa base ya calculados, antes de crear nada.</summary>
+    private sealed record PiezasPlaca(
+        Solid Placa, List<GeometryObject> Anclas, Solid? Grout, Solid? Contraplaca, Solid? Filete);
+
+    /// <summary>
+    /// La placa con sus barrenos, las anclas con su codo y sus tuercas, el grout, la contraplaca y
+    /// el filete del perfil. La comparten la placa base de columna y la placa de apoyo de viga.
+    /// </summary>
+    /// <param name="contornoSoldadura">El paño del perfil sobre la cara de la placa. Null = sin soldar.</param>
+    private static PiezasPlaca PiezasDePlaca(
+        PlacaBaseJson placa, XYZ centro, XYZ ex, XYZ ey, double caraInf, double caraSup, double fondoGrout,
+        CurveLoop? contornoSoldadura, OpcionesDetalle o, ElementId acero, ElementId anclas,
+        ElementId soldadura, ElementId grout, ResultadoDetalles r, string nombre)
+    {
+            var planta = Solidos.Rectangulo(
+                centro, ex, ey, Unidades.AInternas(placa.LadoXM), Unidades.AInternas(placa.LadoYM));
+
+            // ---- La placa, con sus barrenos ----
+            var solidoPlaca = Solidos.Prisma(planta, caraInf, caraSup, acero);
+            var piezasAncla = new List<GeometryObject>();
+            var espesor = caraSup - caraInf;
+
+            // ---- La contraplaca, al fondo de las anclas: la placa misma, con su tuerca abajo ----
+            Solid? contraplaca = null;
+            var fondoAnclas = placa.Anclas
+                .Where(a => a.PuntaM - a.FondoM > 0.001)
+                .Select(a => caraInf + Unidades.AInternas(a.FondoM))
+                .DefaultIfEmpty(double.NaN)
+                .Max();
+            var tuercaAbajo = Unidades.AInternas(placa.Anclas.Select(a => a.TuercaAltoM).DefaultIfEmpty(0).Max());
+            var caraContra = fondoAnclas + tuercaAbajo;
+
+            if (o.Contraplaca && !double.IsNaN(fondoAnclas))
+            {
+                contraplaca = Solidos.Prisma(planta, caraContra, caraContra + espesor, acero);
+            }
+
+            foreach (var a in placa.Anclas)
+            {
+                var eje = centro + (ex * Unidades.AInternas(a.X)) + (ey * Unidades.AInternas(a.Y));
+                var radio = Unidades.AInternas(a.DiametroM / 2);
+                var radioBarreno = Unidades.AInternas((a.AgujeroM > 0 ? a.AgujeroM : a.DiametroM) / 2);
+
+                // El barreno atraviesa la placa con holgura arriba y abajo, para que la
+                // resta no deje una pelicula de espesor cero.
+                var holgura = Unidades.AInternas(0.002);
+                var barreno = Solidos.Cilindro(
+                    new XYZ(eje.X, eje.Y, caraInf - holgura), XYZ.BasisZ,
+                    (caraSup - caraInf) + (2 * holgura), radioBarreno, acero);
+                solidoPlaca = Solidos.Restar(solidoPlaca, barreno);
+
+                if (contraplaca is not null)
+                {
+                    contraplaca = Solidos.Restar(contraplaca, Solidos.Cilindro(
+                        new XYZ(eje.X, eje.Y, caraContra - holgura), XYZ.BasisZ,
+                        espesor + (2 * holgura), radioBarreno, acero));
+                }
+
+                // Sin alzado -ni ahogo ni longitud en la hoja- el detalle de AutoCAD no
+                // dibuja el vastago, y aqui tampoco se modela: queda el barreno.
+                if (radio <= 0 || a.PuntaM - a.FondoM <= 0.001)
+                {
+                    continue;
+                }
+
+                // ---- El ancla con su codo y su pata, HACIA EL CENTRO de la placa ----
+                //
+                // Hacia el centro y no a lo largo de su hilera: asi la pata se mete en el
+                // nucleo del dado y nunca se sale por una de sus caras. Con contraplaca va
+                // recta: la contraplaca ya ancla.
+                var punta = new XYZ(eje.X, eje.Y, caraInf + Unidades.AInternas(a.PuntaM));
+                var hacia = (ex * -a.X) + (ey * -a.Y);
+                hacia = hacia.GetLength() < 1e-9
+                    ? ((ex * a.PataX) + (ey * a.PataY)).GetLength() < 1e-9 ? ex : ((ex * a.PataX) + (ey * a.PataY)).Normalize()
+                    : hacia.Normalize();
+                var pata = contraplaca is null ? Unidades.AInternas(a.PataM) : 0;
+
+                foreach (var pieza in Solidos.AnclaDoblada(
+                             punta, caraInf + Unidades.AInternas(a.FondoM), hacia,
+                             pata, Unidades.AInternas(a.RadioDobleM), radio, anclas))
+                {
+                    piezasAncla.Add(pieza);
+                }
+
+                // La tuerca de abajo de la contraplaca, colgando de su cara de abajo.
+                if (contraplaca is not null && a.TuercaM > 0 && a.TuercaAltoM > 0)
+                {
+                    piezasAncla.Add(Solidos.Tuerca(
+                        new XYZ(eje.X, eje.Y, caraContra), XYZ.BasisZ.Negate(), ex,
+                        Unidades.AInternas(a.TuercaM), Unidades.AInternas(a.TuercaAltoM), radio, anclas));
+                }
+
+                // ---- La tuerca sobre la placa, con su chaflan y su barreno ----
+                if (a.TuercaM > 0 && a.TuercaAltoM > 0)
+                {
+                    piezasAncla.Add(Solidos.Tuerca(
+                        new XYZ(eje.X, eje.Y, caraSup), XYZ.BasisZ, ex, Unidades.AInternas(a.TuercaM),
+                        Unidades.AInternas(a.TuercaAltoM), radio, anclas));
+                }
+            }
+
+            // ---- El grout, de la placa al dado ----
+            Solid? solidoGrout = caraInf - fondoGrout > Unidades.AInternas(0.0005)
+                ? Solidos.Prisma(planta, fondoGrout, caraInf, grout)
+                : null;
+
+            if (solidoGrout is null && o.SobreElApoyo)
+            {
+                r.Avisos.Add($"«{nombre}»: Sin grout: la placa se apoya directo en el concreto. Escribe su espesor en el cuadro.");
+            }
+
+            // ---- La soldadura de la columna, todo alrededor, sobre la cara de la placa ----
+            Solid? filete = null;
+
+            if (contornoSoldadura is not null && placa.SoldaduraM > 0)
+            {
+                filete = Solidos.Filete(
+                    contornoSoldadura, XYZ.BasisZ, Unidades.AInternas(placa.SoldaduraM), soldadura, out var cuadrado);
+
+                if (cuadrado)
+                {
+                    r.Avisos.Add($"«{nombre}»: Soldadura de seccion cuadrada. Revit no pudo hacer el "
+                                 + "triangulo del filete con el contorno del perfil.");
+                }
+            }
+
+        return new PiezasPlaca(solidoPlaca, piezasAncla, solidoGrout, contraplaca, filete);
+    }
+
+    /// <summary>Crea las formas de la placa: la placa, las anclas, el grout, la contraplaca y el filete.</summary>
+    private static void CrearPlaca(
+        Document doc, ElementId categoria, string llave, PlacaBaseJson placa, PiezasPlaca pz, string que)
+    {
+            var marca = placa.Marca;
+            var texto = $"CadLink: {que} {placa.Marca}";
+
+            Solidos.Forma(doc, categoria, new List<GeometryObject> { pz.Placa }, llave,
+                $"{texto} {TextoDeMedidas(placa)}", marca);
+
+            // Las anclas y la contraplaca van como PARTE de la llave: se borran con la placa,
+            // pero no cuentan para saber donde termina el dado.
+            var llaveAnclas = llave + "|anclas";
+
+            if (pz.Anclas.Count > 0)
+            {
+                Solidos.Forma(doc, categoria, pz.Anclas, llaveAnclas,
+                    $"{texto}, {placa.Anclas.Count} anclas", marca);
+            }
+
+            if (pz.Grout is not null)
+            {
+                Solidos.Forma(doc, categoria, new List<GeometryObject> { pz.Grout }, llave,
+                    $"{texto}, grout {Cm(placa.GroutM)} cm", marca);
+            }
+
+            if (pz.Contraplaca is not null)
+            {
+                Solidos.Forma(doc, categoria, new List<GeometryObject> { pz.Contraplaca }, llaveAnclas,
+                    $"{texto}, contraplaca", marca);
+            }
+
+            if (pz.Filete is not null)
+            {
+                Solidos.Forma(doc, categoria, new List<GeometryObject> { pz.Filete }, llave,
+                    $"{texto}, filete {Mm(placa.SoldaduraM)} mm todo alrededor {placa.Electrodo}".TrimEnd(),
+                    marca);
+            }
     }
 
     /// <summary>

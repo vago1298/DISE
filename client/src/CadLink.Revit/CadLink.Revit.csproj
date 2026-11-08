@@ -186,6 +186,14 @@
     <EmbeddedResource Include="Assets\armar-muros-16.png">
       <LogicalName>CadLink.Revit.armar-muros-16.png</LogicalName>
     </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\armar-cimentacion-32.png">
+      <LogicalName>CadLink.Revit.armar-cimentacion-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\armar-cimentacion-16.png">
+      <LogicalName>CadLink.Revit.armar-cimentacion-16.png</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <PropertyGroup>
