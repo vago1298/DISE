@@ -40,7 +40,11 @@ public sealed class ComandoPlacasBase : IExternalCommand
         // La placa es de la pieza de ACERO; el concreto en que se apoya -dado, muro, cabezal- se
         // encuentra solo. Elegir con ventana se lleva tambien el concreto, y se salta.
         var deAcero = elegidas.Where(c => !Detallador.EsDeConcreto(c)).ToList();
-        var columnas = deAcero.Where(c => c.Category?.BuiltInCategory == BuiltInCategory.OST_StructuralColumns).ToList();
+
+        // Las columnas tienen que ser de ACERO de verdad: un castillo con material generico no dice
+        // que es de concreto, y recibia una placa base de columna en vez de servir de apoyo a la viga.
+        var columnas = deAcero.Where(c => c.Category?.BuiltInCategory == BuiltInCategory.OST_StructuralColumns
+                                          && Detallador.EsMetalOMadera(c)).ToList();
         var vigas = deAcero.Where(c => c.Category?.BuiltInCategory == BuiltInCategory.OST_StructuralFraming).ToList();
 
         if (columnas.Count + vigas.Count == 0)

@@ -593,6 +593,38 @@ public static class PlacaBase
         caraConcretoM <= fondoVigaM + 0.05 && caraConcretoM >= fondoVigaM - 0.30;
 
     /// <summary>
+    /// La cara en que se apoya la viga sobre un concreto que va de <paramref name="minM"/> a
+    /// <paramref name="maxM"/>, o null si no se apoya.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Dos casos. Con la cara de arriba del concreto bajo el patin -hasta 30 cm-, esa es la cara. Y
+    /// con el concreto SUBIENDO por encima del patin -lo normal en Revit: muros, castillos y columnas
+    /// se modelan hasta el nivel de arriba-, la viga esta asentada en el: la cara es el patin mismo y
+    /// la placa y su grout quedan embebidos.
+    /// </para>
+    /// <para>
+    /// Antes solo contaba el primero, y el segundo se tomaba como «llega al costado»: la placa no
+    /// salia en casi ningun muro ni castillo.
+    /// </para>
+    /// </remarks>
+    public static double? CaraDeApoyo(double fondoVigaM, double minM, double maxM)
+    {
+        if (SeApoya(fondoVigaM, maxM))
+        {
+            return maxM;
+        }
+
+        return minM < fondoVigaM - 0.05 && maxM > fondoVigaM + 0.05 ? fondoVigaM : null;
+    }
+
+    /// <summary>
+    /// Cuanto se encima la viga sobre el apoyo, a lo largo de su eje, para que cuente como apoyo y no
+    /// como una viga que llega a la cara del muro: 3 cm.
+    /// </summary>
+    public const double EncimeMinimoM = 0.03;
+
+    /// <summary>
     /// De los apoyos que hay bajo la columna, la cara de arriba que le toca, o null si ninguno.
     /// </summary>
     /// <remarks>

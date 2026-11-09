@@ -421,7 +421,8 @@ public enum BuiltInCategory
     OST_StructConnections,
     OST_StructuralFoundation,
     OST_GenericModel,
-    OST_Rebar
+    OST_Rebar,
+    OST_Columns
 }
 
 public enum BuiltInParameter

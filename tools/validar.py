@@ -17112,6 +17112,9 @@ def v31_detalles_revit() -> None:
     check("la placa base no se pone en los dados de concreto modelados como columna",
           "public static bool EsDeConcreto(FamilyInstance col)" in det
           and "var deAcero = elegidas.Where(c => !Detallador.EsDeConcreto(c))" in com)
+    check("placa de apoyo de viga: la viga asentada en un muro o castillo que sube por encima de ella cuenta como apoyo",
+          "public static double? CaraDeApoyo(" in nuc and "BuiltInCategory.OST_Columns," in det
+          and "var tLinea = " in det)
     check("la contraplaca solo si se pide, al fondo de las anclas",
           "public bool Contraplaca { get; set; }" in det and "Contraplaca = contra.IsChecked == true" in com)
     check("los materiales de CadLink toman la apariencia de uno del proyecto (el grout no sale negro)",

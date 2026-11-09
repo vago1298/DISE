@@ -1,5 +1,8 @@
+using System.Windows;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using CajaDeTexto = System.Windows.Controls.TextBox;
+using ListaDesplegable = System.Windows.Controls.ComboBox;
 using CadLink.Revit.Nucleo;
 
 namespace CadLink.Revit;
@@ -72,8 +75,8 @@ internal static class ArmadoEscritoEnRevit
         var sepExt = ventana.Numero("(C) Separacion de estribos en los extremos (L/4), en cm:", o.SepExtremosCm);
         var sepCen = ventana.Numero("(D) Separacion de estribos al centro (L/2), en cm:", o.SepCentroCm);
 
-        System.Windows.Controls.TextBox? nSup = null, nInf = null, nLat = null, nX = null, nY = null;
-        System.Windows.Controls.ComboBox? vSup = null, vInf = null, vLat = null, vCol = null;
+        CajaDeTexto? nSup = null, nInf = null, nLat = null, nX = null, nY = null;
+        ListaDesplegable? vSup = null, vInf = null, vLat = null, vCol = null;
 
         if (hayTrabes)
         {
@@ -99,7 +102,7 @@ internal static class ArmadoEscritoEnRevit
             return Result.Cancelled;
         }
 
-        (string Nombre, double DiamCm) De(System.Windows.Controls.ComboBox? lista)
+        (string Nombre, double DiamCm) De(ListaDesplegable? lista)
         {
             if (lista is null || lista.SelectedIndex < 0)
             {
@@ -110,7 +113,7 @@ internal static class ArmadoEscritoEnRevit
             return (v.Nombre, v.DiamM * 100);
         }
 
-        int N(System.Windows.Controls.TextBox? caja, int siNo) =>
+        int N(CajaDeTexto? caja, int siNo) =>
             caja is null ? siNo : (int)Math.Round(VentanaDetalle.Leer(caja, siNo));
 
         o.RecubrimientoCm = VentanaDetalle.Leer(rec, o.RecubrimientoCm);

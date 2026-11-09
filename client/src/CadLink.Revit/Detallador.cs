@@ -293,8 +293,13 @@ internal static class Detallador
                     }
 
                     var origen = new XYZ(p0.X, p0.Y, 0);
-                    var t0 = puntos.Min(q => (q - origen).DotProduct(eje));
-                    var t1 = puntos.Max(q => (q - origen).DotProduct(eje));
+
+                    // A lo largo, lo que cubre el SOLIDO y la LINEA de la viga. Revit recorta el solido
+                    // en la cara de la columna o el castillo al que se une, pero la linea sigue hasta
+                    // su centro: con el solido solo, la punta quedaba en la orilla del apoyo.
+                    var tLinea = (new XYZ(p1.X, p1.Y, 0) - origen).DotProduct(eje);
+                    var t0 = Math.Min(0, puntos.Min(q => (q - origen).DotProduct(eje)));
+                    var t1 = Math.Max(tLinea, puntos.Max(q => (q - origen).DotProduct(eje)));
                     var u0 = puntos.Min(q => (q - origen).DotProduct(lado));
                     var u1 = puntos.Max(q => (q - origen).DotProduct(lado));
                     var fondo = puntos.Min(q => q.Z);
@@ -310,20 +315,27 @@ internal static class Detallador
                         (ElementId Id, double S0, double S1, double Cara)? mejor = null;
                         var alCostado = false;
 
+                        // La punta se busca en un tramo corto hacia DENTRO de la viga, no solo en su
+                        // extremo: asi se encuentra el apoyo aunque la viga termine justo en su orilla.
+                        var hacia = extremo == 0 ? eje : eje.Negate();
+
                         foreach (var (id, caja) in apoyos)
                         {
-                            if (id == viga.Id || !Contiene(caja, punta, Unidades.AInternas(0.02)))
+                            if (id == viga.Id)
                             {
                                 continue;
                             }
 
-                            var cara = Unidades.AMetros(caja.Max.Z);
+                            var toca = new[] { 0.0, 0.05, 0.15 }.Any(d =>
+                                Contiene(caja, punta + (hacia * Unidades.AInternas(d)), Unidades.AInternas(0.02)));
 
-                            if (!PlacaBase.SeApoya(Unidades.AMetros(fondo), cara))
+                            if (!toca)
                             {
-                                alCostado |= cara > Unidades.AMetros(fondo) + 0.05 && caja.Min.Z < fondo;
                                 continue;
                             }
+
+                            var cara = PlacaBase.CaraDeApoyo(
+                                Unidades.AMetros(fondo), Unidades.AMetros(caja.Min.Z), Unidades.AMetros(caja.Max.Z));
 
                             var esquinas = new[]
                             {
@@ -331,10 +343,19 @@ internal static class Detallador
                             };
                             var s0 = esquinas.Min(q => (new XYZ(q.X, q.Y, 0) - origen).DotProduct(eje));
                             var s1 = esquinas.Max(q => (new XYZ(q.X, q.Y, 0) - origen).DotProduct(eje));
+                            var encime = Math.Min(s1, t1) - Math.Max(s0, t0);
 
-                            if (mejor is null || cara > mejor.Value.Cara)
+                            // Si apenas se toca, la viga llega a la CARA del concreto: eso es la placa
+                            // embebida de «Conectar vigas», no una placa de apoyo.
+                            if (cara is null || encime < Unidades.AInternas(PlacaBase.EncimeMinimoM))
                             {
-                                mejor = (id, s0, s1, cara);
+                                alCostado |= caja.Min.Z < fondo && caja.Max.Z > fondo;
+                                continue;
+                            }
+
+                            if (mejor is null || cara.Value > mejor.Value.Cara)
+                            {
+                                mejor = (id, s0, s1, cara.Value);
                             }
                         }
 
@@ -355,6 +376,15 @@ internal static class Detallador
                         if (b - a < Unidades.AInternas(0.02))
                         {
                             continue;
+                        }
+
+                        // Y en ESTE extremo: con un apoyo largo -un muro corrido bajo toda la viga-, la
+                        // placa va junto a la punta y no en medio del encime.
+                        var largoPlaca = Unidades.AInternas(o.Girar ? placa.LadoYM : placa.LadoXM);
+
+                        if (b - a > largoPlaca)
+                        {
+                            (a, b) = extremo == 0 ? (a, a + largoPlaca) : (b - largoPlaca, b);
                         }
 
                         var cotas = PlacaBase.CotasDeApoyoDeViga(placa, Unidades.AMetros(fondo), mejor.Value.Cara);
@@ -434,13 +464,19 @@ internal static class Detallador
                      BuiltInCategory.OST_Walls, BuiltInCategory.OST_StructuralFoundation,
                      BuiltInCategory.OST_StructuralColumns, BuiltInCategory.OST_StructuralFraming,
 
+                     // Los castillos se modelan muchas veces como columna ARQUITECTONICA.
+                     BuiltInCategory.OST_Columns,
+
                      // Un cabezal o un dado modelado como Floor tambien recibe la placa de la viga.
                      BuiltInCategory.OST_Floors
                  })
         {
             foreach (var e in new FilteredElementCollector(doc).OfCategory(c).WhereElementIsNotElementType())
             {
-                var concreto = e is not FamilyInstance fi || EsDeConcreto(fi);
+                // Todo lo que NO sea de acero -ni madera ni aluminio- cuenta como concreto: un castillo
+                // de familia generica o con un material sin clase no se marca como concreto en Revit,
+                // y antes no se tomaba como apoyo.
+                var concreto = e is not FamilyInstance fi || !EsMetalOMadera(fi);
 
                 if (concreto && e is not DirectShape && e.get_BoundingBox(null) is { } caja)
                 {
@@ -650,6 +686,12 @@ internal static class Detallador
 
         return res;
     }
+
+    /// <summary>¿Es de acero, aluminio o madera? Lo que no lo sea puede ser un apoyo de concreto.</summary>
+    public static bool EsMetalOMadera(FamilyInstance fi) =>
+        fi.StructuralMaterialType is Autodesk.Revit.DB.Structure.StructuralMaterialType.Steel
+            or Autodesk.Revit.DB.Structure.StructuralMaterialType.Wood
+            or Autodesk.Revit.DB.Structure.StructuralMaterialType.Aluminum;
 
     /// <summary>¿Es una columna de concreto -un dado modelado como columna-?</summary>
     public static bool EsDeConcreto(FamilyInstance col) =>
