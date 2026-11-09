@@ -158,12 +158,38 @@ public sealed class ComandoPlacasBase : IExternalCommand
                 texto.AppendLine();
             }
 
-            texto.AppendLine(DetallesEnRevit.Informe(
-                Detallador.PlacasDeViga(doc, vigas, placa, opciones, soloEn), "viga(s) con su placa de apoyo", null, false));
+            var horizontales = Detallador.PlacasDeViga(doc, vigas, placa, opciones, soloEn);
+
+            // LOS EXTREMOS QUE LLEGAN AL COSTADO del muro, el cabezal o la columna de concreto: placa
+            // VERTICAL embebida a paño de su cara, con sus anclas hacia dentro y la viga soldada a
+            // ella. Es la misma de «Conectar vigas»; los extremos que ya llevan la horizontal se saltan.
+            var concretos = soloEn is not null
+                ? concreto
+                : Detallador.ApoyosDeConcreto(doc).Select(a => doc.GetElement(a.Id)).OfType<Element>().ToList();
+
+            var verticales = Detallador.Soldaduras(doc,
+                vigas.Select(v => new Detallador.VigaElegida(v, null)).ToList(),
+                new List<Element>(), concretos,
+                new OpcionesDetalle
+                {
+                    SoldaduraM = placa.SoldaduraM > 0 ? placa.SoldaduraM : Cordon.PorOmisionM,
+                    PlacaEnMuro = true,
+                    SoloEnApoyos = true,
+                    ApoyoHorizontal = false
+                });
+
+            // Que una viga no llegue a ningun costado no es un aviso: puede ir encima.
+            verticales.Avisos.RemoveAll(x => x.Contains("No llega a una columna ni a un muro", StringComparison.Ordinal));
+            horizontales.Avisos.RemoveAll(x => x.Contains("Llega al costado", StringComparison.Ordinal)
+                                             || x.Contains("Ningun extremo se apoya", StringComparison.Ordinal));
+
+            texto.AppendLine(DetallesEnRevit.Informe(horizontales, "viga(s) con placa de apoyo horizontal", null, false));
+            texto.AppendLine();
+            texto.AppendLine(DetallesEnRevit.Informe(verticales, "viga(s) con placa vertical embebida en el muro o cabezal", null, false));
         }
 
-        texto.AppendLine().Append(columnas.Count > 0 && vigas.Count > 0
-            ? "Ctrl+Z deshace las placas de las vigas; un segundo Ctrl+Z, las de las columnas."
+        texto.AppendLine().Append(vigas.Count > 0
+            ? "Cada grupo de placas es su propio Ctrl+Z: las verticales, las horizontales y las de columnas."
             : "Un solo Ctrl+Z deshace todo lo de este boton.");
 
         TaskDialog.Show("CadLink", DetallesEnRevit.ConAvisos(texto.ToString().TrimEnd(), archivo.Avisos));

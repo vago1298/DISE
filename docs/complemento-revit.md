@@ -635,7 +635,7 @@ columnas de acero que llegan a ese concreto y les pone la placa, solo sobre lo e
 En **Placas base** también se pueden elegir **vigas de acero**. En cada extremo que se **apoya** en
 concreto —muro, cabezal, columna de concreto o zapata— va la placa con su cara de arriba en el patín
 de abajo: la viga no se mueve, el grout llena hasta el concreto y las anclas bajan a él. El patín se
-suelda a la placa. Cuenta como apoyo tanto el concreto que termina bajo el patín como el que **sube por encima** de la viga —muros, castillos y columnas modelados hasta el nivel de arriba—: ahí la placa y su grout quedan embebidos bajo el patín. Los castillos pueden ser columnas estructurales o arquitectónicas, de cualquier material que no sea acero. Si la viga llega al **costado** del muro o del cabezal, se avisa: eso es la placa
+suelda a la placa. La placa **horizontal** va solo donde la viga queda **encima** del concreto (su cara de arriba bajo el patín). Donde el concreto **sube por encima** de la viga —muro, cabezal o columna hasta el nivel de arriba— la viga llega a su **costado**, y el mismo botón le pone la placa **vertical embebida** a paño de su cara, con sus anclas hacia dentro y la viga soldada a ella. Los castillos pueden ser columnas estructurales o arquitectónicas, de cualquier material que no sea acero. Si la viga llega al **costado** del muro o del cabezal, se avisa: eso es la placa
 embebida de **Conectar vigas**, que ahora también toma cabezales y columnas de concreto.
 
 ### Armar cimentación

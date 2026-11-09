@@ -72,6 +72,12 @@ public sealed class OpcionesDetalle
     /// <summary>En un extremo que llega a un muro, la placa embebida con sus anclas.</summary>
     public bool PlacaEnMuro { get; set; } = true;
 
+    /// <summary>
+    /// Con la viga ENCIMA del concreto, probar primero la placa de apoyo horizontal. Apagado cuando
+    /// la pone ya el boton de Placas base y solo faltan las verticales de los costados.
+    /// </summary>
+    public bool ApoyoHorizontal { get; set; } = true;
+
     public TipoConexion Conexion { get; set; } = TipoConexion.Filete;
 
     public ExtremosColumna ExtremosColumna { get; set; } = ExtremosColumna.Base;
@@ -389,11 +395,12 @@ internal static class Detallador
                     var s1 = esquinas.Max(q => (new XYZ(q.X, q.Y, 0) - origen).DotProduct(eje));
                     var encime = Math.Min(s1, t1) - Math.Max(s0, t0);
 
-                    // Si apenas se toca, la viga llega a la CARA del concreto: eso es la pl
-                    // embebida de «Conectar vigas», no una pl de apoyo.
+                    // Si apenas se toca, la viga llega a la CARA del concreto: eso es la placa
+                    // embebida de «Conectar vigas», no una placa de apoyo.
                     if (cara is null || encime < Unidades.AInternas(PlacaBase.EncimeMinimoM))
                     {
-                        alCostado |= caja.Min.Z < fondo && caja.Max.Z > fondo;
+                        alCostado |= PlacaBase.LlegaAlCostado(
+                            Unidades.AMetros(fondo), Unidades.AMetros(caja.Min.Z), Unidades.AMetros(caja.Max.Z));
                         continue;
                     }
 
@@ -407,13 +414,13 @@ internal static class Detallador
                 {
                     if (alCostado)
                     {
-                        r.Avisos.Add($"{donde}: Llega al costado del muro o cabezal, no encima; para eso usa «Conectar vigas» (pl embebida).");
+                        r.Avisos.Add($"{donde}: Llega al costado del muro o cabezal: lleva la placa vertical embebida a paño de su cara.");
                     }
 
                     continue;
                 }
 
-                // A lo largo de la viga, la pl va en el tramo donde viga y concreto se enciman.
+                // A lo largo de la viga, la placa va en el tramo donde viga y concreto se enciman.
                 var a = Math.Max(mejor.Value.S0, t0);
                 var b = Math.Min(mejor.Value.S1, t1);
 
@@ -423,7 +430,7 @@ internal static class Detallador
                 }
 
                 // Y en ESTE extremo: con un apoyo largo -un muro corrido bajo toda la viga-, la
-                // pl va junto a la punta y no en medio del encime.
+                // placa va junto a la punta y no en medio del encime.
                 var largoPlaca = Unidades.AInternas(o.Girar ? pl.LadoYM : pl.LadoXM);
 
                 if (b - a > largoPlaca)
@@ -441,8 +448,8 @@ internal static class Detallador
 
                 var (ex, ey) = o.Girar ? (lado, eje.Negate()) : (eje, lado);
 
-                // El filete del patin a la pl: alrededor del rectangulo que el patin le
-                // toca, del ancho de la viga y del largo de la pl o del apoyo.
+                // El filete del patin a la placa: alrededor del rectangulo que el patin le
+                // toca, del ancho de la viga y del largo de la placa o del apoyo.
                 CurveLoop? contorno = null;
 
                 if (o.SoldarColumna && pl.SoldaduraM > 0)
@@ -464,7 +471,7 @@ internal static class Detallador
 
                 if (bajoElPatin > 0)
                 {
-                    r.Avisos.Add($"{donde}: {bajoElPatin} ancla(s) quedan bajo el patin de la viga; su tuerca choca con el. Usa una pl mas ancha que el patin.");
+                    r.Avisos.Add($"{donde}: {bajoElPatin} ancla(s) quedan bajo el patin de la viga; su tuerca choca con el. Usa una placa mas ancha que el patin.");
                 }
 
                 var llave = LlaveDetalle.De(ClaseDetalle.PlacaViga, viga.Id.Value, extremo);
@@ -1155,7 +1162,14 @@ internal static class Detallador
                         // ENCIMA DEL CONCRETO -cabezal, columna, castillo o muro bajo la viga-: la placa va
                         // HORIZONTAL bajo el patin, siguiendo a la viga. Antes todo el concreto se trataba
                         // como un muro al que la viga llega de lado, y la placa salia vertical.
-                        if (enMuro && o.PlacaEnMuro && ApoyoDeUnaViga(doc, viga, null, o, r, apoyos, null, extremo,
+                        // El extremo que ya tiene su placa de apoyo horizontal no lleva tambien la vertical.
+                        if (!o.ApoyoHorizontal
+                            && Solidos.FondoDe(doc, LlaveDetalle.De(ClaseDetalle.PlacaViga, viga.Id.Value, extremo)) is not null)
+                        {
+                            continue;
+                        }
+
+                        if (enMuro && o.PlacaEnMuro && o.ApoyoHorizontal && ApoyoDeUnaViga(doc, viga, null, o, r, apoyos, null, extremo,
                                 mat.Acero, mat.Anclas, mat.Soldadura, grout, categoria) > 0)
                         {
                             // La placa vertical que pudo quedar de antes en este extremo, fuera.

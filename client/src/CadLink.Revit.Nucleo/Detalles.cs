@@ -638,25 +638,22 @@ public static class PlacaBase
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Dos casos. Con la cara de arriba del concreto bajo el patin -hasta 30 cm-, esa es la cara. Y
-    /// con el concreto SUBIENDO por encima del patin -lo normal en Revit: muros, castillos y columnas
-    /// se modelan hasta el nivel de arriba-, la viga esta asentada en el: la cara es el patin mismo y
-    /// la placa y su grout quedan embebidos.
+    /// SOLO cuando la cara de arriba del concreto queda bajo el patin -hasta 30 cm-: ahi la viga va
+    /// ENCIMA y la placa es horizontal.
     /// </para>
     /// <para>
-    /// Antes solo contaba el primero, y el segundo se tomaba como «llega al costado»: la placa no
-    /// salia en casi ningun muro ni castillo.
+    /// Si el concreto SUBE por encima del patin, la viga llega a su COSTADO -un muro, un cabezal o una
+    /// columna modelados hasta el nivel de arriba- y la placa va VERTICAL, embebida a paño de su cara.
+    /// Hubo una version que en ese caso ponia la placa horizontal bajo la viga: quedaba en el aire,
+    /// junto al muro, con las anclas colgando.
     /// </para>
     /// </remarks>
-    public static double? CaraDeApoyo(double fondoVigaM, double minM, double maxM)
-    {
-        if (SeApoya(fondoVigaM, maxM))
-        {
-            return maxM;
-        }
+    public static double? CaraDeApoyo(double fondoVigaM, double minM, double maxM) =>
+        SeApoya(fondoVigaM, maxM) && minM < maxM ? maxM : null;
 
-        return minM < fondoVigaM - 0.05 && maxM > fondoVigaM + 0.05 ? fondoVigaM : null;
-    }
+    /// <summary>¿El concreto sube por encima del patin de abajo? Entonces la viga llega a su costado.</summary>
+    public static bool LlegaAlCostado(double fondoVigaM, double minM, double maxM) =>
+        minM < fondoVigaM + 0.05 && maxM > fondoVigaM + 0.05;
 
     /// <summary>
     /// Cuanto se encima la viga sobre el apoyo, a lo largo de su eje, para que cuente como apoyo y no
