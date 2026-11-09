@@ -17118,6 +17118,8 @@ def v31_detalles_revit() -> None:
     check("la viga que llega al COSTADO del concreto lleva placa vertical, no horizontal en el aire",
           "public static bool LlegaAlCostado(" in nuc and "ApoyoHorizontal = false" in com
           and "SeApoya(fondoVigaM, maxM) && minM < maxM ? maxM : null" in nuc)
+    check("placas base pregunta si la viga llega al muro/cabezal/castillo/columna (vertical) o al dado/cimentacion (horizontal)",
+          '"Vigas: a donde llega la placa:"' in com and "var modo = llegaA?.SelectedIndex ?? 2;" in com)
     check("placas base: se pueden elegir los muros, castillos o cabezales y se buscan las piezas de acero que llegan",
           "public static List<FamilyInstance> AceroSobre(" in det and "Detallador.AceroSobre(doc, concreto)" in com)
     check("conectar vigas: sobre cabezal, columna o castillo la placa va horizontal bajo la viga",

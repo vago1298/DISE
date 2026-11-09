@@ -111,6 +111,17 @@ public sealed class ComandoPlacasBase : IExternalCommand
                 grout.Text = GroutPorOmision(archivo.Placas[lista.SelectedIndex]).ToString("0.##");
             }
         };
+        // LA VIGA: a donde llega su placa. Se pregunta en vez de adivinarlo solo por la geometria:
+        // al costado de un muro, cabezal, castillo o columna la placa va VERTICAL, embebida a paño de
+        // su cara; encima de un dado o de la cimentacion va HORIZONTAL, bajo el patin.
+        var llegaA = vigas.Count > 0
+            ? ventana.Lista("Vigas: a donde llega la placa:", new[]
+            {
+                "Al muro, cabezal, castillo o columna (placa VERTICAL en su cara)",
+                "Al dado o a la cimentacion (placa HORIZONTAL bajo la viga)",
+                "Que lo decida CadLink en cada extremo, por la geometria"
+            })
+            : null;
         var subir = ventana.Casilla("Subir el arranque de la columna a la cara de la placa", true,
             "Solo con la placa sobre el apoyo. Apagado, la columna se queda donde esta y atraviesa la placa.");
         var soldar = ventana.Casilla("(C) Soldar la columna -o el patin de la viga- a la placa", true);
@@ -158,7 +169,12 @@ public sealed class ComandoPlacasBase : IExternalCommand
                 texto.AppendLine();
             }
 
-            var horizontales = Detallador.PlacasDeViga(doc, vigas, placa, opciones, soloEn);
+            // 0 = vertical en el costado, 1 = horizontal encima, 2 = las dos, que decida la geometria.
+            var modo = llegaA?.SelectedIndex ?? 2;
+
+            var horizontales = modo == 0
+                ? new ResultadoDetalles()
+                : Detallador.PlacasDeViga(doc, vigas, placa, opciones, soloEn);
 
             // LOS EXTREMOS QUE LLEGAN AL COSTADO del muro, el cabezal o la columna de concreto: placa
             // VERTICAL embebida a paño de su cara, con sus anclas hacia dentro y la viga soldada a
@@ -167,7 +183,7 @@ public sealed class ComandoPlacasBase : IExternalCommand
                 ? concreto
                 : Detallador.ApoyosDeConcreto(doc).Select(a => doc.GetElement(a.Id)).OfType<Element>().ToList();
 
-            var verticales = Detallador.Soldaduras(doc,
+            var verticales = modo == 1 ? new ResultadoDetalles() : Detallador.Soldaduras(doc,
                 vigas.Select(v => new Detallador.VigaElegida(v, null)).ToList(),
                 new List<Element>(), concretos,
                 new OpcionesDetalle
@@ -183,9 +199,28 @@ public sealed class ComandoPlacasBase : IExternalCommand
             horizontales.Avisos.RemoveAll(x => x.Contains("Llega al costado", StringComparison.Ordinal)
                                              || x.Contains("Ningun extremo se apoya", StringComparison.Ordinal));
 
-            texto.AppendLine(DetallesEnRevit.Informe(horizontales, "viga(s) con placa de apoyo horizontal", null, false));
-            texto.AppendLine();
-            texto.AppendLine(DetallesEnRevit.Informe(verticales, "viga(s) con placa vertical embebida en el muro o cabezal", null, false));
+            if (modo != 0)
+            {
+                texto.AppendLine(DetallesEnRevit.Informe(horizontales, "viga(s) con placa horizontal en el dado o la cimentacion", null, false));
+            }
+
+            if (modo == 2)
+            {
+                texto.AppendLine();
+            }
+
+            if (modo != 1)
+            {
+                texto.AppendLine(DetallesEnRevit.Informe(verticales, "viga(s) con placa vertical en el muro, cabezal, castillo o columna", null, false));
+            }
+
+            // Con la respuesta del cuadro el aviso de que no encontro donde ponerla si importa.
+            if (modo != 2 && horizontales.Hechas + verticales.Hechas == 0)
+            {
+                texto.AppendLine(modo == 0
+                    ? "Ninguna viga llega al costado de un muro, cabezal, castillo o columna de concreto."
+                    : "Ninguna viga queda encima de un dado o de la cimentacion: la cara de arriba del concreto tiene que quedar bajo el patin.");
+            }
         }
 
         texto.AppendLine().Append(vigas.Count > 0

@@ -629,6 +629,10 @@ Si ya había piezas elegidas al pulsar el botón, se usan esas; si no, el botón
 
 ### Placa de apoyo de viga sobre muro o cabezal
 
+El cuadro pregunta **a dónde llega la placa de la viga**: al **muro, cabezal, castillo o columna**
+(placa **vertical** en su cara), al **dado o la cimentación** (placa **horizontal** bajo la viga), o que
+lo decida CadLink en cada extremo por la geometría.
+
 Se puede elegir directamente el **muro, castillo, cabezal o Floor**: el botón busca las vigas y
 columnas de acero que llegan a ese concreto y les pone la placa, solo sobre lo elegido.
 
