@@ -17117,6 +17117,9 @@ def v31_detalles_revit() -> None:
           and "var tLinea = " in det)
     check("placas base: se pueden elegir los muros, castillos o cabezales y se buscan las piezas de acero que llegan",
           "public static List<FamilyInstance> AceroSobre(" in det and "Detallador.AceroSobre(doc, concreto)" in com)
+    check("conectar vigas: sobre cabezal, columna o castillo la placa va horizontal bajo la viga",
+          "ApoyoDeUnaViga(doc, viga, null, o, r, apoyos, null, extremo," in det
+          and "public static PlacaBaseJson DeApoyo(" in nuc)
     check("la contraplaca solo si se pide, al fondo de las anclas",
           "public bool Contraplaca { get; set; }" in det and "Contraplaca = contra.IsChecked == true" in com)
     check("los materiales de CadLink toman la apariencia de uno del proyecto (el grout no sale negro)",

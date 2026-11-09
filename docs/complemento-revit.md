@@ -596,7 +596,7 @@ Si ya había piezas elegidas al pulsar el botón, se usan esas; si no, el botón
 | Cimentación, columnas | Zapata, dado (rectangular o circular) y plantilla |
 | Cimentación, muros | Zapata corrida con su contratrabe o, sin ella, el muro de enrase; y la plantilla |
 | Conectar vigas, a una columna | Filete todo alrededor del perfil, **o a momento IR a IR**: placa sobre el patín de arriba y bajo el de abajo, placa de cortante al alma con su hilera de tornillos, y cada placa soldada a la columna. **O a cortante**: solo la placa de cortante. Se eligen ancho, largo, espesor y filete de las placas de patín, y alto, largo, espesor, filete, diámetro y separación de tornillos de la de cortante. La de cortante va **atornillada o soldada** al alma, con su filete todo alrededor |
-| Conectar vigas, a un muro | **Placa embebida** a paño del muro, con sus anclas hacia dentro, y la viga soldada a ella |
+| Conectar vigas, a concreto | Si la viga llega al **costado** del muro o cabezal: **placa embebida** vertical a paño, con sus anclas hacia dentro, y la viga soldada a ella. Si va **encima** de un muro, cabezal, columna o castillo: **placa de apoyo horizontal** bajo el patín, del ancho del patín más las anclas por fuera, con grout y el patín soldado |
 | Soldar columnas | Filete todo alrededor en la base o en la cabeza, sobre lo que tenga: placa, losa, dado o la columna de abajo |
 
 - **Las anclas van donde las pone el detalle de AutoCAD.** CadLink las calcula con las mismas
