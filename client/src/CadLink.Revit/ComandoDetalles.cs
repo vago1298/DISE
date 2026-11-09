@@ -32,13 +32,27 @@ public sealed class ComandoPlacasBase : IExternalCommand
             return Result.Failed;
         }
 
-        var elegidas = DetallesEnRevit.Piezas(uidoc,
-            "Elige las columnas o las vigas de ACERO que llevan placa y pulsa Terminar.",
-            BuiltInCategory.OST_StructuralColumns, BuiltInCategory.OST_StructuralFraming)
-            .OfType<FamilyInstance>().ToList();
+        var todo = DetallesEnRevit.Piezas(uidoc,
+            "Elige las columnas o vigas de ACERO, o los muros, castillos y cabezales donde se apoyan, y pulsa Terminar.",
+            BuiltInCategory.OST_StructuralColumns, BuiltInCategory.OST_StructuralFraming,
+            BuiltInCategory.OST_Walls, BuiltInCategory.OST_Columns, BuiltInCategory.OST_Floors,
+            BuiltInCategory.OST_StructuralFoundation);
 
-        // La placa es de la pieza de ACERO; el concreto en que se apoya -dado, muro, cabezal- se
-        // encuentra solo. Elegir con ventana se lleva tambien el concreto, y se salta.
+        // Lo elegido puede ser el ACERO -la pieza que lleva la placa- o el CONCRETO en que se apoya:
+        // un muro, un castillo, un cabezal. Del concreto se buscan las vigas y columnas de acero que
+        // llegan a el; asi se pueden poner todas las placas de un muro de un solo clic.
+        var elegidas = todo.OfType<FamilyInstance>().Where(Detallador.EsMetalOMadera).ToList();
+        var concreto = todo.Where(e => e is not FamilyInstance fi || !Detallador.EsMetalOMadera(fi)).ToList();
+        var soloEn = concreto.Count > 0 ? concreto.Select(e => e.Id).ToHashSet() : null;
+
+        foreach (var pieza in Detallador.AceroSobre(doc, concreto))
+        {
+            if (elegidas.All(e => e.Id != pieza.Id))
+            {
+                elegidas.Add(pieza);
+            }
+        }
+
         var deAcero = elegidas.Where(c => !Detallador.EsDeConcreto(c)).ToList();
 
         // Las columnas tienen que ser de ACERO de verdad: un castillo con material generico no dice
@@ -49,11 +63,11 @@ public sealed class ComandoPlacasBase : IExternalCommand
 
         if (columnas.Count + vigas.Count == 0)
         {
-            if (elegidas.Count > 0)
+            if (todo.Count > 0)
             {
                 TaskDialog.Show("CadLink",
-                    "Lo elegido es de concreto. Elige la columna o la viga de ACERO: la placa se apoya sola en "
-                    + "el dado, el muro o el cabezal que tiene debajo.");
+                    "En lo elegido no se apoya ninguna viga ni columna de ACERO. La placa es de la pieza de "
+                    + "acero: elige la viga o la columna, o el muro o cabezal en que se apoyan.");
             }
 
             return Result.Cancelled;
@@ -145,7 +159,7 @@ public sealed class ComandoPlacasBase : IExternalCommand
             }
 
             texto.AppendLine(DetallesEnRevit.Informe(
-                Detallador.PlacasDeViga(doc, vigas, placa, opciones), "viga(s) con su placa de apoyo", null, false));
+                Detallador.PlacasDeViga(doc, vigas, placa, opciones, soloEn), "viga(s) con su placa de apoyo", null, false));
         }
 
         texto.AppendLine().Append(columnas.Count > 0 && vigas.Count > 0

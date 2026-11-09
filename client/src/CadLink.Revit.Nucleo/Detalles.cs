@@ -585,6 +585,46 @@ public static class PlacaBase
     }
 
     /// <summary>
+    /// La placa de apoyo que sigue a la viga, cuando no viene de la hoja: horizontal, a lo largo de
+    /// la viga, del ancho del patin mas 8 cm por lado para que las anclas queden POR FUERA de el, con
+    /// grout de 2.5 cm, el patin soldado y cuatro anclas rectas.
+    /// </summary>
+    public static PlacaBaseJson DeApoyo(double anchoPatinM, double soldaduraM, OpcionesConexion o)
+    {
+        var d = o.PernoM > 0 ? o.PernoM : 0.019;
+        var e = 0.019;
+        var p = new PlacaBaseJson
+        {
+            Marca = "apoyo",
+            LadoXM = 0.25,
+            LadoYM = anchoPatinM + 0.16,
+            EspesorM = e,
+            GroutM = 0.025,
+            SoldaduraM = soldaduraM
+        };
+
+        foreach (var x in new[] { -1.0, 1.0 })
+        {
+            foreach (var y in new[] { -1.0, 1.0 })
+            {
+                p.Anclas.Add(new AnclaJson
+                {
+                    X = x * ((p.LadoXM / 2) - 0.05),
+                    Y = y * ((anchoPatinM / 2) + 0.04),
+                    DiametroM = d,
+                    AgujeroM = d + 0.003,
+                    TuercaM = 1.6 * d,
+                    TuercaAltoM = 0.8 * d,
+                    PuntaM = e + (0.8 * d) + 0.01,
+                    FondoM = -Math.Max(0.15, o.PernoLargoM)
+                });
+            }
+        }
+
+        return p;
+    }
+
+    /// <summary>
     /// ¿Se apoya la viga en ese concreto, o llega a su costado? Se apoya si la cara de arriba del
     /// concreto esta bajo el patin de abajo -hasta 30 cm, lo que puede llenar un grout grueso o un
     /// dado- o apenas por encima, porque la viga se modelo metida.

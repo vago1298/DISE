@@ -629,6 +629,9 @@ Si ya había piezas elegidas al pulsar el botón, se usan esas; si no, el botón
 
 ### Placa de apoyo de viga sobre muro o cabezal
 
+Se puede elegir directamente el **muro, castillo, cabezal o Floor**: el botón busca las vigas y
+columnas de acero que llegan a ese concreto y les pone la placa, solo sobre lo elegido.
+
 En **Placas base** también se pueden elegir **vigas de acero**. En cada extremo que se **apoya** en
 concreto —muro, cabezal, columna de concreto o zapata— va la placa con su cara de arriba en el patín
 de abajo: la viga no se mueve, el grout llena hasta el concreto y las anclas bajan a él. El patín se

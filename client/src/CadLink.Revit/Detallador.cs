@@ -241,8 +241,10 @@ internal static class Detallador
     /// hasta el concreto y las anclas bajan a el. El patin se suelda a la placa alrededor de lo que
     /// toca. La X de la placa va a lo largo de la viga.
     /// </remarks>
+    /// <param name="soloEn">Si se eligio el concreto, solo esos apoyos; null = cualquiera.</param>
     public static ResultadoDetalles PlacasDeViga(
-        Document doc, IReadOnlyList<FamilyInstance> vigas, PlacaBaseJson placa, OpcionesDetalle o)
+        Document doc, IReadOnlyList<FamilyInstance> vigas, PlacaBaseJson placa, OpcionesDetalle o,
+        IReadOnlyCollection<ElementId>? soloEn = null)
     {
         return EnTransaccion(doc, "Placas de apoyo de vigas de CadLink", r =>
         {
@@ -266,173 +268,8 @@ internal static class Detallador
 
                 try
                 {
-                    if (viga.Location is not LocationCurve lc || lc.Curve is not Line linea)
-                    {
-                        r.Errores.Add($"«{nombre}»: Viga curva. Solo se ponen placas a vigas rectas.");
-                        continue;
-                    }
-
-                    var p0 = linea.GetEndPoint(0);
-                    var p1 = linea.GetEndPoint(1);
-                    var eje = new XYZ(p1.X - p0.X, p1.Y - p0.Y, 0);
-
-                    if (eje.GetLength() < 1e-6)
-                    {
-                        r.Errores.Add($"«{nombre}»: Es vertical; para una columna usa la placa base de columna.");
-                        continue;
-                    }
-
-                    eje = eje.Normalize();
-                    var lado = XYZ.BasisZ.CrossProduct(eje).Normalize();
-                    var puntos = Geometria.PuntosDelSolido(viga);
-
-                    if (puntos.Count < 4)
-                    {
-                        r.Errores.Add($"«{nombre}»: Sin geometria.");
-                        continue;
-                    }
-
-                    var origen = new XYZ(p0.X, p0.Y, 0);
-
-                    // A lo largo, lo que cubre el SOLIDO y la LINEA de la viga. Revit recorta el solido
-                    // en la cara de la columna o el castillo al que se une, pero la linea sigue hasta
-                    // su centro: con el solido solo, la punta quedaba en la orilla del apoyo.
-                    var tLinea = (new XYZ(p1.X, p1.Y, 0) - origen).DotProduct(eje);
-                    var t0 = Math.Min(0, puntos.Min(q => (q - origen).DotProduct(eje)));
-                    var t1 = Math.Max(tLinea, puntos.Max(q => (q - origen).DotProduct(eje)));
-                    var u0 = puntos.Min(q => (q - origen).DotProduct(lado));
-                    var u1 = puntos.Max(q => (q - origen).DotProduct(lado));
-                    var fondo = puntos.Min(q => q.Z);
-                    var hechos = 0;
-
-                    for (var extremo = 0; extremo <= 1; extremo++)
-                    {
-                        var donde = $"«{nombre}, extremo {extremo + 1}»";
-                        var punta = origen + (eje * (extremo == 0 ? t0 : t1)) + (lado * ((u0 + u1) / 2));
-
-                        // El concreto de ese extremo: el de cara de arriba mas alta que todavia quede
-                        // bajo el patin de abajo.
-                        (ElementId Id, double S0, double S1, double Cara)? mejor = null;
-                        var alCostado = false;
-
-                        // La punta se busca en un tramo corto hacia DENTRO de la viga, no solo en su
-                        // extremo: asi se encuentra el apoyo aunque la viga termine justo en su orilla.
-                        var hacia = extremo == 0 ? eje : eje.Negate();
-
-                        foreach (var (id, caja) in apoyos)
-                        {
-                            if (id == viga.Id)
-                            {
-                                continue;
-                            }
-
-                            var toca = new[] { 0.0, 0.05, 0.15 }.Any(d =>
-                                Contiene(caja, punta + (hacia * Unidades.AInternas(d)), Unidades.AInternas(0.02)));
-
-                            if (!toca)
-                            {
-                                continue;
-                            }
-
-                            var cara = PlacaBase.CaraDeApoyo(
-                                Unidades.AMetros(fondo), Unidades.AMetros(caja.Min.Z), Unidades.AMetros(caja.Max.Z));
-
-                            var esquinas = new[]
-                            {
-                                caja.Min, new XYZ(caja.Max.X, caja.Min.Y, 0), caja.Max, new XYZ(caja.Min.X, caja.Max.Y, 0)
-                            };
-                            var s0 = esquinas.Min(q => (new XYZ(q.X, q.Y, 0) - origen).DotProduct(eje));
-                            var s1 = esquinas.Max(q => (new XYZ(q.X, q.Y, 0) - origen).DotProduct(eje));
-                            var encime = Math.Min(s1, t1) - Math.Max(s0, t0);
-
-                            // Si apenas se toca, la viga llega a la CARA del concreto: eso es la placa
-                            // embebida de «Conectar vigas», no una placa de apoyo.
-                            if (cara is null || encime < Unidades.AInternas(PlacaBase.EncimeMinimoM))
-                            {
-                                alCostado |= caja.Min.Z < fondo && caja.Max.Z > fondo;
-                                continue;
-                            }
-
-                            if (mejor is null || cara.Value > mejor.Value.Cara)
-                            {
-                                mejor = (id, s0, s1, cara.Value);
-                            }
-                        }
-
-                        if (mejor is null)
-                        {
-                            if (alCostado)
-                            {
-                                r.Avisos.Add($"{donde}: Llega al costado del muro o cabezal, no encima; para eso usa «Conectar vigas» (placa embebida).");
-                            }
-
-                            continue;
-                        }
-
-                        // A lo largo de la viga, la placa va en el tramo donde viga y concreto se enciman.
-                        var a = Math.Max(mejor.Value.S0, t0);
-                        var b = Math.Min(mejor.Value.S1, t1);
-
-                        if (b - a < Unidades.AInternas(0.02))
-                        {
-                            continue;
-                        }
-
-                        // Y en ESTE extremo: con un apoyo largo -un muro corrido bajo toda la viga-, la
-                        // placa va junto a la punta y no en medio del encime.
-                        var largoPlaca = Unidades.AInternas(o.Girar ? placa.LadoYM : placa.LadoXM);
-
-                        if (b - a > largoPlaca)
-                        {
-                            (a, b) = extremo == 0 ? (a, a + largoPlaca) : (b - largoPlaca, b);
-                        }
-
-                        var cotas = PlacaBase.CotasDeApoyoDeViga(placa, Unidades.AMetros(fondo), mejor.Value.Cara);
-                        var caraInf = Unidades.AInternas(cotas.CaraInferiorM);
-                        var caraSup = Unidades.AInternas(cotas.CaraSuperiorM);
-                        var fondoGrout = Unidades.AInternas(cotas.FondoGroutM);
-
-                        var centro = origen + (eje * ((a + b) / 2)) + (lado * ((u0 + u1) / 2));
-                        centro = new XYZ(centro.X, centro.Y, caraInf);
-
-                        var (ex, ey) = o.Girar ? (lado, eje.Negate()) : (eje, lado);
-
-                        // El filete del patin a la placa: alrededor del rectangulo que el patin le
-                        // toca, del ancho de la viga y del largo de la placa o del apoyo.
-                        CurveLoop? contorno = null;
-
-                        if (o.SoldarColumna && placa.SoldaduraM > 0)
-                        {
-                            var largo = Math.Min(b - a, Unidades.AInternas(o.Girar ? placa.LadoYM : placa.LadoXM));
-                            contorno = Solidos.Poligono(Solidos.Rectangulo(
-                                new XYZ(centro.X, centro.Y, caraSup), eje, lado, largo, u1 - u0));
-                        }
-
-                        var pz = PiezasDePlaca(placa, centro, ex, ey, caraInf, caraSup, fondoGrout,
-                            contorno, o, acero, anclas, soldadura, grout, r, donde.Trim('«', '»'));
-
-                        var bajoElPatin = placa.Anclas.Count(q =>
-                        {
-                            var enPlanta = centro + (ex * Unidades.AInternas(q.X)) + (ey * Unidades.AInternas(q.Y));
-                            var u = (enPlanta - origen).DotProduct(lado);
-                            return u > u0 && u < u1;
-                        });
-
-                        if (bajoElPatin > 0)
-                        {
-                            r.Avisos.Add($"{donde}: {bajoElPatin} ancla(s) quedan bajo el patin de la viga; su tuerca choca con el. Usa una placa mas ancha que el patin.");
-                        }
-
-                        var llave = LlaveDetalle.De(ClaseDetalle.PlacaViga, viga.Id.Value, extremo);
-
-                        if (Solidos.Borrar(doc, llave) > 0)
-                        {
-                            r.Reemplazadas++;
-                        }
-
-                        CrearPlaca(doc, categoria, llave, placa, pz, "placa de apoyo");
-                        hechos++;
-                    }
+                    var hechos = ApoyoDeUnaViga(doc, viga, placa, o, r, apoyos, soloEn, null,
+                        acero, anclas, soldadura, grout, categoria);
 
                     if (hechos > 0)
                     {
@@ -449,6 +286,199 @@ internal static class Detallador
                 }
             }
         });
+    }
+
+    /// <summary>
+    /// La placa de apoyo -horizontal, bajo el patin- de los extremos de UNA viga que se apoyan en
+    /// concreto. Devuelve cuantos extremos la recibieron. La llaman «Placas base» y «Conectar vigas».
+    /// </summary>
+    /// <param name="placa">La de la hoja; null = una de apoyo que sigue al ancho de la viga.</param>
+    /// <param name="soloExtremo">0 o 1 para uno solo; null para los dos.</param>
+    private static int ApoyoDeUnaViga(
+        Document doc, FamilyInstance viga, PlacaBaseJson? placa, OpcionesDetalle o, ResultadoDetalles r,
+        List<(ElementId Id, BoundingBoxXYZ Caja)> apoyos, IReadOnlyCollection<ElementId>? soloEn, int? soloExtremo,
+        ElementId acero, ElementId anclas, ElementId soldadura, ElementId grout, ElementId categoria)
+    {
+        var nombre = $"viga {viga.Id.Value}";
+
+            if (viga.Location is not LocationCurve lc || lc.Curve is not Line linea)
+            {
+                r.Errores.Add($"«{nombre}»: Viga curva. Solo se ponen placas a vigas rectas.");
+                return 0;
+            }
+
+            var p0 = linea.GetEndPoint(0);
+            var p1 = linea.GetEndPoint(1);
+            var eje = new XYZ(p1.X - p0.X, p1.Y - p0.Y, 0);
+
+            if (eje.GetLength() < 1e-6)
+            {
+                r.Errores.Add($"«{nombre}»: Es vertical; para una columna usa la placa base de columna.");
+                return 0;
+            }
+
+            eje = eje.Normalize();
+            var lado = XYZ.BasisZ.CrossProduct(eje).Normalize();
+            var puntos = Geometria.PuntosDelSolido(viga);
+
+            if (puntos.Count < 4)
+            {
+                r.Errores.Add($"«{nombre}»: Sin geometria.");
+                return 0;
+            }
+
+            var origen = new XYZ(p0.X, p0.Y, 0);
+
+            // A lo largo, lo que cubre el SOLIDO y la LINEA de la viga. Revit recorta el solido
+            // en la cara de la columna o el castillo al que se une, pero la linea sigue hasta
+            // su centro: con el solido solo, la punta quedaba en la orilla del apoyo.
+            var tLinea = (new XYZ(p1.X, p1.Y, 0) - origen).DotProduct(eje);
+            var t0 = Math.Min(0, puntos.Min(q => (q - origen).DotProduct(eje)));
+            var t1 = Math.Max(tLinea, puntos.Max(q => (q - origen).DotProduct(eje)));
+            var u0 = puntos.Min(q => (q - origen).DotProduct(lado));
+            var u1 = puntos.Max(q => (q - origen).DotProduct(lado));
+
+            // Sin placa de la hoja -desde «Conectar vigas»-, una que sigue a la viga: del
+            // ancho de su patin mas las anclas, por fuera de el.
+            var pl = placa ?? PlacaBase.DeApoyo(Unidades.AMetros(u1 - u0), o.SoldaduraM, o.MedidasDeConexion);
+            var fondo = puntos.Min(q => q.Z);
+            var hechos = 0;
+
+            for (var extremo = 0; extremo <= 1; extremo++)
+            {
+                if (soloExtremo is int solo && solo != extremo)
+                {
+                    continue;
+                }
+
+                var donde = $"«{nombre}, extremo {extremo + 1}»";
+                var punta = origen + (eje * (extremo == 0 ? t0 : t1)) + (lado * ((u0 + u1) / 2));
+
+                // El concreto de ese extremo: el de cara de arriba mas alta que todavia quede
+                // bajo el patin de abajo.
+                (ElementId Id, double S0, double S1, double Cara)? mejor = null;
+                var alCostado = false;
+
+                // La punta se busca en un tramo corto hacia DENTRO de la viga, no solo en su
+                // extremo: asi se encuentra el apoyo aunque la viga termine justo en su orilla.
+                var hacia = extremo == 0 ? eje : eje.Negate();
+
+                foreach (var (id, caja) in apoyos)
+                {
+                    if (id == viga.Id || (soloEn is not null && !soloEn.Contains(id)))
+                    {
+                        continue;
+                    }
+
+                    var toca = new[] { 0.0, 0.05, 0.15 }.Any(d =>
+                        Contiene(caja, punta + (hacia * Unidades.AInternas(d)), Unidades.AInternas(0.02)));
+
+                    if (!toca)
+                    {
+                        continue;
+                    }
+
+                    var cara = PlacaBase.CaraDeApoyo(
+                        Unidades.AMetros(fondo), Unidades.AMetros(caja.Min.Z), Unidades.AMetros(caja.Max.Z));
+
+                    var esquinas = new[]
+                    {
+                        caja.Min, new XYZ(caja.Max.X, caja.Min.Y, 0), caja.Max, new XYZ(caja.Min.X, caja.Max.Y, 0)
+                    };
+                    var s0 = esquinas.Min(q => (new XYZ(q.X, q.Y, 0) - origen).DotProduct(eje));
+                    var s1 = esquinas.Max(q => (new XYZ(q.X, q.Y, 0) - origen).DotProduct(eje));
+                    var encime = Math.Min(s1, t1) - Math.Max(s0, t0);
+
+                    // Si apenas se toca, la viga llega a la CARA del concreto: eso es la pl
+                    // embebida de «Conectar vigas», no una pl de apoyo.
+                    if (cara is null || encime < Unidades.AInternas(PlacaBase.EncimeMinimoM))
+                    {
+                        alCostado |= caja.Min.Z < fondo && caja.Max.Z > fondo;
+                        continue;
+                    }
+
+                    if (mejor is null || cara.Value > mejor.Value.Cara)
+                    {
+                        mejor = (id, s0, s1, cara.Value);
+                    }
+                }
+
+                if (mejor is null)
+                {
+                    if (alCostado)
+                    {
+                        r.Avisos.Add($"{donde}: Llega al costado del muro o cabezal, no encima; para eso usa «Conectar vigas» (pl embebida).");
+                    }
+
+                    continue;
+                }
+
+                // A lo largo de la viga, la pl va en el tramo donde viga y concreto se enciman.
+                var a = Math.Max(mejor.Value.S0, t0);
+                var b = Math.Min(mejor.Value.S1, t1);
+
+                if (b - a < Unidades.AInternas(0.02))
+                {
+                    continue;
+                }
+
+                // Y en ESTE extremo: con un apoyo largo -un muro corrido bajo toda la viga-, la
+                // pl va junto a la punta y no en medio del encime.
+                var largoPlaca = Unidades.AInternas(o.Girar ? pl.LadoYM : pl.LadoXM);
+
+                if (b - a > largoPlaca)
+                {
+                    (a, b) = extremo == 0 ? (a, a + largoPlaca) : (b - largoPlaca, b);
+                }
+
+                var cotas = PlacaBase.CotasDeApoyoDeViga(pl, Unidades.AMetros(fondo), mejor.Value.Cara);
+                var caraInf = Unidades.AInternas(cotas.CaraInferiorM);
+                var caraSup = Unidades.AInternas(cotas.CaraSuperiorM);
+                var fondoGrout = Unidades.AInternas(cotas.FondoGroutM);
+
+                var centro = origen + (eje * ((a + b) / 2)) + (lado * ((u0 + u1) / 2));
+                centro = new XYZ(centro.X, centro.Y, caraInf);
+
+                var (ex, ey) = o.Girar ? (lado, eje.Negate()) : (eje, lado);
+
+                // El filete del patin a la pl: alrededor del rectangulo que el patin le
+                // toca, del ancho de la viga y del largo de la pl o del apoyo.
+                CurveLoop? contorno = null;
+
+                if (o.SoldarColumna && pl.SoldaduraM > 0)
+                {
+                    var largo = Math.Min(b - a, Unidades.AInternas(o.Girar ? pl.LadoYM : pl.LadoXM));
+                    contorno = Solidos.Poligono(Solidos.Rectangulo(
+                        new XYZ(centro.X, centro.Y, caraSup), eje, lado, largo, u1 - u0));
+                }
+
+                var pz = PiezasDePlaca(pl, centro, ex, ey, caraInf, caraSup, fondoGrout,
+                    contorno, o, acero, anclas, soldadura, grout, r, donde.Trim('«', '»'));
+
+                var bajoElPatin = pl.Anclas.Count(q =>
+                {
+                    var enPlanta = centro + (ex * Unidades.AInternas(q.X)) + (ey * Unidades.AInternas(q.Y));
+                    var u = (enPlanta - origen).DotProduct(lado);
+                    return u > u0 && u < u1;
+                });
+
+                if (bajoElPatin > 0)
+                {
+                    r.Avisos.Add($"{donde}: {bajoElPatin} ancla(s) quedan bajo el patin de la viga; su tuerca choca con el. Usa una pl mas ancha que el patin.");
+                }
+
+                var llave = LlaveDetalle.De(ClaseDetalle.PlacaViga, viga.Id.Value, extremo);
+
+                if (Solidos.Borrar(doc, llave) > 0)
+                {
+                    r.Reemplazadas++;
+                }
+
+                CrearPlaca(doc, categoria, llave, pl, pz, "pl de apoyo");
+                hechos++;
+            }
+
+            return hechos;
     }
 
     /// <summary>
@@ -680,6 +710,56 @@ internal static class Detallador
                 if (e.get_BoundingBox(null) is { } caja)
                 {
                     res.Add((e.Id, caja, c == BuiltInCategory.OST_Floors));
+                }
+            }
+        }
+
+        return res;
+    }
+
+    /// <summary>
+    /// Las vigas y columnas de ACERO que llegan a los concretos elegidos: vigas con una punta de su
+    /// linea sobre o junto al concreto, y columnas cuyo arranque cae sobre el.
+    /// </summary>
+    /// <remarks>
+    /// Se compara con la caja del concreto crecida 15 cm: basta para la viga que termina en la cara
+    /// del muro y deja fuera la del claro de al lado.
+    /// </remarks>
+    public static List<FamilyInstance> AceroSobre(Document doc, IReadOnlyList<Element> concreto)
+    {
+        var res = new List<FamilyInstance>();
+
+        if (concreto.Count == 0)
+        {
+            return res;
+        }
+
+        var h = Unidades.AInternas(0.15);
+        var cajas = concreto.Select(e => e.get_BoundingBox(null)).OfType<BoundingBoxXYZ>().ToList();
+
+        bool Dentro(XYZ p) => cajas.Any(c =>
+            p.X >= c.Min.X - h && p.X <= c.Max.X + h && p.Y >= c.Min.Y - h && p.Y <= c.Max.Y + h
+            && p.Z >= c.Min.Z - h && p.Z <= c.Max.Z + h);
+
+        foreach (var c in new[] { BuiltInCategory.OST_StructuralFraming, BuiltInCategory.OST_StructuralColumns })
+        {
+            foreach (var e in new FilteredElementCollector(doc).OfCategory(c).WhereElementIsNotElementType())
+            {
+                if (e is not FamilyInstance fi || !EsMetalOMadera(fi))
+                {
+                    continue;
+                }
+
+                var toca = c == BuiltInCategory.OST_StructuralFraming
+                    ? fi.Location is LocationCurve lc && (Dentro(lc.Curve.GetEndPoint(0)) || Dentro(lc.Curve.GetEndPoint(1))
+                        || (fi.get_BoundingBox(null) is { } bv
+                            && (Dentro(new XYZ(bv.Min.X, bv.Min.Y, bv.Min.Z)) || Dentro(new XYZ(bv.Max.X, bv.Max.Y, bv.Min.Z)))))
+                    : fi.get_BoundingBox(null) is { } bc
+                      && Dentro(new XYZ((bc.Min.X + bc.Max.X) / 2, (bc.Min.Y + bc.Max.Y) / 2, bc.Min.Z));
+
+                if (toca)
+                {
+                    res.Add(fi);
                 }
             }
         }
@@ -1011,6 +1091,8 @@ internal static class Detallador
 
             var cajasColumnas = Cajas(columnas);
             var cajasMuros = Cajas(muros);
+            var apoyos = ApoyosDeConcreto(doc);
+            var grout = Solidos.Grout(doc);
 
             foreach (var elegida in vigas)
             {
@@ -1069,6 +1151,18 @@ internal static class Detallador
                         }
 
                         var piezas = new List<(GeometryObject Solido, string Que)>();
+
+                        // ENCIMA DEL CONCRETO -cabezal, columna, castillo o muro bajo la viga-: la placa va
+                        // HORIZONTAL bajo el patin, siguiendo a la viga. Antes todo el concreto se trataba
+                        // como un muro al que la viga llega de lado, y la placa salia vertical.
+                        if (enMuro && o.PlacaEnMuro && ApoyoDeUnaViga(doc, viga, null, o, r, apoyos, null, extremo,
+                                mat.Acero, mat.Anclas, mat.Soldadura, grout, categoria) > 0)
+                        {
+                            // La placa vertical que pudo quedar de antes en este extremo, fuera.
+                            Solidos.Borrar(doc, LlaveDetalle.De(ClaseDetalle.Soldadura, viga.Id.Value, extremo));
+                            hechos++;
+                            continue;
+                        }
 
                         if (enMuro && o.PlacaEnMuro)
                         {
