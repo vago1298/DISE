@@ -1308,18 +1308,33 @@ internal static class Detallador
             Unidades.AMetros(m.U0), Unidades.AMetros(m.U1), Unidades.AMetros(m.V0), Unidades.AMetros(m.V1),
             o.MedidasDeConexion);
 
-        piezas.Add((Solidos.Caja(m.Origen, m.U, m.V, m.A, AInternas(placa), mat.Acero),
-            $"placa embebida de {Cm(placa.U1 - placa.U0)}x{Cm(placa.V1 - placa.V0)} cm, {Mm(o.MedidasDeConexion.PlacaMuroEspesorM)} mm"));
+        var t = Unidades.AInternas(o.MedidasDeConexion.PlacaMuroEspesorM);
+        var solidoPlaca = Solidos.Caja(m.Origen, m.U, m.V, m.A, AInternas(placa), mat.Acero);
+        var holgura = Unidades.AInternas(0.002);
 
-        // Las anclas salen de la cara de ATRAS de la placa, hacia dentro del muro: -A.
-        var atras = m.Origen - (m.A * Unidades.AInternas(o.MedidasDeConexion.PlacaMuroEspesorM));
-
+        // LAS ANCLAS SE VEN: atraviesan la placa por su barreno, con la TUERCA por fuera y la rosca
+        // asomando, y se meten en el concreto lo que diga su largo. Antes empezaban en la cara de
+        // atras de la placa y quedaban enteras dentro del muro, sin nada a la vista.
         foreach (var perno in pernos)
         {
-            var inicio = atras + (m.U * Unidades.AInternas(perno.U)) + (m.V * Unidades.AInternas(perno.V));
-            piezas.Add((Solidos.Cilindro(inicio, m.A.Negate(), Unidades.AInternas(perno.LargoM),
-                Unidades.AInternas(perno.DiametroM / 2), mat.Anclas), $"ancla de la placa embebida"));
+            var radio = Unidades.AInternas(perno.DiametroM / 2);
+            var d = Unidades.AInternas(perno.DiametroM);
+            var enCara = m.Origen + (m.U * Unidades.AInternas(perno.U)) + (m.V * Unidades.AInternas(perno.V));
+            var alto = 0.8 * d;
+            var asoma = alto + Math.Max(0.5 * d, Unidades.AInternas(0.01));
+            var punta = enCara + (m.A * asoma);
+
+            solidoPlaca = Solidos.Restar(solidoPlaca, Solidos.Cilindro(
+                enCara + (m.A * holgura), m.A.Negate(), t + (2 * holgura), radio + Unidades.AInternas(0.0015), mat.Acero));
+
+            piezas.Add((Solidos.Cilindro(punta, m.A.Negate(), asoma + t + Unidades.AInternas(perno.LargoM), radio, mat.Anclas),
+                $"ancla de {Mm(perno.DiametroM)} mm de la placa embebida"));
+            piezas.Add((Solidos.Tuerca(enCara, m.A, m.U, 1.6 * d, alto, radio, mat.Anclas),
+                "tuerca del ancla de la placa embebida"));
         }
+
+        piezas.Insert(0, (solidoPlaca,
+            $"placa embebida de {Cm(placa.U1 - placa.U0)}x{Cm(placa.V1 - placa.V0)} cm, {Mm(o.MedidasDeConexion.PlacaMuroEspesorM)} mm, {pernos.Count} anclas"));
 
         piezas.Add((Filete(contorno, m.A, lado, mat.Soldadura, r, donde),
             $"filete de {Mm(o.SoldaduraM)} mm todo alrededor, a la placa embebida"));

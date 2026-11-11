@@ -798,7 +798,8 @@ public sealed class OpcionesConexion
     /// <summary>Placa embebida en el muro: espesor y lo que sobresale del perfil por cada lado.</summary>
     public double PlacaMuroEspesorM { get; set; } = 0.0127;
 
-    public double PlacaMuroSobranteM { get; set; } = 0.05;
+    /// <remarks>8 cm: las anclas, a 4 cm del borde, quedan fuera del perfil y su tuerca no choca con el.</remarks>
+    public double PlacaMuroSobranteM { get; set; } = 0.08;
 
     /// <summary>Anclas de la placa embebida: diametro y largo.</summary>
     public double PernoM { get; set; } = 0.019;
@@ -960,10 +961,17 @@ public static class Conexion
         var columnas = Hileras(placa.U1 - placa.U0 - (2 * borde));
         var filas = Hileras(placa.V1 - placa.V0 - (2 * borde));
 
+        // SOLO EN EL PERIMETRO de la placa: las de dentro caerian detras de la viga y su tuerca
+        // chocaria con ella o con su soldadura.
         for (var i = 0; i < columnas; i++)
         {
             for (var j = 0; j < filas; j++)
             {
+                if (i > 0 && i < columnas - 1 && j > 0 && j < filas - 1)
+                {
+                    continue;
+                }
+
                 pernos.Add(new PernoLocal(
                     Reparto(placa.U0 + borde, placa.U1 - borde, columnas, i),
                     Reparto(placa.V0 + borde, placa.V1 - borde, filas, j),
