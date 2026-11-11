@@ -17122,6 +17122,8 @@ def v31_detalles_revit() -> None:
           '"Vigas: a donde llega la placa:"' in com and "var modo = llegaA?.SelectedIndex ?? 2;" in com)
     check("la viga toca el cabezal con cualquier parte de su cara, y si no se dice a cuanto queda",
           "MasCercanoEnfrente(cajasMuros, marco)" in det and "public static double? Enfrente(" in nuc)
+    check("la placa embebida lleva sus anclas a la vista: barreno, tuerca por fuera y rosca, solo en el perimetro",
+          "tuerca del ancla de la placa embebida" in det and "if (i > 0 && i < columnas - 1 && j > 0 && j < filas - 1)" in nuc)
     check("placas base: se pueden elegir los muros, castillos o cabezales y se buscan las piezas de acero que llegan",
           "public static List<FamilyInstance> AceroSobre(" in det and "Detallador.AceroSobre(doc, concreto)" in com)
     check("conectar vigas: sobre cabezal, columna o castillo la placa va horizontal bajo la viga",
