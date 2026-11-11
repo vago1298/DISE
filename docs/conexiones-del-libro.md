@@ -45,6 +45,32 @@ ATIESADORES y la X en dos niveles. Salen en la lista con el motivo.
 - De cada hoja se cuentan las revisiones que **NO CUMPLEN** y se avisa; también se detectan las
   hojas que todavía traen **los datos de ejemplo** del libro, que salen sin palomita.
 
+## Cómo sale en AutoCAD
+
+- **Aparte del resto del dibujo**: el primer detalle termina en X = -25 y los demás siguen hacia la
+  izquierda, en renglones de tres y hacia abajo.
+- **Las soldaduras se llaman con la simbología de soldadura de CadLink** (la misma del cuadro de
+  la pestaña Conexiones/Detalles): flecha al cordón, tamaño, símbolo (filete, filete en ambos lados,
+  todo alrededor o bisel para la penetración completa) y el electrodo en la cola.
+- **El cordón se rellena con el hatch de la soldadura de la placa base** (patrón y escala de su
+  perfil en *Estilo de dibujo*), sobre su contorno; no es una polilínea con ancho.
+- Los textos son MTEXT de **0.07** de alto con su punto de justificación; el cuadro de datos y las
+  notas van cada uno en un solo MTEXT justificado. Se cambian en *Estilo de dibujo*, perfil
+  «Conexiones de acero».
+- Las cotas dicen los centímetros con **dos decimales**.
+
+## Si cambias el libro
+
+- **Cambiar un valor**: guarda el libro en Excel y pulsa «Volver a leer»; el detalle sale con el
+  valor nuevo.
+- **Duplicar una hoja** (Excel la llama «PLACA GUSSET (2)», o tú «PLACA GUSSET 4»): aparece como
+  otra conexión en la lista, con sus propios valores.
+- **Insertar o borrar filas, o mover la hoja de lugar**: no pasa nada, porque cada dato se busca
+  por su etiqueta.
+- **Cambiar el texto de una etiqueta de la columna B, o mover un valor fuera de la columna C**: ese
+  dato ya no se encuentra. No se adivina: se dibuja con cero y la conexión trae una nota que dice
+  qué datos faltaron.
+
 ## Lo que la hoja no dice y se resuelve con una regla
 
 Se escribe en las notas del detalle para que el dibujante lo revise:

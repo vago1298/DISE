@@ -29,7 +29,11 @@ public sealed record Poligono2D(IReadOnlyList<(double X, double Y)> Puntos, bool
 public sealed record Circulo2D(double X, double Y, double R, CapaDetalle Capa);
 
 /// <summary>Una llamada: de un punto de la pieza a su rotulo.</summary>
-public sealed record Llamada2D(double X, double Y, string Texto, CapaDetalle Capa);
+/// <param name="Soldadura">Si es de un cordon: se llama con el simbolo de soldadura.</param>
+public sealed record Llamada2D(double X, double Y, string Texto, CapaDetalle Capa)
+{
+    public CordonPieza? Soldadura { get; init; }
+}
 
 /// <summary>Una cota alineada de (X1, Y1) a (X2, Y2), desplazada hacia el lado (Nx, Ny).</summary>
 public sealed record Cota2D(double X1, double Y1, double X2, double Y2, double Nx, double Ny, string Texto);
@@ -176,9 +180,15 @@ public static class VistasConexion
 
         // ---- Las piezas.
         var rotulos = new Dictionary<string, (double X, double Y, CapaDetalle Capa)>(StringComparer.Ordinal);
+        var cordonDe = new Dictionary<string, CordonPieza>(StringComparer.Ordinal);
 
-        void Rotulo(string texto, IEnumerable<V3> puntos, CapaDetalle capa)
+        void Rotulo(string texto, IEnumerable<V3> puntos, CapaDetalle capa, CordonPieza? cordon = null)
         {
+            if (cordon is not null && !cordonDe.ContainsKey(texto))
+            {
+                cordonDe[texto] = cordon;
+            }
+
             if (string.IsNullOrWhiteSpace(texto) || rotulos.ContainsKey(texto))
             {
                 return;
@@ -203,7 +213,7 @@ public static class VistasConexion
         foreach (var c in m.Cordones)
         {
             Envolvente(c.Vertices(), CapaDetalle.Soldadura, true);
-            Rotulo(c.Rotulo, c.Vertices(), CapaDetalle.Soldadura);
+            Rotulo(c.Rotulo, c.Vertices(), CapaDetalle.Soldadura, c);
         }
 
         foreach (var t in m.Tornillos)
@@ -229,7 +239,7 @@ public static class VistasConexion
 
         foreach (var (texto, (x, y, capa)) in rotulos)
         {
-            r.Llamadas.Add(new Llamada2D(x, y, texto, capa));
+            r.Llamadas.Add(new Llamada2D(x, y, texto, capa) { Soldadura = cordonDe.GetValueOrDefault(texto) });
         }
 
         // ---- Las cotas que se leen en esta vista: las que no van a lo largo de la mirada.

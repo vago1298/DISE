@@ -273,6 +273,8 @@ internal static class Program
         Check("pulgadas: 0.95 cm = 3/8\"", TextoMedida.Pulgadas(0.95) == "3/8\"", TextoMedida.Pulgadas(0.95));
         Check("pulgadas: 2.54 cm = 1\"", TextoMedida.Pulgadas(2.54) == "1\"", TextoMedida.Pulgadas(2.54));
         Check("sin copia: «PLACA GUSSET 1» → placa gusset", EtiquetasExcel.SinCopia("PLACA GUSSET 1") == "placa gusset");
+        Check("cota con dos decimales", TextoMedida.Cota(80) == "80.00" && TextoMedida.Cota(12.345) == "12.35", TextoMedida.Cota(12.345));
+
     }
 
     // ==================================================================
@@ -322,6 +324,18 @@ internal static class Program
             Check("UV: soldada no lleva tornillos", m.Tornillos.Count == 0);
             Check("UV: la placa angosta lleva sus filetes en los bordes de la placa",
                 m.Cordones.Count(c => c.Rotulo.Contains("placa-patín", StringComparison.Ordinal)) == 4);
+            var cjp = m.Cordones.First(c => c.Penetracion);
+            Check("UV: la penetracion se llama con el bisel, su electrodo y sin tamaño",
+                cjp.Simbolo == SimboloDeSoldadura.BiselSimple && cjp.Tamano.Length == 0 && cjp.Electrodo == "E70XX",
+                $"{cjp.Simbolo} «{cjp.Tamano}» «{cjp.Electrodo}» «{cjp.Descripcion}»");
+            var dos = m.Cordones.First(c => c.Rotulo.Contains("a la columna, dos lados", StringComparison.Ordinal));
+            Check("UV: el filete de los dos lados se llama con el simbolo de ambos lados y su tamaño",
+                dos.Simbolo == SimboloDeSoldadura.FileteAmbosLados && dos.Tamano == "5/16\"" && dos.Descripcion == "placa de cortante a la columna, dos lados",
+                $"{dos.Simbolo} «{dos.Tamano}» «{dos.Descripcion}»");
+            var uno = m.Cordones.First(c => c.Rotulo.Contains("placa-patín", StringComparison.Ordinal));
+            Check("UV: el filete de un lado es filete", uno.Simbolo == SimboloDeSoldadura.Filete && uno.Descripcion.StartsWith("placa-patín", StringComparison.Ordinal), uno.Descripcion);
+            Check("UV: las llamadas de soldadura llevan su cordon", VistasConexion.Proyectar(m).All(v => v.Llamadas.Where(l => l.Capa == CapaDetalle.Soldadura).All(l => l.Soldadura is not null)));
+            Check("UV: las cotas van con dos decimales", m.Cotas.All(c => c.Texto.Contains('.') && c.Texto.Split('.')[^1].Length == 2), m.Cotas[0].Texto);
             Check("UV: todo finito", Finitos(m));
             Check("UV: las vistas se proyectan", VistasBien(m));
         }
@@ -460,6 +474,14 @@ internal static class Program
             if (m is not null && m.PlacaBase is null)
             {
                 Check($"{c.Hoja.Hoja}: finito y con vistas", Finitos(m) && VistasBien(m));
+            }
+
+            if (m is not null && Environment.GetEnvironmentVariable("CADLINK_VER_SOLDADURAS") == "1")
+            {
+                foreach (var x in m.Cordones.Select(k => $"{k.Simbolo} | {k.Tamano} | {k.Electrodo} | {k.Descripcion}").Distinct())
+                {
+                    Console.WriteLine("            " + x);
+                }
             }
         }
 

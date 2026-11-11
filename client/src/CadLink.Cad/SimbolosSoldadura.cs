@@ -435,6 +435,102 @@ public static class SimbolosSoldadura
         return new Renglon(t, leader, abiertas, cerradas, new List<double[]>(), circulo, textos);
     }
 
+    /// <summary>
+    /// Una llamada de soldadura que APUNTA a un cordón del detalle: la flecha desde el cordón hasta
+    /// el codo, la línea de referencia hacia la DERECHA con su símbolo, el tamaño a su izquierda y
+    /// la cola con el electrodo al final. Es el mismo renglón de la simbología, con la flecha
+    /// donde está la soldadura.
+    /// </summary>
+    /// <returns>El renglón; su último punto del leader es el final de la línea de referencia.</returns>
+    public static Renglon Apuntado(
+        Tipo t, double xPunta, double yPunta, double xCodo, double yRef, double h, string tamano, string cola)
+    {
+        var abiertas = new List<double[]>();
+        var cerradas = new List<double[]>();
+        var rellenas = new List<double[]>();
+        var textos = new List<TextoDwg>();
+        (double X, double Y, double R)? circulo = null;
+
+        var xFin = xCodo + (LineaReferencia * h);
+        var leader = new[] { xPunta, yPunta, xCodo, yRef, xFin, yRef };
+        var xs = xCodo + (SimboloDesdeCodo * h);
+        var lado = LadoSimbolo * h;
+
+        switch (t)
+        {
+            case Tipo.FileteAmbosLados:
+                cerradas.Add(Triangulo(xs, yRef, lado, arriba: true));
+                cerradas.Add(Triangulo(xs, yRef, lado, arriba: false));
+                break;
+
+            case Tipo.BiselSimple:
+                abiertas.Add(new[] { xs, yRef, xs + (0.85 * lado), yRef + (1.25 * lado) });
+                textos.Add(new TextoDwg("45%%d", xs - (0.2 * h), yRef - (1.15 * h), 0.72 * h, 11));
+                break;
+
+            case Tipo.DeCampo:
+                abiertas.Add(new[] { xs, yRef, xs, yRef + (AstaBandera * h) });
+                rellenas.Add(new[]
+                {
+                    xs, yRef + (AstaBandera * h),
+                    xs + (VueloBandera * h), yRef + ((AstaBandera - 0.35) * h),
+                    xs, yRef + ((AstaBandera - 0.7) * h),
+                });
+                cerradas.Add(Triangulo(xs + (VueloBandera * h) + (0.5 * h), yRef, lado, arriba: true));
+                break;
+
+            default:
+                cerradas.Add(Triangulo(xs, yRef, lado, arriba: true));
+                break;
+        }
+
+        if (t == Tipo.TodoAlrededor)
+        {
+            circulo = (xCodo, yRef, RadioCirculo * h);
+        }
+
+        if (tamano.Trim().Length > 0)
+        {
+            // El tamaño a la izquierda del símbolo, del lado de la flecha, como en la placa base.
+            textos.Add(new TextoDwg(tamano.Trim(), xs - (0.4 * h), yRef + (0.55 * lado), 0.8 * h, 11));
+        }
+
+        // La flecha en la punta, a lo largo del primer tramo.
+        var dx = xPunta - xCodo;
+        var dy = yPunta - yRef;
+        var l = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (l > 1e-9)
+        {
+            var ux = dx / l;
+            var uy = dy / l;
+            var largo = 0.9 * h;
+            var ancho = 0.3 * h;
+            rellenas.Add(new[]
+            {
+                xPunta, yPunta,
+                xPunta - (ux * largo) - (uy * ancho), yPunta - (uy * largo) + (ux * ancho),
+                xPunta - (ux * largo) + (uy * ancho), yPunta - (uy * largo) - (ux * ancho),
+            });
+        }
+
+        abiertas.Add(new[]
+        {
+            xFin + (LargoCola * h), yRef + (SemiAltoCola * h),
+            xFin, yRef,
+            xFin + (LargoCola * h), yRef - (SemiAltoCola * h),
+        });
+
+        textos.Add(new TextoDwg(cola.Trim().Length > 0 ? cola.Trim() : TextoDeLaCola,
+            xFin + ((LargoCola + 0.25) * h), yRef, AlturaCola * h, 9));
+
+        return new Renglon(t, leader, abiertas, cerradas, rellenas, circulo, textos);
+    }
+
+    /// <summary>Lo que mide un renglón apuntado, del codo al final de la cola con su texto.</summary>
+    public static double LargoApuntado(double h, string cola) =>
+        (LineaReferencia + LargoCola + 0.25) * h + (Math.Max(cola.Trim().Length, TextoDeLaCola.Length) * 0.62 * AlturaCola * h);
+
     // IzquierdaDelSimbolo SE QUITÓ. Servía para colocar la frase «SOLDADURA CON E70XX DE 3/16" DE
     // ESP.» justo antes de la cola, y esa frase ya no se escribe: el símbolo dice el tamaño y el
     // electrodo en el sitio donde el estándar manda buscarlos. Sin ella, esta cuenta no la usaba

@@ -83,6 +83,18 @@ public sealed record TornilloPieza(string Que, string Rotulo, V3 Desde, V3 Eje, 
 public sealed record CordonPieza(
     string Que, string Rotulo, V3 P0, V3 P1, V3 Pata1, V3 Pata2, double Lado, bool Penetracion)
 {
+    /// <summary>Con que simbolo de soldadura se llama en el dibujo.</summary>
+    public SimboloDeSoldadura Simbolo { get; init; }
+
+    /// <summary>El tamaño que va junto al simbolo: «3/8"»; vacio en la penetracion.</summary>
+    public string Tamano { get; init; } = string.Empty;
+
+    /// <summary>El electrodo, que va en la cola del simbolo: «E70XX».</summary>
+    public string Electrodo { get; init; } = string.Empty;
+
+    /// <summary>Lo que dice la llamada despues del simbolo: «placas al patín de la columna».</summary>
+    public string Descripcion { get; init; } = string.Empty;
+
     public IEnumerable<V3> Vertices()
     {
         yield return P0;
@@ -92,6 +104,17 @@ public sealed record CordonPieza(
         yield return P1 + (Pata1 * Lado);
         yield return P1 + (Pata2 * Lado);
     }
+}
+
+/// <summary>
+/// Los simbolos de la simbologia de soldadura de CadLink (AWS A2.4) con que se llaman los cordones.
+/// </summary>
+public enum SimboloDeSoldadura
+{
+    Filete,
+    FileteAmbosLados,
+    TodoAlrededor,
+    BiselSimple
 }
 
 /// <summary>
@@ -210,6 +233,9 @@ public static class TextoMedida
             _ => $"{enteros} {frac}\""
         };
     }
+
+    /// <summary>Lo que dice una cota: centimetros con dos decimales, «12.50».</summary>
+    public static string Cota(double cm) => cm.ToString("0.00", CultureInfo.InvariantCulture);
 
     /// <summary>«13 mm (1/2")».</summary>
     public static string MmYPulgadas(double cm) =>

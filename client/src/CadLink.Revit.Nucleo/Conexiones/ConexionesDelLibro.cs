@@ -106,6 +106,18 @@ public static class ConexionesDelLibro
             m.Avisos.Add("La hoja trae los datos de ejemplo del libro: todavia no se lleno con los de tu proyecto.");
         }
 
+        // Un dato que no se encontro: su etiqueta se cambio o se movio a otra columna.
+        // Sin la identificacion ni los renglones del resumen para el dibujante (RID, R01, C01…).
+        var faltan = h.Faltan.Where(n => !System.Text.RegularExpressions.Regex.IsMatch(n, @"^(ID|RID|R\d\d|C\d\d)$"))
+            .Select(n => h.Tipo.Datos.First(d => d.Nombre == n).Etiqueta.TrimEnd('=', ' '))
+            .ToList();
+
+        if (faltan.Count > 0)
+        {
+            m.Avisos.Add($"No se encontraron {faltan.Count} dato(s) en la hoja (¿se cambio su etiqueta de la columna B o se movio su valor fuera de la columna C?): "
+                + string.Join("; ", faltan.Take(5)) + (faltan.Count > 5 ? "…" : string.Empty) + ". Se dibujo con cero en su lugar.");
+        }
+
         if (libro.RecalcularAlAbrir)
         {
             m.Avisos.Add("El libro se modifico fuera de Excel y pide recalcular: abrelo en Excel, guardalo y vuelve a leerlo para que los valores calculados esten al dia.");
@@ -243,7 +255,7 @@ public static class ConexionesDelLibro
                 // Filete al alma (arriba y abajo de la placa) y penetracion a los patines.
                 foreach (var cara in new[] { 1.0, -1.0 })
                 {
-                    p.Cordon("Soldadura", Filete(wpc, el) + " al alma (placas de continuidad)",
+                    p.Cordon("Soldadura", Filete(wpc, el) + " placas de continuidad al alma, dos lados",
                         new V3(x0, y + (cara * tpc / 2), z0 + c), new V3(x0, y + (cara * tpc / 2), z1 - c),
                         new V3(0, cara, 0), new V3(s, 0, 0), wpc);
                 }
@@ -953,7 +965,7 @@ public static class ConexionesDelLibro
             foreach (var lado in new[] { -1.0, 1.0 })
             {
                 var o = n * (lado * b / 2);
-                p.Cordon("Soldadura", $"{(int)Math.Round(h.Num("nw"))} cordones de {Cm(lw * 100)} cm, " + Filete(w, el),
+                p.Cordon("Soldadura", Filete(w, el) + $" diagonal a la placa: {(int)Math.Round(h.Num("nw"))} cordones de {Cm(lw * 100)} cm, ambos lados de la placa",
                     (u * t0) + o + cara, (u * (t0 + lw)) + o + cara, n * lado, haciaFuera, w);
             }
         }
@@ -1028,11 +1040,11 @@ public static class ConexionesDelLibro
                 foreach (var cara in new[] { -1.0, 1.0 })
                 {
                     var xf = x + (cara * t / 2);
-                    p.Cordon("Soldadura", Filete(ws, el) + " atiesadores al alma y a los patines",
+                    p.Cordon("Soldadura", Filete(ws, el) + " atiesadores al alma y a los patines, ambos lados",
                         new V3(xf, -hv + k, z0), new V3(xf, hv - k, z0), new V3(cara, 0, 0), new V3(0, 0, s), ws);
-                    p.Cordon("Soldadura", Filete(ws, el) + " atiesadores al alma y a los patines",
+                    p.Cordon("Soldadura", Filete(ws, el) + " atiesadores al alma y a los patines, ambos lados",
                         new V3(xf, y1, z0 + (s * c)), new V3(xf, y1, z1), new V3(cara, 0, 0), -Y, ws);
-                    p.Cordon("Soldadura", Filete(ws, el) + " atiesadores al alma y a los patines",
+                    p.Cordon("Soldadura", Filete(ws, el) + " atiesadores al alma y a los patines, ambos lados",
                         new V3(xf, y0, z0 + (s * c)), new V3(xf, y0, z1), new V3(cara, 0, 0), Y, ws);
                 }
             }
@@ -1115,7 +1127,7 @@ public static class ConexionesDelLibro
                 foreach (var lado in new[] { -1.0, 1.0 })
                 {
                     var o = n * (lado * b / 2);
-                    p.Cordon("Soldadura", $"{(int)Math.Round(h.Num("nwc"))} cordones de {Cm(lwg * 100)} cm, " + Filete(wg, el),
+                    p.Cordon("Soldadura", Filete(wg, el) + $" diagonal a la placa: {(int)Math.Round(h.Num("nwc"))} cordones de {Cm(lwg * 100)} cm, ambos lados de la placa",
                         wp + (u * t0) + o + cz, wp + (u * (t0 + lwg)) + o + cz, n * lado, fuera, wg);
                 }
             }
@@ -1123,7 +1135,7 @@ public static class ConexionesDelLibro
             p.Cota(new V3(centro - (lgi / 2), -hv, 0), new V3(centro + (lgi / 2), -hv, 0), Y);
         }
 
-        p.Cota(new V3(-e / 2, hv, 0), new V3(e / 2, hv, 0), Y, $"e = {Cm(e * 100)}");
+        p.Cota(new V3(-e / 2, hv, 0), new V3(e / 2, hv, 0), Y, $"e = {Cota(e * 100)}");
 
         if (posiciones.Count > 0)
         {
@@ -1210,7 +1222,7 @@ public static class ConexionesDelLibro
                     foreach (var lado in new[] { -1.0, 1.0 })
                     {
                         var o = n * (lado * b / 2);
-                        p.Cordon("Soldadura", $"{(int)Math.Round(h.Num("nw"))} cordones de {Cm(lw * 100)} cm por diagonal, " + Filete(w, el),
+                        p.Cordon("Soldadura", Filete(w, el) + $" diagonales a la placa: {(int)Math.Round(h.Num("nw"))} cordones de {Cm(lw * 100)} cm por diagonal, ambos lados",
                             (u * t0) + o + cz, (u * (t0 + lw)) + o + cz, n * lado, new V3(0, 0, cara), w);
                     }
                 }

@@ -59,7 +59,50 @@ internal sealed class PiezasLocales
             return;
         }
 
-        M.Cordones.Add(new CordonPieza(que, rotulo, p0, p1, pata1.Unitario(), pata2.Unitario(), lado, penetracion));
+        M.Cordones.Add(new CordonPieza(que, rotulo, p0, p1, pata1.Unitario(), pata2.Unitario(), lado, penetracion)
+        {
+            Simbolo = SimboloDe(rotulo, penetracion),
+            Tamano = penetracion ? string.Empty : TextoMedida.Pulgadas(lado * 100),
+            Electrodo = System.Text.RegularExpressions.Regex.Match(rotulo, @"\((E\d+XX)\)").Groups[1].Value,
+            Descripcion = Descripcion(rotulo)
+        });
+    }
+
+    /// <summary>
+    /// El simbolo, por lo que dice el rotulo: los rotulos los escriben los mismos ayudantes
+    /// (<c>Filete(…)</c> y <c>Penetracion(…)</c> de <see cref="ConexionesDelLibro"/>), asi que su
+    /// forma es fija.
+    /// </summary>
+    public static SimboloDeSoldadura SimboloDe(string rotulo, bool penetracion)
+    {
+        if (penetracion)
+        {
+            return SimboloDeSoldadura.BiselSimple;
+        }
+
+        var r = EtiquetasExcel.Normalizar(rotulo);
+
+        if (r.Contains("todo alrededor", StringComparison.Ordinal))
+        {
+            return SimboloDeSoldadura.TodoAlrededor;
+        }
+
+        return r.Contains("dos lados", StringComparison.Ordinal) || r.Contains("ambos lados", StringComparison.Ordinal)
+               || r.Contains("dos caras", StringComparison.Ordinal)
+            ? SimboloDeSoldadura.FileteAmbosLados
+            : SimboloDeSoldadura.Filete;
+    }
+
+    /// <summary>«Filete 3/8" (E70XX) placa a la viga, ambos lados» → «placa a la viga, ambos lados».</summary>
+    public static string Descripcion(string rotulo)
+    {
+        var d = System.Text.RegularExpressions.Regex.Replace(rotulo,
+            @"^\s*(Filete\s+[0-9 /]+""?|Penetración completa)\s*(\(E\d+XX\))?\s*,?\s*", string.Empty);
+        d = System.Text.RegularExpressions.Regex.Replace(d, @"\s*,?\s*(Filete\s+[0-9 /]+""?)\s*(\(E\d+XX\))?", string.Empty);
+        d = d.Trim().TrimStart(',').Trim();
+        return d.Length > 0 && rotulo.StartsWith("Penetración", StringComparison.Ordinal)
+            ? "penetración completa: " + d
+            : d.Length > 0 ? d : rotulo;
     }
 
     public void Tornillo(string que, string rotulo, V3 desde, V3 eje, double largo, double diametro)
@@ -87,7 +130,7 @@ internal sealed class PiezasLocales
             return;
         }
 
-        M.Cotas.Add(new CotaPieza(a, b, lado.Unitario(), texto ?? TextoMedida.Cm(l * 100)));
+        M.Cotas.Add(new CotaPieza(a, b, lado.Unitario(), texto ?? TextoMedida.Cota(l * 100)));
     }
 
     public void Trazo(string que, IReadOnlyList<V3> puntos, bool cerrado = false, bool oculto = false)

@@ -422,14 +422,15 @@ public sealed class EstiloDibujo
 
         // ------------------------------------------------------------------
         // Conexiones de acero leidas del libro de Excel: ConexionAceroDrawer. Se dibujan en
-        // tamaño real, como la placa base, y sus textos van para imprimir a 1:10.
+        // tamaño real, como la placa base. El hatch de la soldadura es el de la placa base: se
+        // ajusta en su perfil y los dos detalles salen iguales.
         // ------------------------------------------------------------------
         e._perfiles.Add(new PerfilEstilo(Conexiones, "Conexiones de acero (libro de Excel)",
                 "Los detalles de las conexiones que se leen del libro de revisiones de acero: uniones viga-columna, placas gusset, contraventeos.")
             .Con("fuente", GrupoLetras, "Fuente del estilo ACERO_CONEXION", TipoAjuste.Fuente, "Bahnschrift Light SemiCondensed")
-            .Con("alto.texto", GrupoLetras, "Altura de las llamadas y del cuadro de datos", TipoAjuste.Medida, N(0.016))
-            .Con("alto.titulo", GrupoLetras, "Altura del título del detalle", TipoAjuste.Medida, N(0.03))
-            .Con("alto.vista", GrupoLetras, "Altura del nombre de cada vista (ELEVACIÓN, PLANTA)", TipoAjuste.Medida, N(0.022))
+            .Con("alto.texto", GrupoLetras, "Altura de las llamadas, de la simbología de soldadura y del cuadro de datos", TipoAjuste.Medida, N(0.07))
+            .Con("alto.titulo", GrupoLetras, "Altura del título del detalle", TipoAjuste.Medida, N(0.07))
+            .Con("alto.vista", GrupoLetras, "Altura del nombre de cada vista (ELEVACIÓN, PLANTA)", TipoAjuste.Medida, N(0.07))
             .Con("cota.alto", GrupoCotas, "Altura del número de las cotas (COTA_CONEXION)", TipoAjuste.Medida, N(0.016))
             .Con("cota.marca.tam", GrupoCotas, "Tamaño de la marca", TipoAjuste.Medida, N(0.012))
             .Con("cota.marca", GrupoCotas, "Tipo de marca", TipoAjuste.Marca, "_OBLIQUE")
@@ -443,9 +444,7 @@ public sealed class EstiloDibujo
             .Con("capa.CONEXION TORNILLOS", GrupoColores, "Capa CONEXION TORNILLOS", TipoAjuste.ColorAci, C(6))
             .Con("capa.CONEXION SOLDADURA", GrupoColores, "Capa CONEXION SOLDADURA", TipoAjuste.ColorAci, C(240))
             .Con("capa.CONEXION COTAS", GrupoColores, "Capa CONEXION COTAS", TipoAjuste.ColorAci, C(7))
-            .Con("capa.CONEXION TEXTOS", GrupoColores, "Capa CONEXION TEXTOS", TipoAjuste.ColorAci, C(3))
-            .Con("hatch.soldadura", GrupoHatch, "Patrón del relleno de la soldadura", TipoAjuste.Patron, "SOLID")
-            .Con("hatch.soldadura.escala", GrupoHatch, "Escala de ese patrón", TipoAjuste.Medida, N(0.0005)));
+            .Con("capa.CONEXION TEXTOS", GrupoColores, "Capa CONEXION TEXTOS", TipoAjuste.ColorAci, C(3)));
 
         // ------------------------------------------------------------------
         // Planta estructural: PlantaDrawer. Las claves SON los parametros de su hoja CONFIG

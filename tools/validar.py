@@ -17113,6 +17113,19 @@ def v32_conexiones_del_libro() -> None:
           "ClaseDetalle.ConexionDelLibro" in det and "Solidos.Borrar(doc, llave)" in det)
     check("Revit: la capa de la API se compila contra los recortes",
           "Detallador.Conexiones.cs" in stub)
+    check("las soldaduras se llaman con la simbologia de soldadura de CadLink",
+          "SimbolosSoldadura.Apuntado(" in drw and "public static Renglon Apuntado(" in leer(ruta("client/src/CadLink.Cad/SimbolosSoldadura.cs")))
+    check("el cordon se rellena con el hatch de la soldadura de la placa base",
+          'Perfil(EstiloDibujo.PlacaBase).Texto("hatch.soldadura")' in cad and "AddLightWeightPolyline" in drw
+          and "ConstantWidth" not in drw)
+    check("los textos del detalle son de 0.07 y el cuadro de datos va en un MTEXT justificado",
+          '"alto.texto", GrupoLetras, "Altura de las llamadas, de la simbología de soldadura y del cuadro de datos", TipoAjuste.Medida, N(0.07)' in est
+          and '"\\\\pqj;"' in drw)
+    check("las cotas van con dos decimales", 'ToString("0.00", CultureInfo.InvariantCulture)' in nucleo["ModeloConexion.cs"]
+          and "TextoMedida.Cota(" in nucleo["PiezasLocales.cs"])
+    check("los detalles van aparte, a la izquierda de X = -25",
+          "private const double XDeLosDetalles = -25;" in app and "x - dibujante.Medir(detalle)" in app)
+    check("un dato que no se encuentra se avisa", "No se encontraron {faltan.Count} dato(s)" in cnx)
     check("hay prueba ejecutable de las conexiones", os.path.exists(ruta("tools/prueba-conexiones/Program.cs")))
 
 

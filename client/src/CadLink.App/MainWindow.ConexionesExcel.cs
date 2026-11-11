@@ -26,6 +26,9 @@ namespace CadLink.App;
 /// </remarks>
 public partial class MainWindow
 {
+    /// <summary>Donde empiezan los detalles en AutoCAD, en unidades del dibujo: aparte del resto.</summary>
+    private const double XDeLosDetalles = -25;
+
     private readonly ObservableCollection<FilaConexionDelLibro> _conexionesDelLibro = new();
     private string? _libroDeConexiones;
 
@@ -156,8 +159,10 @@ public partial class MainWindow
             dibujante.AsegurarCapas();
             PlacaBaseDrawer? placas = null;
 
-            // Los detalles van en renglones de tres, de izquierda a derecha y hacia abajo.
-            var x = 0.0;
+            // LOS DETALLES VAN APARTE, a la izquierda de X = -25: el primero termina ahi y los demas
+            // siguen hacia la izquierda, en renglones de tres y hacia abajo. Asi no se encima nada
+            // con lo que ya este dibujado en las X positivas.
+            var x = XDeLosDetalles;
             var y = 0.0;
             var altoDelRenglon = 0.0;
             var enElRenglon = 0;
@@ -173,14 +178,17 @@ public partial class MainWindow
                 {
                     placas ??= NuevoDibujanteDePlacas(doc, escala);
                     var p = PlacaBaseDelLibroAFila(PlacaBaseDelLibro.Datos(f.Conexion.Hoja)).AFormatoCad();
-                    // La insercion de la placa va en unidades del dibujo, como en la hoja Placa Base.
-                    p.InsercionX = x;
+
+                    // La insercion de la placa va en unidades del dibujo, como en la hoja Placa Base,
+                    // y en su esquina izquierda: se recorre a la izquierda lo que va a medir.
+                    var anchoPlaca = (p.AnchoTotalDibujoCm + 60) * escala;
+                    p.InsercionX = x - anchoPlaca;
                     p.InsercionY = y + p.InsercionY;
 
                     if (placas.Dibujar(p) > 0)
                     {
                         hechas++;
-                        Avanzar(placas.UltimoAnchoDibujado, 250 * escala);
+                        Avanzar(Math.Max(placas.UltimoAnchoDibujado, anchoPlaca), 250 * escala);
                     }
                     else
                     {
@@ -192,7 +200,7 @@ public partial class MainWindow
 
                 var detalle = ACad(m, f.Conexion.Hoja);
 
-                if (dibujante.Dibujar(detalle, x, y) > 0)
+                if (dibujante.Dibujar(detalle, x - dibujante.Medir(detalle), y) > 0)
                 {
                     hechas++;
                     Avanzar(dibujante.UltimoAncho, dibujante.UltimoAlto);
@@ -202,11 +210,11 @@ public partial class MainWindow
             void Avanzar(double ancho, double alto)
             {
                 altoDelRenglon = Math.Max(altoDelRenglon, alto);
-                x += ancho + separacion;
+                x -= ancho + separacion;
 
                 if (++enElRenglon >= 3)
                 {
-                    x = 0;
+                    x = XDeLosDetalles;
                     y -= altoDelRenglon + separacion;
                     altoDelRenglon = 0;
                     enElRenglon = 0;
@@ -222,7 +230,7 @@ public partial class MainWindow
                 fallos.AddRange(placas.Fallos);
             }
 
-            var resumen = $"{hechas} de {elegidas.Count} conexión(es) dibujada(s), en tamaño real para imprimir a 1:10.";
+            var resumen = $"{hechas} de {elegidas.Count} conexión(es) dibujada(s) en tamaño real, aparte: a la izquierda de X = {XDeLosDetalles:0}.";
 
             if (fallos.Count > 0)
             {
@@ -318,6 +326,15 @@ public partial class MainWindow
 
     private static string SinComillas(string pulgadas) => pulgadas.TrimEnd('"');
 
+    /// <summary>El simbolo de la simbologia de soldadura de CadLink para cada cordon.</summary>
+    private static SimbolosSoldadura.Tipo Simbolo(SimboloDeSoldadura s) => s switch
+    {
+        SimboloDeSoldadura.FileteAmbosLados => SimbolosSoldadura.Tipo.FileteAmbosLados,
+        SimboloDeSoldadura.TodoAlrededor => SimbolosSoldadura.Tipo.TodoAlrededor,
+        SimboloDeSoldadura.BiselSimple => SimbolosSoldadura.Tipo.BiselSimple,
+        _ => SimbolosSoldadura.Tipo.Filete
+    };
+
     /// <summary>De las piezas del nucleo (m) al detalle del dibujante (cm).</summary>
     private static ConexionAceroCad ACad(ModeloConexion m, HojaLeida h)
     {
@@ -357,7 +374,15 @@ public partial class MainWindow
             vc.Contornos.AddRange(v.Poligonos.Select(p => new ContornoConexion(
                 p.Puntos.Select(q => (q.X * 100, q.Y * 100)).ToList(), p.Cerrado, Capa(p.Capa), p.Relleno)));
             vc.Circulos.AddRange(v.Circulos.Select(q => new CirculoConexion(q.X * 100, q.Y * 100, q.R * 100, Capa(q.Capa))));
-            vc.Llamadas.AddRange(v.Llamadas.Select(q => new LlamadaConexion(q.X * 100, q.Y * 100, q.Texto)));
+            vc.Llamadas.AddRange(v.Llamadas.Select(q => q.Soldadura is { } s
+                ? new LlamadaConexion(q.X * 100, q.Y * 100, q.Texto)
+                {
+                    Simbolo = Simbolo(s.Simbolo),
+                    Tamano = s.Tamano,
+                    Electrodo = s.Electrodo,
+                    Descripcion = s.Descripcion
+                }
+                : new LlamadaConexion(q.X * 100, q.Y * 100, q.Texto)));
             vc.Cotas.AddRange(v.Cotas.Select(q => new CotaConexion(q.X1 * 100, q.Y1 * 100, q.X2 * 100, q.Y2 * 100, q.Nx, q.Ny, q.Texto)));
             c.Vistas.Add(vc);
         }

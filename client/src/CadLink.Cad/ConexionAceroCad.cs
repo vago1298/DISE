@@ -27,7 +27,21 @@ public sealed record ContornoConexion(IReadOnlyList<(double X, double Y)> Puntos
 
 public sealed record CirculoConexion(double X, double Y, double R, CapaConexion Capa);
 
-public sealed record LlamadaConexion(double X, double Y, string Texto);
+/// <summary>Una llamada de la vista: texto, o el símbolo de soldadura si es de un cordón.</summary>
+public sealed record LlamadaConexion(double X, double Y, string Texto)
+{
+    /// <summary>El símbolo de la simbología de soldadura; null si no es una soldadura.</summary>
+    public SimbolosSoldadura.Tipo? Simbolo { get; init; }
+
+    /// <summary>El tamaño junto al símbolo: «3/8"».</summary>
+    public string Tamano { get; init; } = string.Empty;
+
+    /// <summary>El electrodo, en la cola.</summary>
+    public string Electrodo { get; init; } = string.Empty;
+
+    /// <summary>Lo que se escribe después de la cola.</summary>
+    public string Descripcion { get; init; } = string.Empty;
+}
 
 /// <summary>Cota alineada de (X1, Y1) a (X2, Y2), desplazada hacia (Nx, Ny), con su texto.</summary>
 public sealed record CotaConexion(double X1, double Y1, double X2, double Y2, double Nx, double Ny, string Texto);
@@ -101,9 +115,10 @@ public static class ConexionAceroCapas
 
     public static double EscalaLineas => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("escala.lineas");
 
-    public static string PatronSoldadura => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Texto("hatch.soldadura");
+    /// <summary>El hatch de la soldadura: EL DE LA PLACA BASE, para que los detalles salgan iguales.</summary>
+    public static string PatronSoldadura => EstiloDibujo.Actual.Perfil(EstiloDibujo.PlacaBase).Texto("hatch.soldadura");
 
-    public static double EscalaSoldadura => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("hatch.soldadura.escala");
+    public static double EscalaSoldadura => EstiloDibujo.Actual.Perfil(EstiloDibujo.PlacaBase).Numero("hatch.soldadura.escala");
 
     /// <summary>El nombre de la capa de AutoCAD.</summary>
     public static string Nombre(CapaConexion c) => c switch
