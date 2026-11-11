@@ -1148,12 +1148,19 @@ internal static class Detallador
                         // de la cara que Revit no garantiza dentro de ella: podia caer fuera de la caja
                         // de la columna, y ese extremo se saltaba sin decir nada.
                         var marco = MarcoDeExtremo(cara, contorno);
-                        var enColumna = Toca(cajasColumnas, marco.Origen, holgura);
-                        var enMuro = !enColumna && Toca(cajasMuros, marco.Origen, holgura);
+                        // CUALQUIER PARTE DE LA CARA cuenta, no solo su centro: una viga que llega al
+                        // cabezal con su peralte por debajo de el -o corrida a un lado- tiene el centro
+                        // de su cara FUERA del cabezal aunque la cara lo toque, y antes no se conectaba.
+                        var puntosCara = contorno.SelectMany(c => c.Tessellate()).Append(marco.Origen).ToList();
+                        var enColumna = TocaCara(cajasColumnas, puntosCara, holgura);
+                        var enMuro = !enColumna && TocaCara(cajasMuros, puntosCara, holgura);
 
                         if (o.SoloEnApoyos && !enColumna && !enMuro)
                         {
-                            r.Avisos.Add($"{donde}: No llega a una columna ni a un muro; no se conecto.");
+                            var hueco = Hueco(cajasColumnas.Concat(cajasMuros), puntosCara);
+                            r.Avisos.Add(hueco is double h
+                                ? $"{donde}: No llega a una columna ni a un muro; el concreto mas cercano queda a {Cm(Unidades.AMetros(h))} cm de su cara."
+                                : $"{donde}: No llega a una columna ni a un muro; no se conecto.");
                             continue;
                         }
 
@@ -1742,6 +1749,48 @@ internal static class Detallador
             {
                 mejorT = t;
                 mejor = c;
+            }
+        }
+
+        return mejor;
+    }
+
+    /// <summary>¿Algun punto de la cara cae dentro de alguna caja, con holgura? O la cara la cruza.</summary>
+    private static bool TocaCara(List<BoundingBoxXYZ> cajas, List<XYZ> puntos, double holgura)
+    {
+        if (puntos.Count == 0)
+        {
+            return false;
+        }
+
+        var min = new XYZ(puntos.Min(p => p.X), puntos.Min(p => p.Y), puntos.Min(p => p.Z));
+        var max = new XYZ(puntos.Max(p => p.X), puntos.Max(p => p.Y), puntos.Max(p => p.Z));
+
+        // Las dos cajas -la de la cara y la del concreto- se enciman en los tres ejes.
+        return cajas.Any(c =>
+            min.X <= c.Max.X + holgura && max.X >= c.Min.X - holgura
+            && min.Y <= c.Max.Y + holgura && max.Y >= c.Min.Y - holgura
+            && min.Z <= c.Max.Z + holgura && max.Z >= c.Min.Z - holgura);
+    }
+
+    /// <summary>La distancia de la cara al concreto mas cercano, para decirla en el informe.</summary>
+    private static double? Hueco(IEnumerable<BoundingBoxXYZ> cajas, List<XYZ> puntos)
+    {
+        double? mejor = null;
+
+        foreach (var c in cajas)
+        {
+            foreach (var p in puntos)
+            {
+                var dx = Math.Max(0, Math.Max(c.Min.X - p.X, p.X - c.Max.X));
+                var dy = Math.Max(0, Math.Max(c.Min.Y - p.Y, p.Y - c.Max.Y));
+                var dz = Math.Max(0, Math.Max(c.Min.Z - p.Z, p.Z - c.Max.Z));
+                var d = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+
+                if (mejor is null || d < mejor)
+                {
+                    mejor = d;
+                }
             }
         }
 

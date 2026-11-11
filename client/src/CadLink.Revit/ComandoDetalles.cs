@@ -195,7 +195,11 @@ public sealed class ComandoPlacasBase : IExternalCommand
                 });
 
             // Que una viga no llegue a ningun costado no es un aviso: puede ir encima.
-            verticales.Avisos.RemoveAll(x => x.Contains("No llega a una columna ni a un muro", StringComparison.Ordinal));
+            // Con «decidelo tu» sobra decir que una viga no llega a un costado; si se pidio la vertical, no.
+            if (modo == 2)
+            {
+                verticales.Avisos.RemoveAll(x => x.Contains("No llega a una columna ni a un muro", StringComparison.Ordinal));
+            }
             horizontales.Avisos.RemoveAll(x => x.Contains("Llega al costado", StringComparison.Ordinal)
                                              || x.Contains("Ningun extremo se apoya", StringComparison.Ordinal));
 
