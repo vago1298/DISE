@@ -17121,7 +17121,7 @@ def v31_detalles_revit() -> None:
     check("placas base pregunta si la viga llega al muro/cabezal/castillo/columna (vertical) o al dado/cimentacion (horizontal)",
           '"Vigas: a donde llega la placa:"' in com and "var modo = llegaA?.SelectedIndex ?? 2;" in com)
     check("la viga toca el cabezal con cualquier parte de su cara, y si no se dice a cuanto queda",
-          "TocaCara(cajasMuros, puntosCara, holgura)" in det and "el concreto mas cercano queda a" in det)
+          "MasCercanoEnfrente(cajasMuros, marco)" in det and "public static double? Enfrente(" in nuc)
     check("placas base: se pueden elegir los muros, castillos o cabezales y se buscan las piezas de acero que llegan",
           "public static List<FamilyInstance> AceroSobre(" in det and "Detallador.AceroSobre(doc, concreto)" in com)
     check("conectar vigas: sobre cabezal, columna o castillo la placa va horizontal bajo la viga",
@@ -17167,7 +17167,7 @@ def v31_detalles_revit() -> None:
           "debajo.Where(a => !a.EsLosa)" in det and "GroutM = VentanaDetalle.Leer(grout" in com)
 
     check("conexiones: el extremo se mide en el centro de su cara, la I se busca en otra cara si esta recortada, y cortante en las dos caras",
-          "TocaCara(cajasColumnas, puntosCara, holgura)" in det and "perfil = MedirI(c, m0);" in det
+          "MasCercanoEnfrente(cajasColumnas, marco)" in det and "perfil = MedirI(c, m0);" in det
           and "public bool CortanteDosCaras { get; set; }" in nuc)
 
     check("placa de apoyo de viga de acero sobre muro, cabezal o columna de concreto",

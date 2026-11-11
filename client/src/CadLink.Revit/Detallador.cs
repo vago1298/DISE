@@ -1151,17 +1151,41 @@ internal static class Detallador
                         // CUALQUIER PARTE DE LA CARA cuenta, no solo su centro: una viga que llega al
                         // cabezal con su peralte por debajo de el -o corrida a un lado- tiene el centro
                         // de su cara FUERA del cabezal aunque la cara lo toque, y antes no se conectaba.
+                        // EL QUE ESTA ENFRENTE DE LA PUNTA, y el mas cercano. Basta que se encime con una
+                        // parte de la cara -el cabezal que solo toma el peralte de arriba-, pero tiene que
+                        // estar delante: la losa de encima o el muro de al lado tambien tocan la cara, y
+                        // antes se llevaban la placa.
                         var puntosCara = contorno.SelectMany(c => c.Tessellate()).Append(marco.Origen).ToList();
-                        var enColumna = TocaCara(cajasColumnas, puntosCara, holgura);
-                        var enMuro = !enColumna && TocaCara(cajasMuros, puntosCara, holgura);
+                        var colEnfrente = MasCercanoEnfrente(cajasColumnas, marco);
+                        var muroEnfrente = MasCercanoEnfrente(cajasMuros, marco);
+
+                        // Gana el mas cercano de los dos.
+                        var enColumna = colEnfrente is double hc && (muroEnfrente is not double hm0 || hc <= hm0);
+                        var enMuro = !enColumna && muroEnfrente is not null;
+                        var huecoM = enColumna ? colEnfrente!.Value : enMuro ? muroEnfrente!.Value : 0;
 
                         if (o.SoloEnApoyos && !enColumna && !enMuro)
                         {
                             var hueco = Hueco(cajasColumnas.Concat(cajasMuros), puntosCara);
                             r.Avisos.Add(hueco is double h
-                                ? $"{donde}: No llega a una columna ni a un muro; el concreto mas cercano queda a {Cm(Unidades.AMetros(h))} cm de su cara."
+                                ? $"{donde}: No tiene concreto ENFRENTE a menos de {Cm(Conexion.HuecoMaximoM)} cm; lo mas cercano queda a {Cm(Unidades.AMetros(h))} cm de su cara."
                                 : $"{donde}: No llega a una columna ni a un muro; no se conecto.");
                             continue;
+                        }
+
+                        // LA PLACA VA EN LA CARA DEL CONCRETO, no en la punta de la viga: si la viga se
+                        // quedo corta, el marco -y con el la placa, sus anclas y la soldadura- se corre
+                        // hasta la cara.
+                        if (huecoM > 1e-4)
+                        {
+                            var hasta = marco.A * -Unidades.AInternas(huecoM);
+                            marco = marco with { Origen = marco.Origen + hasta };
+                            contorno = CurveLoop.CreateViaTransform(contorno, Transform.CreateTranslation(hasta));
+
+                            if (huecoM > 0.01)
+                            {
+                                r.Avisos.Add($"{donde}: La viga queda a {Cm(huecoM)} cm del concreto; la placa se puso en su cara. Alarga la viga hasta la placa.");
+                            }
                         }
 
                         var piezas = new List<(GeometryObject Solido, string Que)>();
@@ -1749,6 +1773,47 @@ internal static class Detallador
             {
                 mejorT = t;
                 mejor = c;
+            }
+        }
+
+        return mejor;
+    }
+
+    /// <summary>De las cajas, la que queda enfrente de la punta y mas cerca: su hueco en m, o null.</summary>
+    private static double? MasCercanoEnfrente(List<BoundingBoxXYZ> cajas, MarcoExtremo m)
+    {
+        double? mejor = null;
+
+        foreach (var c in cajas)
+        {
+            double a0 = double.MaxValue, a1 = double.MinValue, u0 = double.MaxValue, u1 = double.MinValue;
+            double v0 = double.MaxValue, v1 = double.MinValue;
+
+            foreach (var x in new[] { c.Min.X, c.Max.X })
+            {
+                foreach (var y in new[] { c.Min.Y, c.Max.Y })
+                {
+                    foreach (var z in new[] { c.Min.Z, c.Max.Z })
+                    {
+                        var d = new XYZ(x, y, z) - m.Origen;
+                        a0 = Math.Min(a0, d.DotProduct(m.A));
+                        a1 = Math.Max(a1, d.DotProduct(m.A));
+                        u0 = Math.Min(u0, d.DotProduct(m.U));
+                        u1 = Math.Max(u1, d.DotProduct(m.U));
+                        v0 = Math.Min(v0, d.DotProduct(m.V));
+                        v1 = Math.Max(v1, d.DotProduct(m.V));
+                    }
+                }
+            }
+
+            double M(double v) => Unidades.AMetros(v);
+
+            var hueco = Conexion.Enfrente(M(a0), M(a1), M(u0), M(u1), M(v0), M(v1),
+                M(m.U0), M(m.U1), M(m.V0), M(m.V1));
+
+            if (hueco is double h && (mejor is null || h < mejor))
+            {
+                mejor = h;
             }
         }
 

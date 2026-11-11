@@ -179,9 +179,17 @@ public sealed class ComandoPlacasBase : IExternalCommand
             // LOS EXTREMOS QUE LLEGAN AL COSTADO del muro, el cabezal o la columna de concreto: placa
             // VERTICAL embebida a paño de su cara, con sus anclas hacia dentro y la viga soldada a
             // ella. Es la misma de «Conectar vigas»; los extremos que ya llevan la horizontal se saltan.
-            var concretos = soloEn is not null
-                ? concreto
-                : Detallador.ApoyosDeConcreto(doc).Select(a => doc.GetElement(a.Id)).OfType<Element>().ToList();
+            // La placa VERTICAL va en un muro, cabezal, castillo o columna: nunca en una losa ni en una
+            // zapata, que quedan encima o debajo de la viga y no enfrente de su punta.
+            bool DeCostado(Element e) => e.Category?.BuiltInCategory is BuiltInCategory.OST_Walls
+                or BuiltInCategory.OST_StructuralColumns or BuiltInCategory.OST_Columns
+                or BuiltInCategory.OST_StructuralFraming;
+
+            var concretos = (soloEn is not null
+                    ? concreto
+                    : Detallador.ApoyosDeConcreto(doc).Select(a => doc.GetElement(a.Id)).OfType<Element>().ToList())
+                .Where(DeCostado)
+                .ToList();
 
             var verticales = modo == 1 ? new ResultadoDetalles() : Detallador.Soldaduras(doc,
                 vigas.Select(v => new Detallador.VigaElegida(v, null)).ToList(),

@@ -980,6 +980,42 @@ public static class Conexion
     private static double Reparto(double a, double b, int n, int i) =>
         n <= 1 ? (a + b) / 2 : a + (i * (b - a) / (n - 1));
 
+    /// <summary>Lo que se acepta entre la punta de la viga y la cara del concreto que tiene enfrente.</summary>
+    public const double HuecoMaximoM = 0.15;
+
+    /// <summary>
+    /// ¿El concreto queda ENFRENTE de la punta de la viga? Y si si, a cuanto de su cara.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Los rangos van en los ejes del extremo: A a lo largo de la viga -cero en la cara de su punta,
+    /// positivo hacia dentro de la viga-, y U y V en el plano de la cara.
+    /// </para>
+    /// <para>
+    /// Enfrente quiere decir: su cara mas cercana a no mas de <see cref="HuecoMaximoM"/> por delante
+    /// -o un poco metida, si la viga se modelo entrando en el-, que no corra a lo largo de la viga
+    /// -una losa encima o un muro de al lado tocan la cara pero no estan enfrente- y que se encime
+    /// con la cara de la punta al menos 2 cm en las dos direcciones, no solo en una orilla.
+    /// </para>
+    /// </remarks>
+    /// <returns>El hueco en metros -cero o negativo si la viga entra en el-, o null si no esta enfrente.</returns>
+    public static double? Enfrente(
+        double a0, double a1, double u0, double u1, double v0, double v1,
+        double caraU0, double caraU1, double caraV0, double caraV1)
+    {
+        var hueco = -a1;
+
+        if (hueco > HuecoMaximoM || a1 > 0.60 || a0 > -0.01)
+        {
+            return null;
+        }
+
+        var solapeU = Math.Min(u1, caraU1) - Math.Max(u0, caraU0);
+        var solapeV = Math.Min(v1, caraV1) - Math.Max(v0, caraV0);
+
+        return solapeU >= 0.02 && solapeV >= 0.02 ? hueco : null;
+    }
+
     /// <summary>¿Que extremo de la viga, de <paramref name="p0"/> a <paramref name="p1"/>, queda mas cerca del clic?</summary>
     public static int ExtremoMasCercano(V3 p0, V3 p1, V3 clic) =>
         (clic - p0).Largo <= (clic - p1).Largo ? 0 : 1;
