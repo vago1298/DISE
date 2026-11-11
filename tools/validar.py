@@ -12201,7 +12201,8 @@ def main() -> int:
               v24_rediseno,
               v25_ifc,
               v26_plugin_revit, v27_muros_contencion, v28_estilo_dibujo,
-              v29_paquete_oficina, v30_armado_por_tipo, v31_detalles_revit):
+              v29_paquete_oficina, v30_armado_por_tipo, v31_detalles_revit,
+              v32_conexiones_del_libro):
         f()
 
     print("\n" + "=" * 66)
@@ -15798,7 +15799,8 @@ def v29_paquete_oficina() -> None:
 # Los iconos de la cinta de Revit, uno por boton (tools/make_iconos_cinta.py).
 ICONOS_CINTA = ("importar-etabs", "armar-modelo", "columna-acero", "columna-corte",
                 "viga-acero", "viga-corte", "armar-tipo", "corte-seccion",
-                "placa-base", "cimentacion", "soldar-viga", "soldar-columna", "encamisar", "armar-muros", "armar-cimentacion")
+                "placa-base", "cimentacion", "soldar-viga", "soldar-columna", "encamisar", "armar-muros", "armar-cimentacion",
+                "conexiones-libro")
 
 def v30_armado_por_tipo() -> None:
     print("\n[30] Revit: armar por tipo, todas las piezas de un jalon")
@@ -17041,6 +17043,79 @@ def v26_plugin_revit() -> None:
 # ======================================================================
 # 31. Revit: placas base, cimentacion y soldadura de vigas
 # ======================================================================
+def v32_conexiones_del_libro() -> None:
+    print("\n[32] Conexiones de acero leidas del libro de Excel (AutoCAD y Revit)")
+
+    base = "client/src/CadLink.Revit.Nucleo/Conexiones/"
+    nucleo = {n: leer(ruta(base + n)) for n in ("LibroExcel.cs", "HojasDelLibro.cs", "ModeloConexion.cs",
+                                                 "PiezasLocales.cs", "ConexionesDelLibro.cs", "VistasConexion.cs",
+                                                 "PlacaBaseDelLibro.cs", "EtiquetasExcel.g.cs")}
+    check("el nucleo de las conexiones no sabe de Revit ni de AutoCAD",
+          all("Autodesk" not in t and "dynamic" not in t for t in nucleo.values()))
+    check("el libro se lee sin Excel: ZIP y XML de .NET",
+          "System.IO.Compression" in nucleo["LibroExcel.cs"] and "System.Xml.Linq" in nucleo["LibroExcel.cs"]
+          and "FileShare.ReadWrite" in nucleo["LibroExcel.cs"])
+    check("se lee por ETIQUETA y en el orden de la hoja, no por fila",
+          "var desde = 0;" in nucleo["HojasDelLibro.cs"] and "desde = Math.Max(desde, i + 1);" in nucleo["HojasDelLibro.cs"])
+    check("las copias de las hojas se reconocen", "public static string SinCopia(" in nucleo["HojasDelLibro.cs"])
+
+    # La tabla de etiquetas sale del JSON con su generador: si se edita a mano, se nota.
+    import importlib.util
+    import json as _json
+    spec = importlib.util.spec_from_file_location("gen_et", ruta("tools/generar_etiquetas_conexiones.py"))
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    datos = _json.load(open(ruta("tools/datos/etiquetas-libro-acero.json"), encoding="utf-8"))
+    check("la tabla de etiquetas esta al dia con su JSON",
+          all(gen.cs(e) in nucleo["EtiquetasExcel.g.cs"] for h in datos.values() for _, e, _, _ in h["items"]))
+
+    cnx = nucleo["ConexionesDelLibro.cs"]
+    for codigo in ("UV", "WF", "RB", "EP", "SC", "MW", "GP", "CE", "CX", "BP"):
+        check(f"la hoja {codigo} se arma", f'case "{codigo}":' in cnx)
+
+    vis = nucleo["VistasConexion.cs"]
+    check("las vistas son proyecciones de las mismas piezas", "PiezasLocales.Envolvente(" in vis)
+
+    drw = leer(ruta("client/src/CadLink.Cad/ConexionAceroDrawer.cs"))
+    cad = leer(ruta("client/src/CadLink.Cad/ConexionAceroCad.cs"))
+    est = leer(ruta("client/src/CadLink.Cad/EstiloDibujo.cs"))
+    check("AutoCAD: el dibujante lee su estilo «Conexiones de acero»",
+          'public const string Conexiones = "conexiones";' in est
+          and "EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones)" in cad and "ConexionAceroCapas." in drw)
+    check("AutoCAD: cada llamada a AutoCAD va con su reintento",
+          drw.count("AcadConnection.Retry(") >= 8 and "AddDimAligned(" in drw and "TextOverride = texto" in drw)
+
+    app = leer(ruta("client/src/CadLink.App/MainWindow.ConexionesExcel.cs"))
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    mw = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    check("CadLink lee el libro y dibuja con el nucleo",
+          "ConexionesDelLibro.Leer(libro)" in app and "VistasConexion.Proyectar(m)" in app
+          and "new ConexionAceroDrawer(doc, escala)" in app)
+    check("las placas base del libro salen con el detalle de la hoja Placa Base",
+          "PlacaBaseDelLibroAFila(" in app and "placas.Dibujar(p)" in app)
+    check("dibujar conexiones lo decide la misma licencia",
+          "ConexionesLibroButton.IsEnabled = puedeDibujar;" in mw and '_license.HasFeature("export-dxf")' in app)
+    check("la tarjeta esta en la pestaña Conexiones/Detalles",
+          'Click="OnLeerLibroDeConexiones"' in xaml and 'Click="OnDibujarConexionesDelLibro"' in xaml
+          and 'x:Name="ConexionesLibroGrid"' in xaml)
+
+    det = leer(ruta("client/src/CadLink.Revit/Detallador.Conexiones.cs"))
+    com = leer(ruta("client/src/CadLink.Revit/ComandoConexionesDelLibro.cs"))
+    apl = leer(ruta("client/src/CadLink.Revit/Aplicacion.cs"))
+    stub = leer(ruta("tools/prueba-revit-compila/Prueba.csproj"))
+    check("Revit: el boton esta en la cinta con su icono",
+          "typeof(ComandoConexionesDelLibro).FullName" in apl and '"conexiones-libro" =>' in apl)
+    check("Revit: lee el mismo libro con el mismo nucleo", "ConexionesDelLibro.Leer(libro)" in com)
+    check("Revit: cada colocacion tiene su forma de elegir",
+          all(f"ColocacionConexion.{c}" in com for c in ("ExtremoDeViga", "ExtremoDeDiagonal", "CentroDeViga",
+                                                          "CentroDeDiagonal", "BaseDeColumna")))
+    check("Revit: lo de antes se reemplaza, no se duplica",
+          "ClaseDetalle.ConexionDelLibro" in det and "Solidos.Borrar(doc, llave)" in det)
+    check("Revit: la capa de la API se compila contra los recortes",
+          "Detallador.Conexiones.cs" in stub)
+    check("hay prueba ejecutable de las conexiones", os.path.exists(ruta("tools/prueba-conexiones/Program.cs")))
+
+
 def v31_detalles_revit() -> None:
     print("\n[31] Revit: placas base, cimentacion y soldadura de vigas")
 

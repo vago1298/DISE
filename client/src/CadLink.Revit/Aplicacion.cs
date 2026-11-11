@@ -147,6 +147,16 @@ public sealed class Aplicacion : IExternalApplication
             + "de la viga tal como Revit la dibujo. No necesita archivo de CadLink.",
             "soldar-viga");
 
+        Boton(detalles, dll, "CadLinkConexionesLibro", "Conexiones\ndel libro", typeof(ComandoConexionesDelLibro).FullName,
+            "Modela las conexiones del libro de revisiones de acero (.xlsm) en las piezas que elijas.",
+            "Lee el libro de Excel de revisiones de acero (NTC-Acero 2023) y arma cada conexion con las "
+            + "medidas de su hoja, copias incluidas: union viga-columna, RBS, placa de extremo, patines "
+            + "soldados, cortante, viga-viga soldada, placa gusset, contraventeo excentrico, X y placa base.\n\n"
+            + "Segun la conexion, das clic en la viga cerca del extremo, eliges la viga del eslabon, das clic "
+            + "en la diagonal cerca de la esquina o eliges las columnas. Volver a ponerla en la misma pieza la "
+            + "cambia, no la duplica.",
+            "conexiones-libro");
+
         Boton(detalles, dll, "CadLinkSoldarColumnas", "Soldar\ncolumnas", typeof(ComandoSoldarColumnas).FullName,
             "Pone el filete todo alrededor de la base o de la cabeza de las columnas elegidas.",
             "Sobre lo que la columna tenga: una placa, una losa, un dado o la columna de abajo. El "
@@ -244,6 +254,7 @@ public sealed class Aplicacion : IExternalApplication
         "encamisar" => (Imagen("CadLink.Revit.encamisar-32.png"), Imagen("CadLink.Revit.encamisar-16.png")),
         "armar-muros" => (Imagen("CadLink.Revit.armar-muros-32.png"), Imagen("CadLink.Revit.armar-muros-16.png")),
         "armar-cimentacion" => (Imagen("CadLink.Revit.armar-cimentacion-32.png"), Imagen("CadLink.Revit.armar-cimentacion-16.png")),
+        "conexiones-libro" => (Imagen("CadLink.Revit.conexiones-libro-32.png"), Imagen("CadLink.Revit.conexiones-libro-16.png")),
         _ => (null, null)
     };
 

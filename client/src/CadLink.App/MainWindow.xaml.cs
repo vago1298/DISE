@@ -255,6 +255,7 @@ public partial class MainWindow : Window
         EnlazarZapatasCorridas();
         EnlazarMuros();
         EnlazarPlacaBase();
+        EnlazarConexionesDelLibro();
 
         DatosCambiaron();
     }
@@ -591,6 +592,9 @@ public partial class MainWindow : Window
         // Y las placas base: dibujar el detalle de una placa es generar dibujo igual que lo
         // demas, asi que lo decide la MISMA licencia.
         PlacaBaseButton.IsEnabled = puedeDibujar;
+
+        // Las conexiones del libro de Excel tambien dibujan en AutoCAD.
+        ConexionesLibroButton.IsEnabled = puedeDibujar;
 
         MostrarNotas(puedeDibujar
             ? "Cada sección se dibuja y se agrupa en un bloque con el nombre de su ID."

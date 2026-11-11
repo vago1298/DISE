@@ -348,7 +348,7 @@ public static class ArchivoDetalles
 /// momento o la placa embebida en el muro-, para que cambiar de una a otra quite la anterior.
 /// <c>SoldaduraColumna</c> es el filete de la base o de la cabeza de una columna.
 /// </remarks>
-public enum ClaseDetalle { Placa, Zapata, Corrida, Soldadura, SoldaduraColumna, Encamisado, PlacaViga, ArmadoZapata }
+public enum ClaseDetalle { Placa, Zapata, Corrida, Soldadura, SoldaduraColumna, Encamisado, PlacaViga, ArmadoZapata, ConexionDelLibro }
 
 /// <summary>
 /// La llave de lo que CadLink pone sobre una pieza del modelo: <c>CadLink|Placa|123456</c>.
