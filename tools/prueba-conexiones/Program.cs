@@ -368,14 +368,16 @@ internal static class Program
         Check("sin copia: «PLACA GUSSET 1» → placa gusset", EtiquetasExcel.SinCopia("PLACA GUSSET 1") == "placa gusset");
         foreach (var (de, a) in new[]
         {
-            ("Viga W - 18'' x 97.03 lb/ft — A-992", "Viga IR 457 x 144.4 kg/m — A-992"),
-            ("Diagonal: HSS - 5\" x 5/16\" — A-500", "Diagonal: OR 127 x 127 x 7.9 mm — A-500"),
-            ("HSS - 8\" x 4\" x 1/2\"", "OR 203 x 102 x 12.7 mm"),
-            ("C - 8'' x 12.0 lb/ft", "CE 203 x 17.9 kg/m"),
-            ("WT - 8'' x 13.0 lb/ft", "TR 203 x 19.3 kg/m"),
-            ("L - 3'' x 1/4''", "LI 76 x 6.4 mm"),
-            ("PIPE - 4.02 in x 0.19 in", "OC 102 x 4.8 mm"),
+            ("Viga W - 18'' x 97.03 lb/ft — A-992", "Viga IR 18\" x 97.03 lb/ft — A-992"),
+            ("Diagonal: HSS - 5\" x 5/16\" — A-500", "Diagonal: OR 5\" x 5/16\" — A-500"),
+            ("HSS - 8\" x 4\" x 1/2\"", "OR 8\" x 4\" x 1/2\""),
+            ("C - 8'' x 12.0 lb/ft", "CE 8\" x 12.0 lb/ft"),
+            ("WT - 8'' x 13.0 lb/ft", "TR 8\" x 13.0 lb/ft"),
+            ("L - 3'' x 1/4''", "LI 3\" x 1/4\""),
+            ("PIPE - 4.02 in x 0.19 in", "OC 4.02\" x 0.19\""),
             ("Filetes en C 10 mm", "Filetes en C 10 mm"),
+            ("HSS - 4 1/2\" x 3/8\"", "OR 4 1/2\" x 3/8\""),
+            ("L - 4'' x 3'' x 1/4''", "LD 4\" x 3\" x 1/4\""),
         })
         {
             var hecho = NomenclaturaMexicana.Convertir(de);

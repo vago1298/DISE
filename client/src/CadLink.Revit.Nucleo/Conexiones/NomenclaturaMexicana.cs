@@ -7,24 +7,22 @@ namespace CadLink.Revit.Nucleo;
 //  LA NOMENCLATURA MEXICANA DE LOS PERFILES (IMCA), PARA LOS TEXTOS DEL PLANO
 //
 //  El libro y los catalogos nombran los perfiles como el AISC («W - 18'' x 97.03 lb/ft»,
-//  «HSS - 5" x 5/16"»). En el plano van como el IMCA: peralte en mm y peso en kg/m, o las caras y
-//  la pared en mm. Solo cambia el TEXTO: los datos y las busquedas siguen con el nombre del libro.
+//  «HSS - 5" x 5/16"»). En el plano van con el NOMBRE mexicano y las medidas en PULGADAS, que es
+//  como se ubican en obra y en el taller. Solo cambia el TEXTO: los datos y las busquedas siguen
+//  con el nombre del libro.
 //
-//      W - 18'' x 97.03 lb/ft      →  IR 457 x 144.4 kg/m
-//      WT - 8'' x 13.0 lb/ft       →  TR 203 x 19.3 kg/m
-//      S - 10'' x 25.4 lb/ft       →  IE 254 x 37.8 kg/m
-//      C - 8'' x 12.0 lb/ft        →  CE 203 x 17.9 kg/m
-//      HSS - 5" x 5/16"            →  OR 127 x 127 x 7.9 mm
-//      HSS - 8" x 4" x 1/2"        →  OR 203 x 102 x 12.7 mm
-//      PIPE - 4.02 in x 0.19 in    →  OC 102 x 4.8 mm
-//      L - 3'' x 1/4''             →  LI 76 x 6.4 mm   (LD si los lados son distintos)
+//      W - 18'' x 97.03 lb/ft      →  IR 18" x 97.03 lb/ft
+//      WT - 8'' x 13.0 lb/ft       →  TR 8" x 13.0 lb/ft
+//      S - 10'' x 25.4 lb/ft       →  IE 10" x 25.4 lb/ft
+//      C - 8'' x 12.0 lb/ft        →  CE 8" x 12.0 lb/ft
+//      HSS - 5" x 5/16"            →  OR 5" x 5/16"
+//      HSS - 8" x 4" x 1/2"        →  OR 8" x 4" x 1/2"
+//      PIPE - 4.02 in x 0.19 in    →  OC 4.02" x 0.19"
+//      L - 3'' x 1/4''             →  LI 3" x 1/4"   (LD si los lados son distintos)
 // ============================================================================
 
 public static class NomenclaturaMexicana
 {
-    private const double Pulgada = 25.4;
-    private const double LbPorPieAKgPorM = 1.48816;
-
     // Las comillas del libro: '' o " (y sus tipograficas).
     private const string Comillas = "(?:''|\"|”|″)";
     private const string Medida = @"(\d+(?:\.\d+)?(?:\s+\d+/\d+)?|\d+/\d+)";
@@ -55,37 +53,25 @@ public static class NomenclaturaMexicana
         var t = Laminado.Replace(texto, m =>
         {
             var prefijo = m.Groups[1].Value switch { "W" => "IR", "WT" => "TR", "S" => "IE", _ => "CE" };
-            var d = Pulg(m.Groups[2].Value) * Pulgada;
-            var kg = N(m.Groups[3].Value) * LbPorPieAKgPorM;
-            return $"{prefijo} {Mm(d)} x {kg.ToString("0.0", CultureInfo.InvariantCulture)} kg/m";
+            return $"{prefijo} {m.Groups[2].Value.Trim()}\" x {m.Groups[3].Value} lb/ft";
         });
 
-        t = Tubo.Replace(t, m =>
-        {
-            var a = Pulg(m.Groups[1].Value) * Pulgada;
-            var b = m.Groups[2].Success ? Pulg(m.Groups[2].Value) * Pulgada : a;
-            var e = Pulg(m.Groups[3].Value) * Pulgada;
-            return $"OR {Mm(a)} x {Mm(b)} x {Dec(e)} mm";
-        });
+        t = Tubo.Replace(t, m => m.Groups[2].Success
+            ? $"OR {m.Groups[1].Value.Trim()}\" x {m.Groups[2].Value.Trim()}\" x {m.Groups[3].Value.Trim()}\""
+            : $"OR {m.Groups[1].Value.Trim()}\" x {m.Groups[3].Value.Trim()}\"");
 
-        t = TuboRedondo.Replace(t, m => $"OC {Mm(N(m.Groups[1].Value) * Pulgada)} x {Dec(N(m.Groups[2].Value) * Pulgada)} mm");
+        t = TuboRedondo.Replace(t, m => $"OC {m.Groups[1].Value}\" x {m.Groups[2].Value}\"");
 
         t = Angulo.Replace(t, m =>
         {
-            var a = Pulg(m.Groups[1].Value) * Pulgada;
-            var b = m.Groups[2].Success ? Pulg(m.Groups[2].Value) * Pulgada : a;
-            var e = Pulg(m.Groups[3].Value) * Pulgada;
-            return Math.Abs(a - b) < 0.5
-                ? $"LI {Mm(a)} x {Dec(e)} mm"
-                : $"LD {Mm(a)} x {Mm(b)} x {Dec(e)} mm";
+            var iguales = !m.Groups[2].Success || Math.Abs(Pulg(m.Groups[1].Value) - Pulg(m.Groups[2].Value)) < 1e-6;
+            return iguales
+                ? $"LI {m.Groups[1].Value.Trim()}\" x {m.Groups[3].Value.Trim()}\""
+                : $"LD {m.Groups[1].Value.Trim()}\" x {m.Groups[2].Value.Trim()}\" x {m.Groups[3].Value.Trim()}\"";
         });
 
         return t;
     }
-
-    private static string Mm(double mm) => Math.Round(mm).ToString("0", CultureInfo.InvariantCulture);
-
-    private static string Dec(double mm) => mm.ToString("0.0", CultureInfo.InvariantCulture);
 
     private static double N(string s) => double.Parse(s, NumberStyles.Float, CultureInfo.InvariantCulture);
 
