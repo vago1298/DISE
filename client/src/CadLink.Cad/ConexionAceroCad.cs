@@ -43,6 +43,29 @@ public sealed record LlamadaConexion(double X, double Y, string Texto)
     public string Descripcion { get; init; } = string.Empty;
 }
 
+/// <summary>Que clase de trazo grabo el dibujante en su modo de vista previa.</summary>
+public enum TipoTrazo
+{
+    Linea,
+    Polilinea,
+    Relleno,
+    Circulo,
+    Texto,
+    Cota
+}
+
+/// <summary>
+/// Un trazo del detalle tal como iria a AutoCAD, en unidades del dibujo: lo que graba
+/// <see cref="ConexionAceroDrawer.ParaVistaPrevia"/> en lugar de mandarlo por COM. Con esto la
+/// vista previa de CadLink pinta EXACTAMENTE lo que se dibujaria.
+/// </summary>
+/// <param name="Puntos">x, y, x, y… Linea: 2 puntos. Cota: los 2 puntos y el de la linea de cota.</param>
+/// <param name="Texto">El texto (renglones separados con «\n»), el patron del relleno o el numero de la cota.</param>
+/// <param name="Anclaje">El punto de anclaje del MTEXT: 1 arriba izq., 2 arriba centro, 4 medio izq., 5 centro, 6 medio der.</param>
+public sealed record TrazoConexion(
+    TipoTrazo Tipo, CapaConexion Capa, double[] Puntos, bool Cerrado = false, double Radio = 0,
+    string Texto = "", double Alto = 0, int Anclaje = 1);
+
 /// <summary>Cota alineada de (X1, Y1) a (X2, Y2), desplazada hacia (Nx, Ny), con su texto.</summary>
 public sealed record CotaConexion(double X1, double Y1, double X2, double Y2, double Nx, double Ny, string Texto);
 
@@ -103,6 +126,18 @@ public static class ConexionAceroCapas
 
     /// <summary>La altura de texto con que se arma la simbologia de soldadura: sus proporciones van en ella.</summary>
     public static double AltoSimbolo => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("alto.simbolo");
+
+    /// <summary>El largo de la punta de flecha de las llamadas de soldadura.</summary>
+    public static double LargoFlecha => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("flecha.largo");
+
+    /// <summary>El radio del punto donde muerde la llamada de texto.</summary>
+    public static double RadioPunto => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("llamada.punto");
+
+    /// <summary>Cuantas letras caben en un renglon de llamada antes de partirlo en dos.</summary>
+    public static double LetrasPorRenglon => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("llamada.letras");
+
+    /// <summary>La separacion entre un detalle y el siguiente, y entre sus vistas.</summary>
+    public static double SeparacionDetalles => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("separacion.detalles");
 
     public static double AltoVista => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("alto.vista");
 

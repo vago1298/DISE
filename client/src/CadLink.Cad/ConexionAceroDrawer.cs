@@ -26,6 +26,9 @@ public sealed class ConexionAceroDrawer
     private readonly List<string> _fallos = new();
     private readonly List<string> _notas = new();
 
+    /// <summary>En la vista previa no hay AutoCAD: los trazos se graban aqui.</summary>
+    private readonly List<TrazoConexion>? _grabado;
+
     public ConexionAceroDrawer(dynamic doc, double escala = 0.01)
     {
         _doc = doc;
@@ -33,6 +36,24 @@ public sealed class ConexionAceroDrawer
         _escala = escala > 0 ? escala : 0.01;
         _f = _escala / 0.01;
     }
+
+    private ConexionAceroDrawer(double escala)
+    {
+        _doc = null!;
+        _ms = null!;
+        _escala = escala > 0 ? escala : 0.01;
+        _f = _escala / 0.01;
+        _grabado = new List<TrazoConexion>();
+    }
+
+    /// <summary>
+    /// Un dibujante SIN AutoCAD: hace el mismo acomodo y graba los trazos en <see cref="Grabado"/>,
+    /// para la vista previa de CadLink. Lo que se ve ahi es lo que se dibujaria.
+    /// </summary>
+    public static ConexionAceroDrawer ParaVistaPrevia(double escala = 0.01) => new(escala);
+
+    /// <summary>Los trazos de la vista previa; vacio si se dibuja en AutoCAD.</summary>
+    public IReadOnlyList<TrazoConexion> Grabado => (IReadOnlyList<TrazoConexion>?)_grabado ?? Array.Empty<TrazoConexion>();
 
     public IReadOnlyList<string> Fallos => _fallos;
 
@@ -49,6 +70,11 @@ public sealed class ConexionAceroDrawer
 
     public void AsegurarCapas()
     {
+        if (_grabado is not null)
+        {
+            return;
+        }
+
         foreach (var c in Enum.GetValues<CapaConexion>())
         {
             Capa(c);
@@ -240,6 +266,10 @@ public sealed class ConexionAceroDrawer
     /// las piezas de la mitad izquierda y la de la derecha para las otras. Asi las lineas no cruzan
     /// todo el detalle ni se enciman.
     /// </summary>
+    /// <remarks>
+    /// Las llamadas que muerden CERCA una de otra -las del mismo nudo- van del mismo lado: si no,
+    /// llegan al nudo desde los dos lados y lo tapan.
+    /// </remarks>
     private sealed record Acomodo(
         double Holgura, double AnchoGeo, double AltoGeo, double AnchoIzq, double AnchoDer,
         List<LlamadaConexion> Izquierda, List<LlamadaConexion> Derecha, double AltoColumnas)
@@ -249,57 +279,210 @@ public sealed class ConexionAceroDrawer
 
     private double HSimbolo => ConexionAceroCapas.AltoSimbolo * _f;
 
+    /// <summary>Lo que se aparta una vista de la otra, y un detalle del siguiente.</summary>
+    private double Separacion => ConexionAceroCapas.SeparacionDetalles * _f;
+
     private Acomodo Acomodar(VistaConexionCad v)
     {
         var h = HTexto;
         var centro = (v.MinX + v.MaxX) / 2;
-        var izq = v.Llamadas.Where(l => l.X < centro).OrderByDescending(l => l.Y).ToList();
-        var der = v.Llamadas.Where(l => l.X >= centro).OrderByDescending(l => l.Y).ToList();
 
-        // Que ninguna columna se cargue de mas: si una tiene el doble que la otra, pasan las mas cercanas al centro.
-        while (izq.Count > der.Count + 2)
+        // Los nudos: las llamadas que muerden a menos de tres alturas de texto una de otra (la
+        // vista viene en cm; el texto, en unidades del dibujo).
+        var cerca = 3 * h / _escala;
+        var nudos = new List<List<LlamadaConexion>>();
+
+        foreach (var l in v.Llamadas.OrderBy(q => q.X).ThenBy(q => q.Y))
         {
-            var l = izq.OrderByDescending(q => q.X).First();
-            izq.Remove(l);
-            der.Add(l);
+            var nudo = nudos.FirstOrDefault(g => g.Any(q => Math.Abs(q.X - l.X) < cerca && Math.Abs(q.Y - l.Y) < cerca));
+
+            if (nudo is null)
+            {
+                nudos.Add(new List<LlamadaConexion> { l });
+            }
+            else
+            {
+                nudo.Add(l);
+            }
         }
 
-        while (der.Count > izq.Count + 2)
+        static double Medio(List<LlamadaConexion> g) => g.Average(q => q.X);
+        static int Cuantas(List<List<LlamadaConexion>> lado) => lado.Sum(g => g.Count);
+
+        var izqN = nudos.Where(g => Medio(g) < centro).ToList();
+        var derN = nudos.Where(g => Medio(g) >= centro).ToList();
+
+        // Que ninguna columna se cargue de mas: pasa el nudo mas cercano al centro, entero, si con
+        // eso se emparejan.
+        static bool Pasar(List<List<LlamadaConexion>> de, List<List<LlamadaConexion>> a, bool desdeLaIzquierda)
         {
-            var l = der.OrderBy(q => q.X).First();
-            der.Remove(l);
-            izq.Add(l);
+            var dif = Cuantas(de) - Cuantas(a);
+
+            if (dif <= 2)
+            {
+                return false;
+            }
+
+            var nudo = (desdeLaIzquierda ? de.OrderByDescending(Medio) : de.OrderBy(Medio)).FirstOrDefault(g => g.Count < dif);
+
+            if (nudo is null)
+            {
+                return false;
+            }
+
+            de.Remove(nudo);
+            a.Add(nudo);
+            return true;
         }
 
-        izq = izq.OrderByDescending(l => l.Y).ToList();
-        der = der.OrderByDescending(l => l.Y).ToList();
+        while (Pasar(izqN, derN, desdeLaIzquierda: true))
+        {
+        }
+
+        while (Pasar(derN, izqN, desdeLaIzquierda: false))
+        {
+        }
+
+        // Un solo nudo con muchas llamadas (la columna de una union viga-columna) dejaria una
+        // columna larguisima y la otra vacia: entonces si se reparte, por llamada, empezando por
+        // las mas cercanas al centro.
+        static void Repartir(List<List<LlamadaConexion>> de, List<List<LlamadaConexion>> a, bool desdeLaIzquierda)
+        {
+            while (Cuantas(de) - Cuantas(a) > 6)
+            {
+                var todas = de.SelectMany(g => g).ToList();
+                var l = desdeLaIzquierda ? todas.OrderByDescending(q => q.X).First() : todas.OrderBy(q => q.X).First();
+                var g0 = de.First(g => g.Contains(l));
+                g0.Remove(l);
+
+                if (g0.Count == 0)
+                {
+                    de.Remove(g0);
+                }
+
+                a.Add(new List<LlamadaConexion> { l });
+            }
+        }
+
+        Repartir(izqN, derN, desdeLaIzquierda: true);
+        Repartir(derN, izqN, desdeLaIzquierda: false);
+
+        var izq = izqN.SelectMany(g => g).OrderByDescending(l => l.Y).ToList();
+        var der = derN.SelectMany(g => g).OrderByDescending(l => l.Y).ToList();
 
         double Ancho(List<LlamadaConexion> lista) => lista.Count == 0
             ? 0
-            : (4 * h) + lista.Max(l => l.Simbolo is null
-                ? AnchoDeTexto(l.Texto, h)
-                : SimbolosSoldadura.LargoApuntado(HSimbolo, l.Electrodo) + (0.6 * h) + AnchoDeTexto(l.Descripcion, h));
+            : (2.6 * h) + lista.Max(l => l.Simbolo is null
+                ? AnchoDeRenglones(l.Texto, h)
+                : SimbolosSoldadura.LargoApuntado(HSimbolo, l.Electrodo) + (0.6 * h) + AnchoDeRenglones(l.Descripcion, h));
 
         double Alto(List<LlamadaConexion> lista) => lista.Sum(l => Paso(l));
 
-        return new Acomodo(2 * h, (v.MaxX - v.MinX) * _escala, (v.MaxY - v.MinY) * _escala, Ancho(izq), Ancho(der),
+        return new Acomodo(1.5 * h, (v.MaxX - v.MinX) * _escala, (v.MaxY - v.MinY) * _escala, Ancho(izq), Ancho(der),
             izq, der, Math.Max(Alto(izq), Alto(der)));
     }
 
-    /// <summary>De renglon a renglon: el simbolo de soldadura pide mas que un texto.</summary>
-    private double Paso(LlamadaConexion l) => l.Simbolo is null
-        ? 1.9 * HTexto
-        : Math.Max(1.9 * HTexto, SimbolosSoldadura.AltoApuntado(HSimbolo) + (0.5 * HTexto));
+    /// <summary>De renglon a renglon: el simbolo de soldadura pide mas que un texto, y una llamada larga va en dos renglones.</summary>
+    private double Paso(LlamadaConexion l)
+    {
+        var h = HTexto;
+        var n = Math.Max(1, Partir(l.Simbolo is null ? l.Texto : l.Descripcion).Count);
+        var texto = (1.9 * h) + ((n - 1) * 1.6 * h);
 
-    private static double AnchoDeTexto(string texto, double h) => texto.Length * 0.62 * h;
+        return l.Simbolo is null
+            ? texto
+            : Math.Max(texto, SimbolosSoldadura.AltoApuntado(HSimbolo) + (0.5 * HTexto));
+    }
+
+    /// <summary>
+    /// El ancho de un texto de una linea, a ojo: la fuente del estilo es angosta (semicondensada) y
+    /// mide un poco mas de media altura por letra.
+    /// </summary>
+    private static double AnchoDeTexto(string texto, double h) => texto.Length * 0.56 * h;
+
+    private double AnchoDeRenglones(string texto, double h) =>
+        Partir(texto).Select(t => AnchoDeTexto(t, h)).DefaultIfEmpty(0).Max();
+
+    /// <summary>Una llamada larga, partida en renglones de las letras del estilo, por palabras.</summary>
+    private static List<string> Partir(string texto) => Partir(texto, (int)Math.Max(12, ConexionAceroCapas.LetrasPorRenglon));
+
+    private static List<string> Partir(string texto, int letras)
+    {
+        var renglones = new List<string>();
+        var actual = string.Empty;
+
+        foreach (var palabra in (texto ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (actual.Length > 0 && actual.Length + 1 + palabra.Length > letras)
+            {
+                renglones.Add(actual);
+                actual = palabra;
+            }
+            else
+            {
+                actual = actual.Length == 0 ? palabra : actual + " " + palabra;
+            }
+        }
+
+        if (actual.Length > 0)
+        {
+            renglones.Add(actual);
+        }
+
+        return renglones;
+    }
+
+    private double AnchoDeVistas(ConexionAceroCad c)
+    {
+        var vistas = SinRepetir(c);
+        return vistas.Select(Acomodar).Sum(a => a.Ancho + Separacion) - (vistas.Count > 0 ? Separacion : 0);
+    }
+
+    /// <summary>
+    /// Las vistas con cada llamada UNA vez: lo que ya se llamo en una vista no se vuelve a llamar
+    /// en la siguiente (la placa superior se señala en la elevacion y no otra vez en la planta).
+    /// Es lo que mas descarga los nudos de las uniones con muchas piezas.
+    /// </summary>
+    private static List<VistaConexionCad> SinRepetir(ConexionAceroCad c)
+    {
+        var dichas = new HashSet<string>(StringComparer.Ordinal);
+        var lista = new List<VistaConexionCad>();
+
+        foreach (var v in c.Vistas)
+        {
+            var nueva = new VistaConexionCad { Titulo = v.Titulo, MinX = v.MinX, MinY = v.MinY, MaxX = v.MaxX, MaxY = v.MaxY };
+            nueva.Lineas.AddRange(v.Lineas);
+            nueva.Contornos.AddRange(v.Contornos);
+            nueva.Circulos.AddRange(v.Circulos);
+            nueva.Cotas.AddRange(v.Cotas);
+
+            var deEsta = new List<string>();
+
+            foreach (var l in v.Llamadas)
+            {
+                var clave = l.Simbolo is null ? l.Texto.Trim() : $"{l.Simbolo}|{l.Tamano}|{l.Descripcion.Trim()}";
+
+                if (!dichas.Contains(clave))
+                {
+                    nueva.Llamadas.Add(l);
+                    deEsta.Add(clave);
+                }
+            }
+
+            dichas.UnionWith(deEsta);
+            lista.Add(nueva);
+        }
+
+        return lista;
+    }
 
     /// <summary>Lo que va a medir el detalle a lo ancho, en unidades del dibujo, sin dibujarlo.</summary>
     public double Medir(ConexionAceroCad c)
     {
-        var h = HTexto;
-        var margen = 4 * h;
-        var vistas = c.Vistas.Select(Acomodar).Sum(a => a.Ancho + margen) - (c.Vistas.Count > 0 ? margen : 0);
-        return Math.Max(vistas, AnchoDeTexto(c.Titulo, ConexionAceroCapas.AltoTitulo * _f));
+        var vistas = AnchoDeVistas(c);
+        var (datos, notas) = Tablas(c, vistas);
+        return Math.Max(Math.Max(vistas, AnchoDeTexto(c.Titulo, ConexionAceroCapas.AltoTitulo * _f)),
+            Math.Max(datos?.Ancho ?? 0, notas?.Ancho ?? 0));
     }
 
     /// <summary>
@@ -307,7 +490,8 @@ public sealed class ConexionAceroDrawer
     /// <paramref name="y0"/>), en unidades del dibujo. Devuelve cuantas entidades se crearon.
     /// </summary>
     /// <remarks>
-    /// El titulo, el nombre de cada vista y el cuadro de datos van CENTRADOS en el detalle.
+    /// El titulo, las vistas, el nombre de cada vista y las tablas de datos y de notas van
+    /// CENTRADOS en el detalle.
     /// </remarks>
     public int Dibujar(ConexionAceroCad c, double x0, double y0)
     {
@@ -315,57 +499,216 @@ public sealed class ConexionAceroDrawer
         var h = HTexto;
         var hTitulo = ConexionAceroCapas.AltoTitulo * _f;
         var hVista = ConexionAceroCapas.AltoVista * _f;
-        var margen = 4 * h;
+        var anchoVistas = AnchoDeVistas(c);
+        var (datos, notas) = Tablas(c, anchoVistas);
         var ancho = Medir(c);
         var centro = x0 + (ancho / 2);
 
         Texto(c.Titulo, centro, y0, hTitulo, CapaConexion.Texto, anclaje: 2);
         Texto(c.Subtitulo, centro, y0 - (1.7 * hTitulo), 0.8 * h, CapaConexion.Texto, anclaje: 2);
 
-        var arriba = y0 - (1.7 * hTitulo) - (3 * h);
-        var x = x0;
+        var arriba = y0 - (1.7 * hTitulo) - (2.5 * h);
+        var x = centro - (anchoVistas / 2);
         var abajo = arriba;
 
-        foreach (var v in c.Vistas)
+        // Las vistas, centradas a lo alto entre ellas: la planta chica no se queda colgada arriba.
+        var vistas = SinRepetir(c);
+        var altos = vistas.Select(v => AltoDeVista(Acomodar(v), hVista)).ToList();
+        var mayor = altos.DefaultIfEmpty(0).Max();
+
+        for (var i = 0; i < vistas.Count; i++)
         {
-            var (anchoVista, alto) = Vista(v, x, arriba, hVista);
-            x += anchoVista + margen;
-            abajo = Math.Min(abajo, arriba - alto);
+            var (anchoVista, alto) = Vista(vistas[i], x, arriba - ((mayor - altos[i]) / 2), hVista);
+            x += anchoVista + Separacion;
+            abajo = Math.Min(abajo, arriba - ((mayor - altos[i]) / 2) - alto);
         }
 
-        // El cuadro de datos y las notas, centrados bajo las vistas: un MTEXT por bloque, con sus
-        // renglones centrados, para que se lean como una tabla y se muevan de una pieza.
-        var y = abajo - (2 * h);
-        var anchoBloque = Math.Min(Math.Max(ancho, 30 * h),
-            Math.Max(c.Renglones.Concat(c.Notas).Select(t => AnchoDeTexto(t, h)).DefaultIfEmpty(0).Max() * 1.05, 30 * h));
+        // Los datos y las notas, en tablas centradas bajo las vistas.
+        var y = abajo - (1.5 * h);
 
-        if (c.Renglones.Count > 0)
+        if (datos is not null)
         {
-            Texto("DATOS DE LA HOJA", centro, y, hVista, CapaConexion.Texto, anclaje: 2);
-            y -= 1.8 * hVista;
-            Bloque(c.Renglones, centro, y, h, anchoBloque);
-            y -= Renglones(c.Renglones, h, anchoBloque) * 1.7 * h + h;
+            y -= DibujarTabla(datos, centro, y) + (1.2 * h);
         }
 
-        if (c.Notas.Count > 0)
+        if (notas is not null)
         {
-            Texto("NOTAS", centro, y, hVista, CapaConexion.Texto, anclaje: 2);
-            y -= 1.8 * hVista;
-            var notas = c.Notas.Select((n, i) => $"{i + 1}. {n}").ToList();
-            Bloque(notas, centro, y, h, anchoBloque);
-            y -= Renglones(notas, h, anchoBloque) * 1.7 * h;
+            y -= DibujarTabla(notas, centro, y) + (1.2 * h);
         }
 
-        UltimoAncho = Math.Max(ancho, anchoBloque);
+        UltimoAncho = ancho;
         UltimoAlto = y0 - y;
         return Contar() - antes;
     }
 
-    private static double Renglones(IEnumerable<string> textos, double h, double ancho) =>
-        textos.Sum(t => Math.Ceiling(Math.Max(1, AnchoDeTexto(t, h) / ancho)));
-
     /// <summary>Lo que midio a lo alto el ultimo detalle.</summary>
     public double UltimoAlto { get; private set; }
+
+    // =====================================================================
+    //  Las tablas de datos y de notas
+    // =====================================================================
+
+    /// <summary>Un renglon de tabla: dato y valor, o un texto que ocupa todo el ancho.</summary>
+    private sealed record FilaTabla(IReadOnlyList<string> Dato, IReadOnlyList<string> Valor)
+    {
+        public int Renglones => Math.Max(1, Math.Max(Dato.Count, Valor.Count));
+    }
+
+    /// <summary>
+    /// Una tabla: su titulo y sus renglones, en una o dos columnas de dato y valor (con muchos
+    /// datos, dos columnas para que no quede una tira larguisima).
+    /// </summary>
+    private sealed record TablaConexion(string Titulo, double AnchoColumna, double AnchoDato, IReadOnlyList<IReadOnlyList<FilaTabla>> Columnas)
+    {
+        public double Ancho => AnchoColumna * Columnas.Count;
+    }
+
+    /// <summary>La letra a lo ancho dentro de las tablas: algo holgada, para que nada se salga del marco.</summary>
+    private const double LetraDeTabla = 0.62;
+
+    /// <summary>Con mas renglones que estos, la tabla de datos va en dos columnas.</summary>
+    private const int RenglonesPorColumna = 14;
+
+    /// <summary>
+    /// Las tablas del detalle, del mismo ancho las dos. Cada renglon del resumen de la hoja se
+    /// parte en sus piezas («·») y cada pieza en dato y valor («Placa superior: PL 31 × 80»).
+    /// </summary>
+    private (TablaConexion? Datos, TablaConexion? Notas) Tablas(ConexionAceroCad c, double anchoVistas)
+    {
+        var h = HTexto;
+        var letra = LetraDeTabla * h;
+        var pad = 0.6 * h;
+
+        var piezas = c.Renglones
+            .SelectMany(r => r.Split(" · ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Where(p => p.Trim('—', '-', ' ').Length > 0)
+            .Select(p =>
+            {
+                var i = p.IndexOf(": ", StringComparison.Ordinal);
+                return i > 0 ? (Dato: p[..i], Valor: p[(i + 2)..]) : (Dato: string.Empty, Valor: p);
+            })
+            .ToList();
+
+        var notas = c.Notas.Select((n, i) => (Dato: $"{i + 1}.", Valor: n)).ToList();
+        var columnas = piezas.Count > RenglonesPorColumna ? 2 : 1;
+
+        // La columna de los datos: hasta treinta letras; un dato mas largo se parte en renglones.
+        var largoDato = piezas.Where(p => p.Dato.Length > 0).Select(p => Math.Min(30, p.Dato.Length)).DefaultIfEmpty(0).Max();
+        var anchoDato = largoDato > 0 ? (largoDato * letra) + (2 * pad) : 0;
+        var anchoNumero = notas.Count > 0 ? (3 * letra) + (2 * pad) : 0;
+
+        // Lo que pedirian sin partir, con tope: una tabla que se lee de un vistazo, no un renglon
+        // que cruza todo el detalle. Lo largo se parte en renglones. Con dos columnas, la del valor
+        // es la del valor mas largo, hasta veinticuatro letras.
+        var natural = piezas.Select(p => (p.Dato.Length > 0 ? anchoDato : 0) + (p.Valor.Length * letra) + (2 * pad)).DefaultIfEmpty(0).Max();
+        var tope = columnas == 2 ? anchoDato + (24 * letra) + (2 * pad) : Math.Min(Math.Max(anchoVistas, 40 * letra), 60 * letra);
+        var anchoColumna = Math.Max(Math.Min(natural, tope), (columnas == 2 ? 30 : 34) * letra);
+
+        // Las notas, del ancho de los datos (o de lo que pidan, con el mismo tope).
+        var anchoNotas = piezas.Count > 0
+            ? anchoColumna * columnas
+            : Math.Max(Math.Min(notas.Select(n => anchoNumero + (n.Valor.Length * letra) + (2 * pad)).DefaultIfEmpty(0).Max(), 60 * letra), 34 * letra);
+
+        List<FilaTabla> Filas(IEnumerable<(string Dato, string Valor)> lista, double ancho, double anchoIzq) => lista.Select(p =>
+        {
+            var izq = p.Dato.Length > 0 ? anchoIzq : 0;
+            var dato = p.Dato.Length > 0 ? Partir(p.Dato, (int)Math.Max(6, (anchoIzq - (2 * pad)) / letra)) : new List<string>();
+            var valor = Partir(p.Valor, (int)Math.Max(10, (ancho - izq - (2 * pad)) / letra));
+            return new FilaTabla(dato, valor);
+        }).ToList();
+
+        TablaConexion? datos = null;
+
+        if (piezas.Count > 0)
+        {
+            var filas = Filas(piezas, anchoColumna, anchoDato);
+            var partes = new List<IReadOnlyList<FilaTabla>> { filas };
+
+            if (columnas == 2)
+            {
+                // Se parte por la mitad de lo ALTO, no de los renglones: los partidos ocupan mas.
+                var total = filas.Sum(f => f.Renglones);
+                var suma = 0;
+                var corte = filas.FindIndex(f => (suma += f.Renglones) * 2 >= total) + 1;
+                partes = new List<IReadOnlyList<FilaTabla>> { filas.Take(corte).ToList(), filas.Skip(corte).ToList() };
+            }
+
+            datos = new TablaConexion("DATOS DE LA CONEXIÓN", anchoColumna, anchoDato, partes);
+        }
+
+        var tNotas = notas.Count > 0
+            ? new TablaConexion("NOTAS", anchoNotas, anchoNumero, new[] { (IReadOnlyList<FilaTabla>)Filas(notas, anchoNotas, anchoNumero) })
+            : null;
+        return (datos, tNotas);
+    }
+
+    /// <summary>Una tabla con su marco, su encabezado y sus renglones, centrada en x. Devuelve su alto.</summary>
+    private double DibujarTabla(TablaConexion t, double centro, double arriba)
+    {
+        var h = HTexto;
+        var hVista = ConexionAceroCapas.AltoVista * _f;
+        var pad = 0.6 * h;
+        var x0 = centro - (t.Ancho / 2);
+        var x1 = centro + (t.Ancho / 2);
+        var hEncabezado = 1.9 * hVista;
+
+        Texto(t.Titulo, centro, arriba - (hEncabezado / 2), hVista, CapaConexion.Texto, anclaje: 5);
+        Linea(x0, arriba - hEncabezado, x1, arriba - hEncabezado, CapaConexion.Texto);
+
+        // Cada renglon, un texto a media altura: el paso entre renglones queda exacto.
+        void Renglones(IReadOnlyList<string> lineas, double x, double y)
+        {
+            for (var k = 0; k < lineas.Count; k++)
+            {
+                Texto(lineas[k], x, y - (k * 1.6 * h), h, CapaConexion.Texto, anclaje: 4);
+            }
+        }
+
+        double Alto(FilaTabla f) => (f.Renglones * 1.6 * h) + (0.5 * h);
+        var fondo = arriba - hEncabezado - t.Columnas.Select(col => col.Sum(Alto)).DefaultIfEmpty(0).Max();
+
+        for (var c = 0; c < t.Columnas.Count; c++)
+        {
+            var xc = x0 + (c * t.AnchoColumna);
+            var y = arriba - hEncabezado;
+            var filas = t.Columnas[c];
+
+            if (c > 0)
+            {
+                Linea(xc, y, xc, fondo, CapaConexion.Texto);
+            }
+
+            for (var i = 0; i < filas.Count; i++)
+            {
+                var f = filas[i];
+                var alto = Alto(f);
+                var yTexto = y - (0.25 * h) - (0.8 * h);
+                var conDato = f.Dato.Count > 0;
+
+                if (conDato)
+                {
+                    Renglones(f.Dato, xc + pad, yTexto);
+                    Linea(xc + t.AnchoDato, y, xc + t.AnchoDato, y - alto, CapaConexion.Texto);
+                }
+
+                Renglones(f.Valor, conDato ? xc + t.AnchoDato + pad : xc + pad, yTexto);
+
+                y -= alto;
+
+                if (i < filas.Count - 1 || y > fondo + 1e-9)
+                {
+                    Linea(xc, y, xc + t.AnchoColumna, y, CapaConexion.Texto);
+                }
+            }
+        }
+
+        Polilinea(new[] { (x0, arriba), (x1, arriba), (x1, fondo), (x0, fondo) }, true, CapaConexion.Texto);
+        return arriba - fondo;
+    }
+
+    /// <summary>Lo alto de una vista con su nombre, sin dibujarla: lo mismo que devuelve <see cref="Vista"/>.</summary>
+    private static double AltoDeVista(Acomodo a, double hVista) =>
+        Math.Max(a.AltoGeo, a.AltoColumnas) + (2 * a.Holgura) + (2.2 * hVista);
 
     /// <summary>Una vista con su esquina de arriba a la izquierda en (x, y). Devuelve lo que ocupo.</summary>
     private (double Ancho, double Alto) Vista(VistaConexionCad v, double x, double y, double hVista)
@@ -412,35 +755,38 @@ public sealed class ConexionAceroDrawer
         void Columna(List<LlamadaConexion> lista, double xCodo, bool derecha)
         {
             var total = lista.Sum(Paso);
-            var yl = y - ((alto - total) / 2) - (Paso(lista.FirstOrDefault() ?? new LlamadaConexion(0, 0, "")) / 2);
+            var yl = y - ((alto - total) / 2);
 
             foreach (var l in lista)
             {
+                var paso = Paso(l);
+                var ym = yl - (paso / 2);
                 var px = X(l.X);
                 var py = Y(l.Y);
 
                 if (l.Simbolo is { } tipo)
                 {
                     var hs = HSimbolo;
-                    var r = SimbolosSoldadura.Apuntado(tipo, px, py, xCodo, yl, hs, l.Tamano, l.Electrodo, derecha);
+                    var r = SimbolosSoldadura.Apuntado(tipo, px, py, xCodo, ym, hs, l.Tamano, l.Electrodo, derecha,
+                        ConexionAceroCapas.LargoFlecha * _f);
                     DibujarSimbolo(r);
                     var largo = SimbolosSoldadura.LargoApuntado(hs, l.Electrodo) + (0.6 * h);
-                    Texto(l.Descripcion, derecha ? xCodo + largo : xCodo - largo, yl, h, CapaConexion.Texto, anclaje: derecha ? 4 : 6);
+                    Texto(Partir(l.Descripcion), derecha ? xCodo + largo : xCodo - largo, ym, h, CapaConexion.Texto, anclaje: derecha ? 4 : 6);
                 }
                 else
                 {
                     var xt = derecha ? xCodo + (0.4 * h) : xCodo - (0.4 * h);
-                    Linea(px, py, xCodo, yl, CapaConexion.Texto);
-                    Circulo(px, py, 0.2 * h, CapaConexion.Texto);
-                    Texto(l.Texto, xt, yl, h, CapaConexion.Texto, anclaje: derecha ? 4 : 6);
+                    Linea(px, py, xCodo, ym, CapaConexion.Texto);
+                    Circulo(px, py, ConexionAceroCapas.RadioPunto * _f, CapaConexion.Texto);
+                    Texto(Partir(l.Texto), xt, ym, h, CapaConexion.Texto, anclaje: derecha ? 4 : 6);
                 }
 
-                yl -= Paso(l);
+                yl -= paso;
             }
         }
 
-        Columna(a.Izquierda, x + a.AnchoIzq - (2 * h), derecha: false);
-        Columna(a.Derecha, xGeo + a.AnchoGeo + a.Holgura + (2 * h), derecha: true);
+        Columna(a.Izquierda, x + a.AnchoIzq - (1.5 * h), derecha: false);
+        Columna(a.Derecha, xGeo + a.AnchoGeo + a.Holgura + (1.5 * h), derecha: true);
 
         Texto(v.Titulo, xGeo + (a.AnchoGeo / 2), y - alto - (0.4 * hVista), hVista, CapaConexion.Texto, anclaje: 2);
         return (a.Ancho, alto + (2.2 * hVista));
@@ -504,6 +850,11 @@ public sealed class ConexionAceroDrawer
 
     private int Contar()
     {
+        if (_grabado is not null)
+        {
+            return _grabado.Count;
+        }
+
         try
         {
             return AcadConnection.Retry(() => (int)_ms.Count);
@@ -526,6 +877,12 @@ public sealed class ConexionAceroDrawer
 
     private void Linea(double x1, double y1, double x2, double y2, CapaConexion capa)
     {
+        if (_grabado is not null)
+        {
+            _grabado.Add(new TrazoConexion(TipoTrazo.Linea, capa, new[] { x1, y1, x2, y2 }));
+            return;
+        }
+
         try
         {
             AcadConnection.Retry(() =>
@@ -555,6 +912,13 @@ public sealed class ConexionAceroDrawer
             arreglo[(2 * i) + 1] = puntos[i].Y;
         }
 
+        if (_grabado is not null)
+        {
+            var t = new TrazoConexion(TipoTrazo.Polilinea, capa, arreglo, cerrada && puntos.Count >= 3);
+            _grabado.Add(t);
+            return t;
+        }
+
         try
         {
             return AcadConnection.Retry<object?>(() =>
@@ -574,6 +938,16 @@ public sealed class ConexionAceroDrawer
 
     private void Rellenar(object contorno, CapaConexion capa, string patron, double escala)
     {
+        if (_grabado is not null)
+        {
+            if (contorno is TrazoConexion t)
+            {
+                _grabado.Add(t with { Tipo = TipoTrazo.Relleno, Capa = capa, Texto = patron });
+            }
+
+            return;
+        }
+
         try
         {
             AcadConnection.Retry(() =>
@@ -619,6 +993,12 @@ public sealed class ConexionAceroDrawer
             return;
         }
 
+        if (_grabado is not null)
+        {
+            _grabado.Add(new TrazoConexion(TipoTrazo.Circulo, capa, new[] { x, y }, Radio: r));
+            return;
+        }
+
         try
         {
             AcadConnection.Retry(() =>
@@ -637,18 +1017,32 @@ public sealed class ConexionAceroDrawer
     /// Un MTEXT en (x, y) con su punto de anclaje: 1 arriba a la izquierda, 2 arriba al centro, 4 al
     /// medio a la izquierda, 5 al centro, 6 al medio a la derecha.
     /// </summary>
-    private void Texto(string texto, double x, double y, double alto, CapaConexion capa, int anclaje = 1)
+    private void Texto(string texto, double x, double y, double alto, CapaConexion capa, int anclaje = 1) =>
+        Texto(new[] { texto }, x, y, alto, capa, anclaje);
+
+    /// <summary>Varios renglones en UN MTEXT (\P), con el anclaje de arriba.</summary>
+    private void Texto(IReadOnlyList<string> renglones, double x, double y, double alto, CapaConexion capa, int anclaje = 1)
     {
-        if (string.IsNullOrWhiteSpace(texto))
+        var lista = renglones.Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
+
+        if (lista.Count == 0)
         {
             return;
         }
+
+        if (_grabado is not null)
+        {
+            _grabado.Add(new TrazoConexion(TipoTrazo.Texto, capa, new[] { x, y }, Texto: string.Join("\n", lista), Alto: alto, Anclaje: anclaje));
+            return;
+        }
+
+        var contenido = string.Join("\\P", lista.Select(Escapar));
 
         try
         {
             AcadConnection.Retry(() =>
             {
-                dynamic t = _ms.AddMText(P(x, y), 0.0, Escapar(texto));
+                dynamic t = _ms.AddMText(P(x, y), 0.0, contenido);
                 t.AttachmentPoint = anclaje;
                 t.InsertionPoint = P(x, y);
                 t.StyleName = ConexionAceroCapas.EstiloTexto;
@@ -662,43 +1056,20 @@ public sealed class ConexionAceroDrawer
         }
     }
 
-    /// <summary>
-    /// Varios renglones en UN MTEXT de <paramref name="ancho"/>, JUSTIFICADO: cada renglon es un
-    /// parrafo (\P) y el texto se reparte a los dos margenes.
-    /// </summary>
-    private void Bloque(IReadOnlyList<string> renglones, double x, double y, double alto, double ancho)
-    {
-        if (renglones.Count == 0)
-        {
-            return;
-        }
-
-        var contenido = "\\pqc;" + string.Join("\\P", renglones.Select(Escapar));
-
-        try
-        {
-            AcadConnection.Retry(() =>
-            {
-                dynamic t = _ms.AddMText(P(x, y), ancho, contenido);
-                t.AttachmentPoint = 2;
-                t.InsertionPoint = P(x, y);
-                t.StyleName = ConexionAceroCapas.EstiloTexto;
-                t.Height = alto;
-                Capear(t, CapaConexion.Texto);
-            });
-        }
-        catch (Exception ex)
-        {
-            Fallo("Cuadro de datos", ex);
-        }
-    }
-
     private static string Escapar(string s) => s.Replace("\\", "\\\\").Replace("{", "\\{").Replace("}", "\\}");
 
     private void Cota(double x1, double y1, double x2, double y2, double dx, double dy, string texto)
     {
         if (Math.Abs(x2 - x1) + Math.Abs(y2 - y1) < 1e-9)
         {
+            return;
+        }
+
+        if (_grabado is not null)
+        {
+            _grabado.Add(new TrazoConexion(TipoTrazo.Cota, CapaConexion.Cota,
+                new[] { x1, y1, x2, y2, ((x1 + x2) / 2) + dx, ((y1 + y2) / 2) + dy }, Texto: texto,
+                Alto: ConexionAceroCapas.AltoCota * _f));
             return;
         }
 

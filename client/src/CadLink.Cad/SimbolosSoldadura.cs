@@ -442,9 +442,10 @@ public static class SimbolosSoldadura
     /// la soldadura. La línea va hacia la derecha o hacia la izquierda del codo, según de qué lado
     /// del detalle quede la llamada; el símbolo conserva su cateto vertical a la izquierda.
     /// </summary>
+    /// <param name="largoFlecha">El largo de la punta; con cero, el de siempre (0.9 de la altura).</param>
     public static Renglon Apuntado(
         Tipo t, double xPunta, double yPunta, double xCodo, double yRef, double h, string tamano, string cola,
-        bool haciaLaDerecha = true)
+        bool haciaLaDerecha = true, double largoFlecha = 0)
     {
         var abiertas = new List<double[]>();
         var cerradas = new List<double[]>();
@@ -507,8 +508,10 @@ public static class SimbolosSoldadura
         {
             var ux = dx / l;
             var uy = dy / l;
-            var largo = 0.9 * h;
-            var ancho = 0.3 * h;
+            // La punta, del largo del estilo: en un nudo con placas de un centimetro una flecha del
+            // tamaño del texto tapa la junta que señala.
+            var largo = largoFlecha > 0 ? Math.Min(largoFlecha, 0.45 * l) : 0.9 * h;
+            var ancho = 0.3 * largo;
             rellenas.Add(new[]
             {
                 xPunta, yPunta,

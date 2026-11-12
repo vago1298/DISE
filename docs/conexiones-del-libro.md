@@ -61,10 +61,15 @@ ATIESADORES y la X en dos niveles. Salen en la lista con el motivo.
 - **El cordón se rellena con el hatch de la soldadura de la placa base** (patrón y escala de su
   perfil en *Estilo de dibujo*), sobre su contorno; no es una polilínea con ancho.
 - Los textos son MTEXT de **0.09** de alto. Las llamadas se reparten en dos columnas, a la
-  izquierda y a la derecha de cada vista, para que no se encimen. El título, los nombres de las
-  vistas y el cuadro de datos y notas van **centrados** bajo el detalle.
-- La simbología de soldadura tiene su propio tamaño (**0.04**, `alto.simbolo`), más chico que el
-  texto. Todo se cambia en *Estilo de dibujo*, perfil «Conexiones de acero».
+  izquierda y a la derecha de cada vista. Las que señalan el mismo nudo van **del mismo lado**, y
+  lo que ya se señaló en una vista no se repite en la siguiente. Una llamada de más de 32 letras
+  (`llamada.letras`) se parte en dos renglones.
+- La simbología de soldadura tiene su propio tamaño (**0.04**, `alto.simbolo`) y su flecha mide
+  **0.025** (`flecha.largo`); el punto de las llamadas de texto, 0.006 (`llamada.punto`).
+- Los datos y las notas van en **tablas** con marco, centradas bajo las vistas: dato | valor (con
+  muchos datos, en dos columnas). Las vistas se centran a lo alto entre ellas.
+- Entre vistas y entre detalles hay **0.25** (`separacion.detalles`). Todo se cambia en *Estilo de
+  dibujo*, perfil «Conexiones de acero».
 - Las cotas dicen los centímetros con **dos decimales**.
 
 ## Capturar a mano, sin el libro
@@ -74,8 +79,11 @@ los mismos datos de su hoja del libro (los que el detalle usa). Los perfiles y a
 los catálogos de CadLink. Lo que el libro calcula con sus fórmulas (medidas del perfil, `k` ≈ tf +
 tw, pared de diseño del tubo = 0.93 de la nominal, ángulo de la diagonal, tipo de eslabón) se
 completa con el catálogo (`ConexionesAMano` del núcleo). No se revisa el diseño: eso lo hace el
-libro. Las conexiones capturadas se guardan con el proyecto (`.clk`) y se dibujan igual que las del
-libro. La subpestaña *Desde el libro de Excel* sigue igual.
+libro. Los datos que CadLink calcula si se dejan vacíos dicen «vacío = lo calcula CadLink». Abajo
+hay una **vista previa**: es el mismo dibujante de AutoCAD en su modo de vista previa
+(`ConexionAceroDrawer.ParaVistaPrevia`), así que lo que se ve es lo que se dibuja. Las
+conexiones capturadas se guardan con el proyecto (`.clk`) y se dibujan igual que las del libro,
+con una tabla de datos armada con lo capturado. La subpestaña *Desde el libro de Excel* sigue igual.
 
 ## Si cambias el libro
 

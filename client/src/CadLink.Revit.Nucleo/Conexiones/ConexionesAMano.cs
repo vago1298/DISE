@@ -19,6 +19,17 @@ public sealed record PerfilDeCatalogo(double D, double B, double Tf, double Tw, 
 public static class ConexionesAMano
 {
     private static readonly Dictionary<string, List<DatoDelLibro>> Usados = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, HashSet<string>> Calculados = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Los capturables que en el libro salen de una formula y que aqui no se pueden deducir del
+    /// catalogo: un valor de arranque razonable (el usuario lo cambia).
+    /// </summary>
+    private static readonly Dictionary<string, Dictionary<string, string>> Arranque = new(StringComparer.Ordinal)
+    {
+        // Placa gusset: diagonal HSS 5" x 5/16" ranurada.
+        ["GP"] = new() { ["bws"] = "12.7", ["tm"] = "0.74" },
+    };
 
     /// <summary>Los tipos que se pueden capturar a mano: los mismos que se arman del libro.</summary>
     public static IReadOnlyList<string> Codigos { get; } = new[] { "UV", "WF", "RB", "EP", "SC", "MW", "GP", "CE", "CX", "BP" };
@@ -46,9 +57,55 @@ public static class ConexionesAMano
             .GroupBy(d => d.Nombre).Select(g => g.First())
             .ToList();
 
+        // Los que, dejados en blanco, los completa CadLink con el catalogo.
+        var defectos = Defectos(codigo);
+        var calculados = lista
+            .Where(d => string.IsNullOrWhiteSpace(defectos.GetValueOrDefault(d.Nombre))
+                        && h.Valores.TryGetValue(d.Nombre, out var c) && c.EsFormula)
+            .Select(d => d.Nombre)
+            .ToHashSet(StringComparer.Ordinal);
+
         lock (Usados)
         {
             Usados[codigo] = lista;
+            Calculados[codigo] = calculados;
+        }
+
+        return lista;
+    }
+
+    /// <summary>Si ese dato, dejado en blanco, lo calcula CadLink (como lo haria el libro).</summary>
+    public static bool SeCalcula(string codigo, string nombre)
+    {
+        Datos(codigo);
+
+        lock (Usados)
+        {
+            return Calculados.TryGetValue(codigo, out var c) && c.Contains(nombre);
+        }
+    }
+
+    /// <summary>
+    /// El cuadro de datos de una conexion capturada a mano: lo capturado, «dato: valor unidad», en
+    /// el orden de la hoja. Hace las veces del resumen que el libro escribe con sus formulas.
+    /// </summary>
+    public static List<string> Resumen(string codigo, IReadOnlyDictionary<string, string> valores)
+    {
+        var lista = new List<string>();
+
+        foreach (var d in Datos(codigo).Where(x => x.Nombre != "ID"))
+        {
+            var v = valores.TryGetValue(d.Nombre, out var t) ? (t ?? string.Empty).Trim() : string.Empty;
+
+            if (v.Length == 0)
+            {
+                continue;
+            }
+
+            // Sin lo que va entre parentesis ni el «=» del final: «Grueso de la placa, tp».
+            var dato = System.Text.RegularExpressions.Regex.Replace(d.Descripcion, @"\s*\([^)]*\)", string.Empty).Trim().TrimEnd('=', ' ', ':');
+            var unidad = d.Unidad.Trim();
+            lista.Add($"{dato}: {v}{(unidad.Length > 0 && unidad != "°" ? " " + unidad : unidad)}");
         }
 
         return lista;
@@ -65,6 +122,17 @@ public static class ConexionesAMano
             d.TryAdd(dato.Nombre, dato.Defecto ?? string.Empty);
         }
 
+        if (Arranque.TryGetValue(codigo, out var arranque))
+        {
+            foreach (var (k, v) in arranque)
+            {
+                if (d.TryGetValue(k, out var ya) && ya.Length == 0)
+                {
+                    d[k] = v;
+                }
+            }
+        }
+
         return d;
     }
 
@@ -79,6 +147,24 @@ public static class ConexionesAMano
         var h = HojaLeida.DeValores(tipo, nombre, valores);
         Completar(h, perfil);
         return h;
+    }
+
+    /// <summary>
+    /// La conexion armada con lo capturado: la hoja, sus piezas y su cuadro de datos. Lo mismo para
+    /// dibujarla en AutoCAD que para la vista previa.
+    /// </summary>
+    public static (ModeloConexion? Modelo, HojaLeida Hoja) Armar(string codigo, string nombre,
+        IReadOnlyDictionary<string, string> valores, Func<string, PerfilDeCatalogo?> perfil, out string? porQueNo)
+    {
+        var h = Hoja(codigo, nombre, valores, perfil);
+        var m = ConexionesDelLibro.Construir(h, out porQueNo);
+
+        if (m is not null && m.Renglones.Count == 0)
+        {
+            m.Renglones.AddRange(Resumen(codigo, valores));
+        }
+
+        return (m, h);
     }
 
     private static void Completar(HojaLeida h, Func<string, PerfilDeCatalogo?> buscar)
@@ -171,6 +257,8 @@ public static class ConexionesAMano
                 h.SiFalta("Hb", b.D);
                 h.SiFalta("tb", Pared(b));
                 h.SiFalta("bcn", b.B);
+                h.SiFalta("nwc", b.EsTubo ? 4 : 2);
+                h.SiFalta("xc", 0);
                 h.SiFalta("tmw", Pared(b));
 
                 var e = h.Num("e");

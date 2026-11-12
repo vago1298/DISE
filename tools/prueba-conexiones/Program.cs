@@ -261,6 +261,14 @@ internal static class Program
         Check("CE: el peralte de la viga sale del catalogo", Casi(ce.Num("d"), 45.7), ce.Num("d").ToString(CultureInfo.InvariantCulture));
         Check("CE: la pared del tubo de diseño es 0.93 de la nominal", Casi(ce.Num("tb"), 0.93 * 1.27), ce.Num("tb").ToString(CultureInfo.InvariantCulture));
 
+        var (gp, _) = ConexionesAMano.Armar("GP", "GP", ConexionesAMano.Defectos("GP"), Catalogo, out _);
+        Check("a mano: el cuadro de datos sale de lo capturado", gp is not null && gp.Renglones.Any(r => r.StartsWith("Grueso de la placa, tp: ", StringComparison.Ordinal)),
+            string.Join(" | ", gp?.Renglones.Take(3) ?? Enumerable.Empty<string>()));
+        Check("a mano: lo que se deja en blanco y calcula CadLink se marca (ec de la gusset)", ConexionesAMano.SeCalcula("GP", "ec") && !ConexionesAMano.SeCalcula("GP", "tp"));
+        Check("a mano: la gusset arranca con el ancho y la pared de la diagonal", ConexionesAMano.Defectos("GP")["bws"].Length > 0 && ConexionesAMano.Defectos("GP")["tm"].Length > 0);
+        var ceh = ConexionesAMano.Hoja("CE", "CE", ConexionesAMano.Defectos("CE"), Catalogo);
+        Check("a mano: el contraventeo excentrico con tubo lleva 4 cordones", Casi(ceh.Num("nwc"), 4), ceh.Num("nwc").ToString(CultureInfo.InvariantCulture));
+
         var v = ConexionesAMano.Defectos("RB");
         v["ID"] = "RB-A";
         var rb = ConexionesAMano.Hoja("RB", "RB", v, Catalogo);

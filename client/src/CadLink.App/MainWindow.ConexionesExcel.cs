@@ -172,7 +172,8 @@ public partial class MainWindow
             dibujante.AsegurarCapas();
             PlacaBaseDrawer? placas = null;
 
-            var separacion = 60 * escala;
+            // La separacion entre detalles es la del estilo (Conexiones de acero), en metros de dibujo.
+            var separacion = ConexionAceroCapas.SeparacionDetalles * escala / 0.01;
             var hechas = 0;
             var fallos = new List<string>();
             var y = 0.0;

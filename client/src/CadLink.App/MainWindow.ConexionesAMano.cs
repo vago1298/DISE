@@ -45,7 +45,15 @@ public partial class MainWindow
             {
                 foreach (var d in c.Datos)
                 {
-                    d.PropertyChanged += (_, _) => RegistrarEnHistorial();
+                    d.PropertyChanged += (_, _) =>
+                    {
+                        RegistrarEnHistorial();
+
+                        if (ReferenceEquals(ConexionesAManoLista.SelectedItem, c))
+                        {
+                            PedirVistaPreviaConexionAMano();
+                        }
+                    };
                 }
             }
 
@@ -107,7 +115,10 @@ public partial class MainWindow
     private void OnConexionAManoElegida(object sender, SelectionChangedEventArgs e)
     {
         DatosConexionAManoGrid.ItemsSource = (ConexionesAManoLista.SelectedItem as ConexionAMano)?.Datos;
+        PedirVistaPreviaConexionAMano();
     }
+
+    private void OnConexionAManoPreviewSizeChanged(object sender, SizeChangedEventArgs e) => PedirVistaPreviaConexionAMano();
 
     private void ResumenConexionesAMano()
     {
@@ -129,8 +140,7 @@ public partial class MainWindow
         {
             try
             {
-                var h = ConexionesAMano.Hoja(c.Codigo, c.Titulo, c.Valores(), PerfilDelCatalogo);
-                var m = ConexionesDelLibro.Construir(h, out var porQueNo);
+                var (m, h) = ConexionesAMano.Armar(c.Codigo, c.Titulo, c.Valores(), PerfilDelCatalogo, out var porQueNo);
 
                 if (m is null)
                 {

@@ -18,7 +18,7 @@ public sealed class ConexionAMano : INotifyPropertyChanged
         foreach (var d in ConexionesAMano.Datos(codigo))
         {
             var v = valores is not null && valores.TryGetValue(d.Nombre, out var x) ? x : defectos.GetValueOrDefault(d.Nombre, string.Empty);
-            var dato = new DatoAMano(d, v);
+            var dato = new DatoAMano(d, v, ConexionesAMano.SeCalcula(codigo, d.Nombre));
             dato.PropertyChanged += (_, e) =>
             {
                 if (dato.Nombre == "ID")
@@ -56,11 +56,17 @@ public sealed class DatoAMano : INotifyPropertyChanged
 {
     private string _valor;
 
-    public DatoAMano(DatoDelLibro dato, string valor)
+    public DatoAMano(DatoDelLibro dato, string valor, bool seCalcula = false)
     {
         Dato = dato;
         _valor = valor;
+        SeCalcula = seCalcula;
     }
+
+    /// <summary>Si, dejado en blanco, CadLink lo calcula con el catalogo (como el libro con su formula).</summary>
+    public bool SeCalcula { get; }
+
+    public string Nota => SeCalcula ? "vacío = lo calcula CadLink" : string.Empty;
 
     public DatoDelLibro Dato { get; }
 

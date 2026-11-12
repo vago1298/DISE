@@ -3468,10 +3468,27 @@
                                                                 </DataTemplate>
                                                             </DataGridTemplateColumn.CellEditingTemplate>
                                                         </DataGridTemplateColumn>
-                                                        <DataGridTextColumn Header="Unidad" Binding="{Binding Unidad}" IsReadOnly="True" Width="70" />
+                                                        <DataGridTextColumn Header="Unidad" Binding="{Binding Unidad}" IsReadOnly="True" Width="60" />
+                                                        <DataGridTextColumn Header="Nota" Binding="{Binding Nota}" IsReadOnly="True" Width="150" />
                                                     </DataGrid.Columns>
                                                 </DataGrid>
                                             </Grid>
+
+                                            <!-- LA VISTA PREVIA: el mismo dibujante de AutoCAD en su modo de vista
+                                                 previa, asi que lo que se ve es lo que se dibuja. -->
+                                            <TextBlock Text="Asi se va a dibujar" FontWeight="SemiBold" FontSize="11.5"
+                                                       Margin="0,12,0,4" Foreground="{DynamicResource BrandDarkBrush}" />
+                                            <Border BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}" CornerRadius="4">
+                                                <Grid>
+                                                    <Canvas x:Name="ConexionAManoPreviewCanvas" Height="460"
+                                                            Background="#1E2329" ClipToBounds="True"
+                                                            SizeChanged="OnConexionAManoPreviewSizeChanged"
+                                                            ToolTip="La conexion elegida tal como se dibuja en AutoCAD, con los colores de sus capas." />
+                                                    <TextBlock x:Name="ConexionAManoPreviewText" Margin="12" FontSize="11.5"
+                                                               Foreground="#C8CDD3" TextWrapping="Wrap"
+                                                               VerticalAlignment="Top" IsHitTestVisible="False" Text="" />
+                                                </Grid>
+                                            </Border>
 
                                             <TextBlock x:Name="ConexionesAManoNotas" TextWrapping="Wrap" FontSize="11.5" Margin="0,8,0,0"
                                                        Foreground="{DynamicResource MutedTextBrush}" Text="" />
