@@ -121,6 +121,20 @@ internal sealed class PiezasLocales
         }
     }
 
+    /// <summary>Despatina el extremo P0 del ultimo miembro llamado asi.</summary>
+    public void Despatinar(string que, bool arriba, double largo, double profundo)
+    {
+        var i = M.Miembros.FindLastIndex(x => x.Que == que);
+
+        if (i < 0 || largo <= 1e-6 || profundo <= 1e-6)
+        {
+            return;
+        }
+
+        var mi = M.Miembros[i];
+        M.Miembros[i] = mi with { Despatinados = mi.Despatinados.Append(new DespatinadoPieza(arriba, largo, Math.Min(profundo, mi.D / 2))).ToList() };
+    }
+
     public void Cota(V3 a, V3 b, V3 lado, string? texto = null)
     {
         var l = (b - a).Largo;

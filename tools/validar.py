@@ -17115,9 +17115,19 @@ def v32_conexiones_del_libro() -> None:
           "Detallador.Conexiones.cs" in stub)
     check("las soldaduras se llaman con la simbologia de soldadura de CadLink",
           "SimbolosSoldadura.Apuntado(" in drw and "public static Renglon Apuntado(" in leer(ruta("client/src/CadLink.Cad/SimbolosSoldadura.cs")))
-    check("el cordon se rellena con el hatch de la soldadura de la placa base",
-          'Perfil(EstiloDibujo.PlacaBase).Texto("hatch.soldadura")' in cad and "AddLightWeightPolyline" in drw
-          and "ConstantWidth" not in drw)
+    check("el cordon se rellena con SOLID de color 9 y 70 de transparencia, sobre su contorno",
+          '.Con("soldadura.hatch", GrupoHatch, "Relleno de la soldadura", TipoAjuste.Patron, "SOLID")' in est
+          and '.Con("soldadura.color", GrupoHatch, "Color del relleno de la soldadura", TipoAjuste.ColorAci, C(9))' in est
+          and 'TipoAjuste.Medida, N(70))' in est and "hh.EntityTransparency" in drw)
+    check("los perfiles llevan ancho global de 0.001 y los secundarios su propia capa",
+          '.Con("perfil.ancho", GrupoLetras,' in est and "N(0.001))" in est and "pl.ConstantWidth = grueso;" in drw
+          and '"CONEXION PERFIL SECUNDARIO"' in cad and "VistasConexion.EsSecundario(" not in drw
+          and "CapaDetalle.PerfilSecundario => CapaConexion.PerfilSecundario" in app)
+    check("la linea de eje ya no es roja como las cotas",
+          '"capa.CONEXION EJE", GrupoColores, "Capa CONEXION EJE (naranja: no se confunde con las cotas ni la soldadura)", TipoAjuste.ColorAci, C(30))' in est)
+    check("el despatinado se recorta de la viga, no se dibuja encima",
+          'p.Despatinar("Viga soportada", arriba: true, cc, dce);' in nucleo["ConexionesDelLibro.cs"]
+          and 'p.Trazo("Despatinado"' not in nucleo["ConexionesDelLibro.cs"])
     check("los textos del detalle son de 0.09 y los datos y notas van en tablas centradas",
           '"alto.texto", GrupoLetras, "Altura de las llamadas y del cuadro de datos", TipoAjuste.Medida, N(0.09)' in est
           and "private double DibujarTabla(" in drw and '"DATOS DE LA CONEXIÓN"' in drw)

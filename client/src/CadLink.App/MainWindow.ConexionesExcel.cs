@@ -374,6 +374,7 @@ public partial class MainWindow
         static CapaConexion Capa(CapaDetalle d) => d switch
         {
             CapaDetalle.Perfil => CapaConexion.Perfil,
+            CapaDetalle.PerfilSecundario => CapaConexion.PerfilSecundario,
             CapaDetalle.PerfilOculto => CapaConexion.Oculto,
             CapaDetalle.Eje => CapaConexion.Eje,
             CapaDetalle.Placa => CapaConexion.Placa,

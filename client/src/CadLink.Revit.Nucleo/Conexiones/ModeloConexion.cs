@@ -123,7 +123,17 @@ public enum SimboloDeSoldadura
 /// </summary>
 /// <param name="Peralte">Unitario, hacia donde mide <see cref="D"/>.</param>
 public sealed record MiembroPieza(
-    string Que, string Nombre, FormaMiembro Forma, V3 P0, V3 P1, V3 Peralte, double D, double B, double Tf, double Tw);
+    string Que, string Nombre, FormaMiembro Forma, V3 P0, V3 P1, V3 Peralte, double D, double B, double Tf, double Tw)
+{
+    /// <summary>Los despatinados del extremo P0: el patin y un poco del alma, recortados.</summary>
+    public IReadOnlyList<DespatinadoPieza> Despatinados { get; init; } = Array.Empty<DespatinadoPieza>();
+}
+
+/// <summary>
+/// Un despatinado en el extremo P0 de un miembro: se recorta <see cref="Largo"/> a lo largo del eje y
+/// <see cref="Profundo"/> desde la cara del patin, del lado de arriba (+peralte) o de abajo.
+/// </summary>
+public sealed record DespatinadoPieza(bool Arriba, double Largo, double Profundo);
 
 /// <summary>Una linea que solo se dibuja: el recorte RBS, el despatinado.</summary>
 public sealed record TrazoPieza(string Que, IReadOnlyList<V3> Puntos, bool Cerrado, bool Oculto);

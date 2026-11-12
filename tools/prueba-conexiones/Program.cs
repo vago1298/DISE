@@ -269,6 +269,18 @@ internal static class Program
         var ceh = ConexionesAMano.Hoja("CE", "CE", ConexionesAMano.Defectos("CE"), Catalogo);
         Check("a mano: el contraventeo excentrico con tubo lleva 4 cordones", Casi(ceh.Num("nwc"), 4), ceh.Num("nwc").ToString(CultureInfo.InvariantCulture));
 
+        // El despatinado de la conexion a cortante: la viga soportada se recorta, en su capa de secundaria.
+        var scv = ConexionesAMano.Defectos("SC");
+        scv["Desp"] = "SI";
+        var (sc, _) = ConexionesAMano.Armar("SC", "SC", scv, Catalogo, out _);
+        var soportada = sc?.Miembros.FirstOrDefault(x => x.Que == "Viga soportada");
+        Check("cortante: la viga soportada lleva su despatinado", soportada?.Despatinados.Count == 1,
+            soportada?.Despatinados.Count.ToString(CultureInfo.InvariantCulture) ?? "sin viga");
+        var elev = sc is null ? null : VistasConexion.Proyectar(sc).First();
+        Check("cortante: la viga soportada va en la capa de secundarias y la que soporta en la de principales",
+            elev is not null && elev.Lineas.Any(l => l.Capa == CapaDetalle.PerfilSecundario)
+            && sc!.Miembros.Any(x => x.Que == "Viga que soporta" && !VistasConexion.EsSecundario(sc, x)));
+
         var v = ConexionesAMano.Defectos("RB");
         v["ID"] = "RB-A";
         var rb = ConexionesAMano.Hoja("RB", "RB", v, Catalogo);

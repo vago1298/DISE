@@ -18,7 +18,10 @@ public enum CapaConexion
     Tornillo,
     Soldadura,
     Cota,
-    Texto
+    Texto,
+
+    /// <summary>Los perfiles secundarios: la viga que llega, las diagonales.</summary>
+    PerfilSecundario
 }
 
 public sealed record LineaConexion(double X1, double Y1, double X2, double Y2, CapaConexion Capa);
@@ -62,9 +65,12 @@ public enum TipoTrazo
 /// <param name="Puntos">x, y, x, y… Linea: 2 puntos. Cota: los 2 puntos y el de la linea de cota.</param>
 /// <param name="Texto">El texto (renglones separados con «\n»), el patron del relleno o el numero de la cota.</param>
 /// <param name="Anclaje">El punto de anclaje del MTEXT: 1 arriba izq., 2 arriba centro, 4 medio izq., 5 centro, 6 medio der.</param>
+/// <param name="Color">El color ACI propio (el relleno de la soldadura); 0 = el de la capa.</param>
+/// <param name="Transparencia">La transparencia del relleno, de 0 a 90.</param>
+/// <param name="Grueso">El ancho global de la polilinea (PEDIT Width).</param>
 public sealed record TrazoConexion(
     TipoTrazo Tipo, CapaConexion Capa, double[] Puntos, bool Cerrado = false, double Radio = 0,
-    string Texto = "", double Alto = 0, int Anclaje = 1);
+    string Texto = "", double Alto = 0, int Anclaje = 1, int Color = 0, double Transparencia = 0, double Grueso = 0);
 
 /// <summary>Cota alineada de (X1, Y1) a (X2, Y2), desplazada hacia (Nx, Ny), con su texto.</summary>
 public sealed record CotaConexion(double X1, double Y1, double X2, double Y2, double Nx, double Ny, string Texto);
@@ -153,15 +159,26 @@ public static class ConexionAceroCapas
 
     public static double EscalaLineas => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("escala.lineas");
 
-    /// <summary>El hatch de la soldadura: EL DE LA PLACA BASE, para que los detalles salgan iguales.</summary>
-    public static string PatronSoldadura => EstiloDibujo.Actual.Perfil(EstiloDibujo.PlacaBase).Texto("hatch.soldadura");
+    /// <summary>El relleno de la soldadura: SOLID, de color 9 y con 70 de transparencia.</summary>
+    public static string PatronSoldadura => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Texto("soldadura.hatch");
 
-    public static double EscalaSoldadura => EstiloDibujo.Actual.Perfil(EstiloDibujo.PlacaBase).Numero("hatch.soldadura.escala");
+    public static double EscalaSoldadura => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("soldadura.hatch.escala");
+
+    public static int ColorSoldadura => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).ColorAci("soldadura.color");
+
+    public static double TransparenciaSoldadura => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("soldadura.transparencia");
+
+    /// <summary>El ancho global (PEDIT Width) de las lineas de los perfiles.</summary>
+    public static double GruesoDePerfil => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("perfil.ancho");
+
+    /// <summary>Si la capa es la de un perfil (principal o secundario): esas llevan ancho.</summary>
+    public static bool EsPerfil(CapaConexion c) => c is CapaConexion.Perfil or CapaConexion.PerfilSecundario;
 
     /// <summary>El nombre de la capa de AutoCAD.</summary>
     public static string Nombre(CapaConexion c) => c switch
     {
         CapaConexion.Perfil => "CONEXION PERFIL",
+        CapaConexion.PerfilSecundario => "CONEXION PERFIL SECUNDARIO",
         CapaConexion.Oculto => "CONEXION OCULTO",
         CapaConexion.Eje => "CONEXION EJE",
         CapaConexion.Placa => "CONEXION PLACAS",

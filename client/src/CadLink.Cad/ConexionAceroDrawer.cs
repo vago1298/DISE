@@ -113,8 +113,9 @@ public sealed class ConexionAceroDrawer
                     nueva = true;
                 }
 
-                // Una capa nueva, o una cuyo color eligio el usuario en «Estilo de dibujo».
-                if (nueva || ConexionAceroCapas.ColorElegido(c))
+                // Una capa nueva, o una cuyo color eligio el usuario en «Estilo de dibujo». La del eje
+                // era roja y se confundia con las cotas: si sigue con aquel rojo, pasa al color nuevo.
+                if (nueva || ConexionAceroCapas.ColorElegido(c) || (c == CapaConexion.Eje && (int)capa.Color == 1))
                 {
                     capa.Color = color;
                 }
@@ -734,10 +735,11 @@ public sealed class ConexionAceroDrawer
             var puntos = p.Puntos.Select(q => (X(q.X), Y(q.Y))).ToList();
             var pl = Polilinea(puntos, p.Cerrado, p.Capa);
 
-            // La soldadura se rellena con el hatch de la placa base, sobre su contorno.
+            // La soldadura se rellena sobre su contorno: SOLID de color 9 con 70 de transparencia.
             if (p.Relleno && pl is not null && p.Cerrado && puntos.Count >= 3)
             {
-                Rellenar(pl, p.Capa, ConexionAceroCapas.PatronSoldadura, ConexionAceroCapas.EscalaSoldadura * _f);
+                Rellenar(pl, p.Capa, ConexionAceroCapas.PatronSoldadura, ConexionAceroCapas.EscalaSoldadura * _f,
+                    ConexionAceroCapas.ColorSoldadura, ConexionAceroCapas.TransparenciaSoldadura);
             }
         }
 
@@ -877,6 +879,14 @@ public sealed class ConexionAceroDrawer
 
     private void Linea(double x1, double y1, double x2, double y2, CapaConexion capa)
     {
+        // Los perfiles van con ancho global (PEDIT Width): una LINE no lo tiene, asi que van como
+        // polilinea de dos puntos.
+        if (ConexionAceroCapas.EsPerfil(capa))
+        {
+            Polilinea(new[] { (x1, y1), (x2, y2) }, false, capa);
+            return;
+        }
+
         if (_grabado is not null)
         {
             _grabado.Add(new TrazoConexion(TipoTrazo.Linea, capa, new[] { x1, y1, x2, y2 }));
@@ -912,9 +922,11 @@ public sealed class ConexionAceroDrawer
             arreglo[(2 * i) + 1] = puntos[i].Y;
         }
 
+        var grueso = ConexionAceroCapas.EsPerfil(capa) ? ConexionAceroCapas.GruesoDePerfil * _f : 0;
+
         if (_grabado is not null)
         {
-            var t = new TrazoConexion(TipoTrazo.Polilinea, capa, arreglo, cerrada && puntos.Count >= 3);
+            var t = new TrazoConexion(TipoTrazo.Polilinea, capa, arreglo, cerrada && puntos.Count >= 3, Grueso: grueso);
             _grabado.Add(t);
             return t;
         }
@@ -925,6 +937,12 @@ public sealed class ConexionAceroDrawer
             {
                 dynamic pl = _ms.AddLightWeightPolyline(arreglo);
                 pl.Closed = cerrada && puntos.Count >= 3;
+
+                if (grueso > 0)
+                {
+                    pl.ConstantWidth = grueso;
+                }
+
                 Capear(pl, capa);
                 return (object?)pl;
             });
@@ -936,13 +954,15 @@ public sealed class ConexionAceroDrawer
         }
     }
 
-    private void Rellenar(object contorno, CapaConexion capa, string patron, double escala)
+    /// <param name="color">El color ACI del relleno; 0 = por capa.</param>
+    /// <param name="transparencia">De 0 a 90; 0 = sin transparencia.</param>
+    private void Rellenar(object contorno, CapaConexion capa, string patron, double escala, int color = 0, double transparencia = 0)
     {
         if (_grabado is not null)
         {
             if (contorno is TrazoConexion t)
             {
-                _grabado.Add(t with { Tipo = TipoTrazo.Relleno, Capa = capa, Texto = patron });
+                _grabado.Add(t with { Tipo = TipoTrazo.Relleno, Capa = capa, Texto = patron, Color = color, Transparencia = transparencia, Grueso = 0 });
             }
 
             return;
@@ -977,6 +997,25 @@ public sealed class ConexionAceroDrawer
                 }
 
                 hh.Layer = ConexionAceroCapas.Nombre(capa);
+
+                if (color is > 0 and < 256)
+                {
+                    hh.Color = color;
+                }
+
+                if (transparencia > 0)
+                {
+                    try
+                    {
+                        // La transparencia de la entidad, como en la paleta de propiedades: «70».
+                        hh.EntityTransparency = Math.Round(Math.Min(90, transparencia)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    }
+                    catch (Exception ex)
+                    {
+                        Nota("La transparencia del relleno de la soldadura no se pudo poner (" + ex.Message + "): el AutoCAD es anterior a 2011.");
+                    }
+                }
+
                 hh.Evaluate();
             });
         }

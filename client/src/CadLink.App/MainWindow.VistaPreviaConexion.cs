@@ -139,9 +139,10 @@ public partial class MainWindow
         Point P(double x, double y) => new(dx + ((x - minX) * escala), dy + ((maxY - y) * escala));
 
         var lineas = new Dictionary<CapaConexion, GeometryGroup>();
-        var rellenos = new Dictionary<CapaConexion, GeometryGroup>();
+        var rellenos = new Dictionary<(CapaConexion Capa, int Color, double Transparencia), GeometryGroup>();
 
-        GeometryGroup Grupo(Dictionary<CapaConexion, GeometryGroup> d, CapaConexion capa)
+        GeometryGroup Grupo<TClave>(Dictionary<TClave, GeometryGroup> d, TClave capa)
+            where TClave : notnull
         {
             if (!d.TryGetValue(capa, out var g))
             {
@@ -178,7 +179,7 @@ public partial class MainWindow
                     Grupo(lineas, t.Capa).Children.Add(Poligonal(t.Puntos, t.Cerrado));
                     break;
                 case TipoTrazo.Relleno when t.Puntos.Length >= 6:
-                    Grupo(rellenos, t.Capa).Children.Add(Poligonal(t.Puntos, true));
+                    Grupo(rellenos, (t.Capa, t.Color, t.Transparencia)).Children.Add(Poligonal(t.Puntos, true));
                     break;
                 case TipoTrazo.Circulo when t.Puntos.Length >= 2:
                     var r = Math.Max(0.8, t.Radio * escala);
@@ -194,15 +195,16 @@ public partial class MainWindow
             }
         }
 
-        foreach (var (capa, g) in rellenos)
+        // Los rellenos con su color propio (la soldadura: el 9) y su transparencia, como en AutoCAD.
+        foreach (var ((capa, color, transparencia), g) in rellenos)
         {
-            var tinta = Tinta(capa);
-            lienzo.Children.Add(new FormaPath { Data = g, Fill = tinta, Opacity = 0.75 });
+            var tinta = color is > 0 and < 256 ? PincelAci(color) : Tinta(capa);
+            lienzo.Children.Add(new FormaPath { Data = g, Fill = tinta, Opacity = transparencia > 0 ? 1 - (Math.Min(90, transparencia) / 100) : 0.85 });
         }
 
         foreach (var (capa, g) in lineas)
         {
-            lienzo.Children.Add(new FormaPath { Data = g, Stroke = Tinta(capa), StrokeThickness = 0.8 });
+            lienzo.Children.Add(new FormaPath { Data = g, Stroke = Tinta(capa), StrokeThickness = ConexionAceroCapas.EsPerfil(capa) ? 1.1 : 0.8 });
         }
 
         foreach (var t in textos)

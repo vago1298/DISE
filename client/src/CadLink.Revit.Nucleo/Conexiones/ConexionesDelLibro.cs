@@ -651,7 +651,9 @@ public static class ConexionesDelLibro
 
         if (dce > 1e-6 && cc > 1e-6)
         {
-            p.Trazo("Despatinado", new[] { new V3(0, hv, 0), new V3(0, hv - dce, 0), new V3(0, hv - dce, cc), new V3(0, hv, cc) });
+            // El despatinado se recorta de la viga misma: el patin superior y el alma hasta dce,
+            // a lo largo de cc desde el extremo.
+            p.Despatinar("Viga soportada", arriba: true, cc, dce);
             p.Cota(new V3(0, hv, cc), new V3(0, hv - dce, cc), Z);
             p.Cota(new V3(0, hv, 0), new V3(0, hv, cc), Y);
         }

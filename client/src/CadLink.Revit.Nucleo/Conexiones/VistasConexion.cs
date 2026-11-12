@@ -19,7 +19,10 @@ public enum CapaDetalle
     Tornillo,
     Soldadura,
     Cota,
-    Texto
+    Texto,
+
+    /// <summary>Los perfiles secundarios (la viga que llega, las diagonales): otra capa y otro color.</summary>
+    PerfilSecundario
 }
 
 public sealed record Linea2D(double X1, double Y1, double X2, double Y2, CapaDetalle Capa);
@@ -120,16 +123,19 @@ public static class VistasConexion
             }
         }
 
-        // ---- Los miembros: de lado sus lineas, de frente su seccion.
+        // ---- Los miembros: de lado sus lineas, de frente su seccion. Los principales (columna,
+        // trabe, la viga que soporta) y los secundarios (la viga que llega, las diagonales) van en
+        // capas distintas.
         foreach (var mi in m.Miembros)
         {
             var a = (mi.P1 - mi.P0).Unitario();
             var pe = mi.Peralte.Unitario();
             var q = a.Cruz(pe).Unitario();
+            var capa = EsSecundario(m, mi) ? CapaDetalle.PerfilSecundario : CapaDetalle.Perfil;
 
             if (Math.Abs(a.Punto(hacia)) > 0.9)
             {
-                Seccion(r, mi, pe, q, P);
+                Seccion(r, mi, pe, q, P, capa);
                 continue;
             }
 
@@ -143,7 +149,7 @@ public static class VistasConexion
             if (mi.Forma == FormaMiembro.I)
             {
                 interior = vePeralte ? exterior - mi.Tf : mi.Tw / 2;
-                capaInterior = vePeralte ? CapaDetalle.Perfil : CapaDetalle.PerfilOculto;
+                capaInterior = vePeralte ? capa : CapaDetalle.PerfilOculto;
             }
             else
             {
@@ -151,18 +157,71 @@ public static class VistasConexion
                 capaInterior = CapaDetalle.PerfilOculto;
             }
 
-            foreach (var s in new[] { -1.0, 1.0 })
-            {
-                Linea(mi.P0 + (dir * (s * exterior)), mi.P1 + (dir * (s * exterior)), CapaDetalle.Perfil);
+            DespatinadoPieza? Despatinado(double s) =>
+                mi.Despatinados.FirstOrDefault(c => c.Arriba == (s * pe.Punto(dir) > 0));
 
-                if (interior > 1e-4)
+            if (vePeralte)
+            {
+                // De lado se ve el recorte: el patin se corta en escalon.
+                var fin = new Dictionary<double, double>();
+
+                foreach (var s in new[] { -1.0, 1.0 })
                 {
-                    Linea(mi.P0 + (dir * (s * interior)), mi.P1 + (dir * (s * interior)), capaInterior);
+                    var c = Despatinado(s);
+                    var arranque = c is null ? mi.P0 : mi.P0 + (a * c.Largo);
+                    Linea(arranque + (dir * (s * exterior)), mi.P1 + (dir * (s * exterior)), capa);
+
+                    if (c is not null)
+                    {
+                        var abajo = exterior - c.Profundo;
+                        Linea(arranque + (dir * (s * exterior)), arranque + (dir * (s * abajo)), capa);
+                        Linea(mi.P0 + (dir * (s * abajo)), arranque + (dir * (s * abajo)), capa);
+                    }
+
+                    if (interior > 1e-4)
+                    {
+                        var desde = c is not null && exterior - c.Profundo <= interior + 1e-6 ? arranque : mi.P0;
+                        Linea(desde + (dir * (s * interior)), mi.P1 + (dir * (s * interior)), capaInterior);
+                    }
+
+                    fin[s] = c is null ? exterior : exterior - c.Profundo;
+                }
+
+                Linea(mi.P0 + (dir * fin[1.0]), mi.P0 - (dir * fin[-1.0]), capa);
+            }
+            else
+            {
+                // De planta, en lo despatinado ya no hay patin: se ve el canto del alma.
+                var c = mi.Despatinados.FirstOrDefault();
+                var arranque = c is null ? mi.P0 : mi.P0 + (a * c.Largo);
+
+                foreach (var s in new[] { -1.0, 1.0 })
+                {
+                    Linea(arranque + (dir * (s * exterior)), mi.P1 + (dir * (s * exterior)), capa);
+
+                    if (interior > 1e-4)
+                    {
+                        Linea(arranque + (dir * (s * interior)), mi.P1 + (dir * (s * interior)), capaInterior);
+                    }
+
+                    if (c is not null && mi.Forma == FormaMiembro.I)
+                    {
+                        Linea(mi.P0 + (dir * (s * mi.Tw / 2)), arranque + (dir * (s * mi.Tw / 2)), capa);
+                    }
+                }
+
+                if (c is not null && mi.Forma == FormaMiembro.I)
+                {
+                    Linea(arranque + (dir * exterior), arranque - (dir * exterior), capa);
+                    Linea(mi.P0 + (dir * (mi.Tw / 2)), mi.P0 - (dir * (mi.Tw / 2)), capa);
+                }
+                else
+                {
+                    Linea(mi.P0 + (dir * exterior), mi.P0 - (dir * exterior), capa);
                 }
             }
 
-            Linea(mi.P0 + (dir * exterior), mi.P0 - (dir * exterior), CapaDetalle.Perfil);
-            Linea(mi.P1 + (dir * exterior), mi.P1 - (dir * exterior), CapaDetalle.Perfil);
+            Linea(mi.P1 + (dir * exterior), mi.P1 - (dir * exterior), capa);
             Linea(mi.P0 - (a * 0.05), mi.P1 + (a * 0.05), CapaDetalle.Eje);
         }
 
@@ -273,8 +332,30 @@ public static class VistasConexion
         return r;
     }
 
+    /// <summary>
+    /// Si el miembro es secundario: la viga que llega a una columna, a una trabe o a la viga que la
+    /// soporta, y las diagonales. Los principales son la columna, la trabe y la viga que soporta;
+    /// si no hay ninguno (contraventeos, empalmes), las vigas son las principales.
+    /// </summary>
+    public static bool EsSecundario(ModeloConexion m, MiembroPieza mi)
+    {
+        static bool Principal(string que) => que is "Columna" or "Trabe" or "Viga que soporta";
+
+        if (Principal(mi.Que))
+        {
+            return false;
+        }
+
+        if (mi.Que.StartsWith("Diagonal", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return m.Miembros.Any(x => Principal(x.Que));
+    }
+
     /// <summary>La seccion de un miembro visto a lo largo de su eje.</summary>
-    private static void Seccion(Vista2D r, MiembroPieza mi, V3 pe, V3 q, Func<V3, (double X, double Y)> P)
+    private static void Seccion(Vista2D r, MiembroPieza mi, V3 pe, V3 q, Func<V3, (double X, double Y)> P, CapaDetalle capa)
     {
         var o = mi.P0;
         var d = mi.D / 2;
@@ -292,7 +373,7 @@ public static class VistasConexion
                 (d, -b), (d, b), (d - tf, b), (d - tf, tw), (-d + tf, tw), (-d + tf, b), (-d, b), (-d, -b),
                 (-d + tf, -b), (-d + tf, -tw), (d - tf, -tw), (d - tf, -b)
             });
-            r.Poligonos.Add(new Poligono2D(i, true, CapaDetalle.Perfil, false));
+            r.Poligonos.Add(new Poligono2D(i, true, capa, false));
 
             foreach (var (x, y) in i)
             {
@@ -305,8 +386,8 @@ public static class VistasConexion
         var t = mi.Tw;
         var fuera = Contorno(new[] { (d, -b), (d, b), (-d, b), (-d, -b) });
         var dentro = Contorno(new[] { (d - t, -b + t), (d - t, b - t), (-d + t, b - t), (-d + t, -b + t) });
-        r.Poligonos.Add(new Poligono2D(fuera, true, CapaDetalle.Perfil, false));
-        r.Poligonos.Add(new Poligono2D(dentro, true, CapaDetalle.Perfil, false));
+        r.Poligonos.Add(new Poligono2D(fuera, true, capa, false));
+        r.Poligonos.Add(new Poligono2D(dentro, true, capa, false));
 
         foreach (var (x, y) in fuera)
         {

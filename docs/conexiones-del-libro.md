@@ -58,8 +58,15 @@ ATIESADORES y la X en dos niveles. Salen en la lista con el motivo.
 - **Las soldaduras se llaman con la simbología de soldadura de CadLink** (la misma del cuadro de
   la pestaña Conexiones/Detalles): flecha al cordón, tamaño, símbolo (filete, filete en ambos lados,
   todo alrededor o bisel para la penetración completa) y el electrodo en la cola.
-- **El cordón se rellena con el hatch de la soldadura de la placa base** (patrón y escala de su
-  perfil en *Estilo de dibujo*), sobre su contorno; no es una polilínea con ancho.
+- **El cordón se rellena con SOLID de color 9 y 70 de transparencia** sobre su contorno
+  (`soldadura.hatch`, `soldadura.color`, `soldadura.transparencia`).
+- **Capas de perfiles:** los principales (columna, trabe, la viga que soporta) van en
+  `CONEXION PERFIL` (color 7) y los secundarios (la viga que llega, las diagonales) en
+  `CONEXION PERFIL SECUNDARIO` (color 51). Todas las líneas de perfil llevan ancho global
+  (PEDIT Width) de **0.001** (`perfil.ancho`). El eje va en naranja (color 30) para no
+  confundirse con las cotas; una capa `CONEXION EJE` que se quedó en rojo pasa sola al nuevo color.
+- **El despatinado se recorta de la viga:** en la conexión a cortante el patín superior y el alma
+  se cortan en escalón (dce × c), en elevación y en planta, en lugar de un rectángulo encima.
 - Los textos son MTEXT de **0.09** de alto. Las llamadas se reparten en dos columnas, a la
   izquierda y a la derecha de cada vista. Las que señalan el mismo nudo van **del mismo lado**, y
   lo que ya se señaló en una vista no se repite en la siguiente. Una llamada de más de 32 letras
