@@ -64,11 +64,24 @@ public static class ConexionesDelLibro
     {
         var lista = new List<ConexionDelLibro>();
 
+        // Lo que una hoja no trae (el patin de la viga que soporta en la conexion a cortante) se
+        // completa con la hoja IMCA5 del mismo libro.
+        var catalogo = CatalogoDelLibro.De(libro);
+
         foreach (var h in LectorDelLibro.Leer(libro))
         {
             if (!Tipos.TryGetValue(h.Codigo, out var tipo))
             {
                 continue;
+            }
+
+            try
+            {
+                ConexionesAMano.CompletarConCatalogo(h, catalogo);
+            }
+            catch (Exception)
+            {
+                // Sin el catalogo se arma con lo que trae la hoja.
             }
 
             ModeloConexion? m = null;
@@ -707,6 +720,14 @@ public static class ConexionesDelLibro
 
         p.Cota(new V3(x1, yTop - hpl, z0), new V3(x1, yTop - hpl, z1), -Y);
         p.Cota(new V3(x1, yTop - hpl, z1), new V3(x1, yTop, z1), Z);
+
+        // La holgura entre el extremo de la viga soportada y el alma de la que soporta (½" en el
+        // libro): se acota abajo, donde no la tapa la placa.
+        if (g0 > 1e-6)
+        {
+            p.Cota(new V3(0, -hv, -g0), new V3(0, -hv, 0), -Y);
+        }
+
         p.Vista("ELEVACIÓN", Z, Y);
         p.Vista("PLANTA", Z, -X);
     }

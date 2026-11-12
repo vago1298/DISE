@@ -65,6 +65,17 @@ ATIESADORES y la X en dos niveles. Salen en la lista con el motivo.
   `CONEXION PERFIL SECUNDARIO` (color 51). Todas las líneas de perfil llevan ancho global
   (PEDIT Width) de **0.001** (`perfil.ancho`). El eje va en naranja (color 30) para no
   confundirse con las cotas; una capa `CONEXION EJE` que se quedó en rojo pasa sola al nuevo color.
+- **Perfiles con sus medidas reales:** lo que una hoja no trae (la conexión a cortante no da el
+  patín de la viga que soporta) se completa con la hoja **IMCA5** del mismo libro. En la conexión
+  a cortante se acota la holgura g0 entre la viga soportada y el alma de la que soporta.
+- **Break line** en los extremos cortados de vigas, columnas y diagonales, para que se lea que la
+  estructura sigue.
+- **TRIM bajo los tubos:** en el contraventeo en X (y la gusset), la orilla de la placa que queda
+  dentro de la ranura de la diagonal no se dibuja.
+- **Textos en la capa ROTULOS** (verde, color 3), como el resto del rotulado de CadLink, y con
+  color por capa: se imprimen en negro con el mismo mecanismo del layout (estilo de trazado
+  «Negro» en dibujos `.stb`, que se le asigna al crear la capa, u override de color en el
+  viewport). Todas las especificaciones empiezan con mayúscula.
 - **El despatinado se recorta de la viga:** en la conexión a cortante el patín superior y el alma
   se cortan en escalón (dce × c), en elevación y en planta, en lugar de un rectángulo encima.
 - Los textos son MTEXT de **0.09** de alto. Las llamadas se reparten en dos columnas, a la

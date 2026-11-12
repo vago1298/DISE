@@ -123,6 +123,29 @@ public static class VistasConexion
             }
         }
 
+        // Los tubos vistos de lado: lo que de una placa queda DENTRO de su ranura no se ve.
+        var tubos = new List<(List<(double X, double Y)> Contorno, double Desde, double Hasta)>();
+
+        // La linea de corte (break line) en un extremo libre: recta con una «Z» al centro, un poco
+        // mas ancha que la pieza, para que se lea que la pieza sigue.
+        void Corte(V3 extremo, V3 a, V3 dir, double exterior, CapaDetalle capa)
+        {
+            var sale = 1.15 * exterior;
+            var z = Math.Min(0.25 * exterior, 0.025);
+            var puntos = new[]
+            {
+                extremo - (dir * sale), extremo - (dir * (0.18 * exterior)), extremo - (dir * (0.06 * exterior)) + (a * z),
+                extremo + (dir * (0.06 * exterior)) - (a * z), extremo + (dir * (0.18 * exterior)), extremo + (dir * sale)
+            }.Select(P).ToList();
+
+            r.Poligonos.Add(new Poligono2D(puntos, false, capa, false));
+
+            foreach (var (x, y) in puntos)
+            {
+                r.Abarcar(x, y);
+            }
+        }
+
         // ---- Los miembros: de lado sus lineas, de frente su seccion. Los principales (columna,
         // trabe, la viga que soporta) y los secundarios (la viga que llega, las diagonales) van en
         // capas distintas.
@@ -187,7 +210,14 @@ public static class VistasConexion
                     fin[s] = c is null ? exterior : exterior - c.Profundo;
                 }
 
-                Linea(mi.P0 + (dir * fin[1.0]), mi.P0 - (dir * fin[-1.0]), capa);
+                if (LibreEnP0(m, mi))
+                {
+                    Corte(mi.P0, a, dir, exterior, capa);
+                }
+                else
+                {
+                    Linea(mi.P0 + (dir * fin[1.0]), mi.P0 - (dir * fin[-1.0]), capa);
+                }
             }
             else
             {
@@ -215,14 +245,27 @@ public static class VistasConexion
                     Linea(arranque + (dir * exterior), arranque - (dir * exterior), capa);
                     Linea(mi.P0 + (dir * (mi.Tw / 2)), mi.P0 - (dir * (mi.Tw / 2)), capa);
                 }
+                else if (LibreEnP0(m, mi))
+                {
+                    Corte(mi.P0, a, dir, exterior, capa);
+                }
                 else
                 {
                     Linea(mi.P0 + (dir * exterior), mi.P0 - (dir * exterior), capa);
                 }
             }
 
-            Linea(mi.P1 + (dir * exterior), mi.P1 - (dir * exterior), capa);
+            // El extremo lejano siempre es un corte de la estructura: va con su break line.
+            Corte(mi.P1, a, dir, exterior, capa);
             Linea(mi.P0 - (a * 0.05), mi.P1 + (a * 0.05), CapaDetalle.Eje);
+
+            if (mi.Forma == FormaMiembro.Cajon)
+            {
+                var hondo = (vePeralte ? mi.B : mi.D) / 2;
+                var centro = mi.P0.Punto(hacia);
+                tubos.Add((new[] { mi.P0 + (dir * exterior), mi.P1 + (dir * exterior), mi.P1 - (dir * exterior), mi.P0 - (dir * exterior) }
+                    .Select(P).ToList(), centro - hondo, centro + hondo));
+            }
         }
 
         // ---- Lo que solo se dibuja.
@@ -265,8 +308,41 @@ public static class VistasConexion
 
         foreach (var pl in m.Placas)
         {
-            Envolvente(pl.Vertices(), CapaDetalle.Placa, false);
-            Rotulo(pl.Rotulo, pl.Vertices(), CapaDetalle.Placa);
+            var vertices = pl.Vertices().ToList();
+            var hondos = vertices.Select(v => v.Punto(hacia)).ToList();
+
+            // Los tubos que la abrazan: la placa metida en su ranura (la del cruce de la X, la
+            // gusset). Las de refuerzo van por fuera del tubo y se ven enteras.
+            var abrazan = tubos.Where(t => hondos.Min() > t.Desde + 1e-6 && hondos.Max() < t.Hasta - 1e-6).Select(t => t.Contorno).ToList();
+
+            if (abrazan.Count == 0)
+            {
+                Envolvente(vertices, CapaDetalle.Placa, false);
+            }
+            else
+            {
+                // Se recorta (TRIM) lo que queda dentro de los tubos: solo se dibuja lo que se ve.
+                var e = PiezasLocales.Envolvente(vertices.Select(P).Select(q => (Math.Round(q.X, 6), Math.Round(q.Y, 6))));
+
+                for (var i = 0; i < e.Count && e.Count >= 2; i++)
+                {
+                    var a0 = e[i];
+                    var b0 = e[(i + 1) % e.Count];
+
+                    foreach (var (t0, t1) in FueraDe((a0.U, a0.V), (b0.U, b0.V), abrazan))
+                    {
+                        var x1 = a0.U + ((b0.U - a0.U) * t0);
+                        var y1 = a0.V + ((b0.V - a0.V) * t0);
+                        var x2 = a0.U + ((b0.U - a0.U) * t1);
+                        var y2 = a0.V + ((b0.V - a0.V) * t1);
+                        r.Lineas.Add(new Linea2D(x1, y1, x2, y2, CapaDetalle.Placa));
+                        r.Abarcar(x1, y1);
+                        r.Abarcar(x2, y2);
+                    }
+                }
+            }
+
+            Rotulo(pl.Rotulo, vertices, CapaDetalle.Placa);
         }
 
         foreach (var c in m.Cordones)
@@ -330,6 +406,102 @@ public static class VistasConexion
         }
 
         return r;
+    }
+
+    /// <summary>
+    /// Si el extremo P0 es un corte de la estructura (y lleva break line) o llega a la conexion. El
+    /// P1 siempre es un corte: es donde el dibujo deja de seguir a la pieza.
+    /// </summary>
+    public static bool LibreEnP0(ModeloConexion m, MiembroPieza mi) => mi.Que switch
+    {
+        "Viga soportada" or "Diagonal" or "Diagonal interrumpida" => false,
+        "Viga" => m.Codigo == "CE",
+        _ => true
+    };
+
+    /// <summary>
+    /// Los tramos de A→B (en fracciones de 0 a 1) que quedan FUERA de todos los poligonos
+    /// convexos: lo que queda despues de recortar la linea contra ellos.
+    /// </summary>
+    private static List<(double T0, double T1)> FueraDe((double X, double Y) a, (double X, double Y) b, List<List<(double X, double Y)>> poligonos)
+    {
+        var dentro = new List<(double T0, double T1)>();
+
+        foreach (var pol in poligonos)
+        {
+            if (pol.Count < 3)
+            {
+                continue;
+            }
+
+            var cx = pol.Average(q => q.X);
+            var cy = pol.Average(q => q.Y);
+            double t0 = 0, t1 = 1;
+            var vacio = false;
+
+            for (var i = 0; i < pol.Count && !vacio; i++)
+            {
+                var p = pol[i];
+                var q = pol[(i + 1) % pol.Count];
+
+                // La normal del lado, hacia adentro del poligono.
+                var nx = -(q.Y - p.Y);
+                var ny = q.X - p.X;
+
+                if ((nx * (cx - p.X)) + (ny * (cy - p.Y)) < 0)
+                {
+                    nx = -nx;
+                    ny = -ny;
+                }
+
+                var num = (nx * (a.X - p.X)) + (ny * (a.Y - p.Y));
+                var den = (nx * (b.X - a.X)) + (ny * (b.Y - a.Y));
+
+                if (Math.Abs(den) < 1e-12)
+                {
+                    vacio = num < 0;
+                    continue;
+                }
+
+                var t = -num / den;
+
+                if (den > 0)
+                {
+                    t0 = Math.Max(t0, t);
+                }
+                else
+                {
+                    t1 = Math.Min(t1, t);
+                }
+
+                vacio = t0 >= t1;
+            }
+
+            if (!vacio && t1 - t0 > 1e-9)
+            {
+                dentro.Add((t0, t1));
+            }
+        }
+
+        var fuera = new List<(double T0, double T1)>();
+        var desde = 0.0;
+
+        foreach (var (d0, d1) in dentro.OrderBy(d => d.T0))
+        {
+            if (d0 > desde + 1e-6)
+            {
+                fuera.Add((desde, d0));
+            }
+
+            desde = Math.Max(desde, d1);
+        }
+
+        if (desde < 1 - 1e-6)
+        {
+            fuera.Add((desde, 1));
+        }
+
+        return fuera;
     }
 
     /// <summary>

@@ -455,7 +455,7 @@ public sealed class EstiloDibujo
             .Con("capa.CONEXION TORNILLOS", GrupoColores, "Capa CONEXION TORNILLOS", TipoAjuste.ColorAci, C(6))
             .Con("capa.CONEXION SOLDADURA", GrupoColores, "Capa CONEXION SOLDADURA", TipoAjuste.ColorAci, C(240))
             .Con("capa.CONEXION COTAS", GrupoColores, "Capa CONEXION COTAS", TipoAjuste.ColorAci, C(7))
-            .Con("capa.CONEXION TEXTOS", GrupoColores, "Capa CONEXION TEXTOS", TipoAjuste.ColorAci, C(3)));
+            .Con("capa.ROTULOS", GrupoColores, "Capa ROTULOS de los textos (verde en pantalla, negra al imprimir)", TipoAjuste.ColorAci, C(3)));
 
         // ------------------------------------------------------------------
         // Planta estructural: PlantaDrawer. Las claves SON los parametros de su hoja CONFIG

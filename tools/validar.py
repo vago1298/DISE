@@ -17125,6 +17125,12 @@ def v32_conexiones_del_libro() -> None:
           and "CapaDetalle.PerfilSecundario => CapaConexion.PerfilSecundario" in app)
     check("la linea de eje ya no es roja como las cotas",
           '"capa.CONEXION EJE", GrupoColores, "Capa CONEXION EJE (naranja: no se confunde con las cotas ni la soldadura)", TipoAjuste.ColorAci, C(30))' in est)
+    check("las hojas que no traen todo el perfil se completan con la hoja IMCA5 del libro",
+          "CatalogoDelLibro.De(libro)" in nucleo["ConexionesDelLibro.cs"])
+    check("los textos van en ROTULOS (verde en pantalla, negro al imprimir) y empiezan con mayuscula",
+          '_ => "ROTULOS"' in cad and 'capa.PlotStyleName = "Negro";' in drw and "Mayuscula(l.Texto)" in drw)
+    check("break line en los extremos cortados y TRIM de la placa bajo los tubos",
+          "Corte(mi.P1, a, dir, exterior, capa);" in nucleo["VistasConexion.cs"] and "FueraDe(" in nucleo["VistasConexion.cs"])
     check("el despatinado se recorta de la viga, no se dibuja encima",
           'p.Despatinar("Viga soportada", arriba: true, cc, dce);' in nucleo["ConexionesDelLibro.cs"]
           and 'p.Trazo("Despatinado"' not in nucleo["ConexionesDelLibro.cs"])

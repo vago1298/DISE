@@ -167,6 +167,13 @@ public static class ConexionesAMano
         return (m, h);
     }
 
+    /// <summary>
+    /// Completa lo que la hoja no trae con un catalogo de perfiles: solo lo que FALTA, lo que la
+    /// hoja dice manda. Sirve igual para las hojas del libro (con su hoja IMCA5) que para las
+    /// capturadas a mano (con el catalogo de CadLink).
+    /// </summary>
+    public static void CompletarConCatalogo(HojaLeida h, Func<string, PerfilDeCatalogo?> buscar) => Completar(h, buscar);
+
     private static void Completar(HojaLeida h, Func<string, PerfilDeCatalogo?> buscar)
     {
         PerfilDeCatalogo P(string dato) => buscar(h.Txt(dato)) ?? new PerfilDeCatalogo(0, 0, 0, 0, 0, false);

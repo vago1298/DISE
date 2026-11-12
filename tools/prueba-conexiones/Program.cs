@@ -281,6 +281,18 @@ internal static class Program
             elev is not null && elev.Lineas.Any(l => l.Capa == CapaDetalle.PerfilSecundario)
             && sc!.Miembros.Any(x => x.Que == "Viga que soporta" && !VistasConexion.EsSecundario(sc, x)));
 
+        Check("cortante: se acota la holgura entre las vigas (g0)",
+            sc is not null && sc.Cotas.Any(c => Math.Abs((c.B - c.A).Largo - (ConexionesAMano.Hoja("SC", "SC", scv, Catalogo).Num("g0") / 100)) < 1e-6));
+        Check("las piezas cortadas llevan break line (polilinea abierta de 6 puntos)",
+            elev is not null && elev.Poligonos.Any(q => !q.Cerrado && q.Puntos.Count == 6));
+
+        var cxd = ConexionesAMano.Defectos("CX");
+        cxd["Cruce"] = "PLACA";
+        var (cx, _) = ConexionesAMano.Armar("CX", "CX", cxd, Catalogo, out _);
+        var cxv = cx is null ? null : VistasConexion.Proyectar(cx).First();
+        Check("X: la placa del cruce se recorta bajo las diagonales (TRIM), no se dibuja entera",
+            cxv is not null && cxv.Lineas.Count(l => l.Capa == CapaDetalle.Placa) > 4);
+
         var v = ConexionesAMano.Defectos("RB");
         v["ID"] = "RB-A";
         var rb = ConexionesAMano.Hoja("RB", "RB", v, Catalogo);

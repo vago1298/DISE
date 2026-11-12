@@ -120,6 +120,20 @@ public sealed class ConexionAceroDrawer
                     capa.Color = color;
                 }
 
+                // ROTULOS se imprime en negro: con estilos de trazado nombrados (.stb), su estilo
+                // «Negro», como la macro. Con .ctb no hay estilo por capa y esto no aplica.
+                if (nueva && c == CapaConexion.Texto)
+                {
+                    try
+                    {
+                        capa.PlotStyleName = "Negro";
+                    }
+                    catch (Exception)
+                    {
+                        // Dibujo con .ctb o sin el estilo «Negro»: la capa queda como esta.
+                    }
+                }
+
                 if (nueva && tipo is not null)
                 {
                     try
@@ -404,6 +418,13 @@ public sealed class ConexionAceroDrawer
     private double AnchoDeRenglones(string texto, double h) =>
         Partir(texto).Select(t => AnchoDeTexto(t, h)).DefaultIfEmpty(0).Max();
 
+    /// <summary>Toda especificacion empieza con mayuscula: «Placa a la viga, ambos lados».</summary>
+    private static string Mayuscula(string texto)
+    {
+        var t = (texto ?? string.Empty).TrimStart();
+        return t.Length > 0 && char.IsLower(t[0]) ? char.ToUpperInvariant(t[0]) + t[1..] : t;
+    }
+
     /// <summary>Una llamada larga, partida en renglones de las letras del estilo, por palabras.</summary>
     private static List<string> Partir(string texto) => Partir(texto, (int)Math.Max(12, ConexionAceroCapas.LetrasPorRenglon));
 
@@ -586,11 +607,11 @@ public sealed class ConexionAceroDrawer
             .Select(p =>
             {
                 var i = p.IndexOf(": ", StringComparison.Ordinal);
-                return i > 0 ? (Dato: p[..i], Valor: p[(i + 2)..]) : (Dato: string.Empty, Valor: p);
+                return i > 0 ? (Dato: Mayuscula(p[..i]), Valor: Mayuscula(p[(i + 2)..])) : (Dato: string.Empty, Valor: Mayuscula(p));
             })
             .ToList();
 
-        var notas = c.Notas.Select((n, i) => (Dato: $"{i + 1}.", Valor: n)).ToList();
+        var notas = c.Notas.Select((n, i) => (Dato: $"{i + 1}.", Valor: Mayuscula(n))).ToList();
         var columnas = piezas.Count > RenglonesPorColumna ? 2 : 1;
 
         // La columna de los datos: hasta treinta letras; un dato mas largo se parte en renglones.
@@ -773,14 +794,14 @@ public sealed class ConexionAceroDrawer
                         ConexionAceroCapas.LargoFlecha * _f);
                     DibujarSimbolo(r);
                     var largo = SimbolosSoldadura.LargoApuntado(hs, l.Electrodo) + (0.6 * h);
-                    Texto(Partir(l.Descripcion), derecha ? xCodo + largo : xCodo - largo, ym, h, CapaConexion.Texto, anclaje: derecha ? 4 : 6);
+                    Texto(Partir(Mayuscula(l.Descripcion)), derecha ? xCodo + largo : xCodo - largo, ym, h, CapaConexion.Texto, anclaje: derecha ? 4 : 6);
                 }
                 else
                 {
                     var xt = derecha ? xCodo + (0.4 * h) : xCodo - (0.4 * h);
                     Linea(px, py, xCodo, ym, CapaConexion.Texto);
                     Circulo(px, py, ConexionAceroCapas.RadioPunto * _f, CapaConexion.Texto);
-                    Texto(Partir(l.Texto), xt, ym, h, CapaConexion.Texto, anclaje: derecha ? 4 : 6);
+                    Texto(Partir(Mayuscula(l.Texto)), xt, ym, h, CapaConexion.Texto, anclaje: derecha ? 4 : 6);
                 }
 
                 yl -= paso;

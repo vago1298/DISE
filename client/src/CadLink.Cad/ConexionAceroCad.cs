@@ -185,7 +185,9 @@ public static class ConexionAceroCapas
         CapaConexion.Tornillo => "CONEXION TORNILLOS",
         CapaConexion.Soldadura => "CONEXION SOLDADURA",
         CapaConexion.Cota => "CONEXION COTAS",
-        _ => "CONEXION TEXTOS"
+        // Los textos van en ROTULOS, como todo el rotulado de CadLink: verde en pantalla y, con el
+        // estilo de trazado o el override del layout que la pone en negro, negros al imprimir.
+        _ => "ROTULOS"
     };
 
     public static int ColorDeCapa(CapaConexion c) => Estilo.ColorAci("capa." + Nombre(c));
