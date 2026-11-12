@@ -3315,42 +3315,59 @@
                         </TabItem>
 
                         <TabItem Header="Desde el libro de Excel">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <StackPanel Margin="10">
+                            <!-- La tarjeta llena la ventana: la tabla crece con ella, a lo ancho y a lo
+                                 alto, y tiene su propio desplazamiento. -->
+                            <Grid Margin="10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
                                 <!-- ===== LAS CONEXIONES DEL LIBRO DE EXCEL =====
                                      El libro de revisiones de acero (NTC-Acero 2023) ya trae cada conexion
                                      disenada: aqui se lee, se elige que dibujar y se dibuja en AutoCAD. En
                                      Revit, el boton «Conexiones del libro» lee el mismo archivo. -->
-                                <TextBlock Text="Conexiones desde el libro de Excel" FontWeight="SemiBold" FontSize="12.5"
+                                <TextBlock Grid.Row="0" Text="Conexiones desde el libro de Excel" FontWeight="SemiBold" FontSize="12.5"
                                            Margin="0,6,0,4" Foreground="{DynamicResource BrandDarkBrush}" />
 
-                                <Border Style="{StaticResource TarjetaStyle}"
-                                        Padding="14,10" MaxWidth="980" HorizontalAlignment="Left">
-                                    <StackPanel>
-                                        <TextBlock TextWrapping="Wrap" FontSize="12"
+                                <Border Grid.Row="1" Style="{StaticResource TarjetaStyle}" Padding="14,10">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" MinHeight="160" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Grid.Row="0" TextWrapping="Wrap" FontSize="12"
                                                    Foreground="{DynamicResource TextBrush}"
                                                    Text="Lee el libro de revisiones de acero (.xlsm) y arma cada conexion con las medidas de sus hojas, copias incluidas: union viga-columna, RBS, placa de extremo, patines soldados, cortante, viga-viga soldada, placas gusset, contraventeo excentrico y en X, y placa base. Se dibuja en tamaño real con sus vistas, llamadas, cotas y el cuadro de datos de la hoja. En Revit, el boton «Conexiones del libro» de la cinta CadLink lee el mismo archivo y las modela en las vigas, columnas y diagonales que elijas." />
 
-                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                            <Button x:Name="LeerLibroConexionesButton" Content="Leer libro de Excel..."
+                                        <DockPanel Grid.Row="1" Margin="0,10,0,0" LastChildFill="True">
+                                            <Button DockPanel.Dock="Left" x:Name="LeerLibroConexionesButton" Content="Leer libro de Excel..."
                                                     Style="{StaticResource SecondaryButtonStyle}"
                                                     Click="OnLeerLibroDeConexiones"
                                                     ToolTip="Abre el .xlsm o .xlsx del libro de acero. Se puede leer aunque este abierto en Excel." />
-                                            <Button Content="Volver a leer" Margin="8,0,0,0"
+                                            <Button DockPanel.Dock="Left" Content="Volver a leer" Margin="8,0,0,0"
                                                     Style="{StaticResource SecondaryButtonStyle}"
                                                     Click="OnVolverALeerLibro"
                                                     ToolTip="Lee otra vez el mismo libro, despues de cambiarlo y guardarlo en Excel." />
-                                            <Button Content="Todas / ninguna" Margin="8,0,0,0"
+                                            <Button DockPanel.Dock="Left" Content="Todas / ninguna" Margin="8,0,0,0"
                                                     Style="{StaticResource SecondaryButtonStyle}"
                                                     Click="OnTodasLasConexiones" />
                                             <TextBlock x:Name="ConexionesLibroText" Margin="12,0,0,0" FontSize="11"
-                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="420"
-                                                       Foreground="{DynamicResource MutedTextBrush}" Text="Sin libro" />
-                                        </StackPanel>
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource MutedTextBrush}" Text="Sin libro"
+                                                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                                        </DockPanel>
 
-                                        <DataGrid x:Name="ConexionesLibroGrid" Margin="0,10,0,0" MaxHeight="360"
+                                        <!-- Las columnas se reparten el ancho de la ventana (con su minimo). -->
+                                        <DataGrid Grid.Row="2" x:Name="ConexionesLibroGrid" Margin="0,10,0,0"
                                                   AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
-                                                  HeadersVisibility="Column" SelectionMode="Single">
+                                                  HeadersVisibility="Column" SelectionMode="Single"
+                                                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                                             <DataGrid.Columns>
                                                 <DataGridTemplateColumn Header="Dibujar" Width="60">
                                                     <DataGridTemplateColumn.CellTemplate>
@@ -3361,36 +3378,34 @@
                                                         </DataTemplate>
                                                     </DataGridTemplateColumn.CellTemplate>
                                                 </DataGridTemplateColumn>
-                                                <DataGridTextColumn Header="Hoja" Binding="{Binding Hoja}" IsReadOnly="True" Width="190" />
-                                                <DataGridTextColumn Header="Conexion" Binding="{Binding Tipo}" IsReadOnly="True" Width="230" />
-                                                <DataGridTextColumn Header="ID" Binding="{Binding Identificacion}" IsReadOnly="True" Width="120" />
-                                                <DataGridTextColumn Header="Revisiones" Binding="{Binding Estado}" IsReadOnly="True" Width="150" />
-                                                <DataGridTextColumn Header="Que se dibuja" Binding="{Binding Piezas}" IsReadOnly="True" Width="*" />
+                                                <DataGridTextColumn Header="Hoja" Binding="{Binding Hoja}" IsReadOnly="True" Width="1.2*" MinWidth="140" />
+                                                <DataGridTextColumn Header="Conexion" Binding="{Binding Tipo}" IsReadOnly="True" Width="1.5*" MinWidth="160" />
+                                                <DataGridTextColumn Header="ID" Binding="{Binding Identificacion}" IsReadOnly="True" Width="1*" MinWidth="100" />
+                                                <DataGridTextColumn Header="Revisiones" Binding="{Binding Estado}" IsReadOnly="True" Width="1.6*" MinWidth="150" />
+                                                <DataGridTextColumn Header="Que se dibuja" Binding="{Binding Piezas}" IsReadOnly="True" Width="2*" MinWidth="160" />
                                             </DataGrid.Columns>
                                         </DataGrid>
 
-                                        <TextBlock x:Name="ConexionesLibroNotas" TextWrapping="Wrap" FontSize="11.5" Margin="0,8,0,0"
+                                        <TextBlock Grid.Row="3" x:Name="ConexionesLibroNotas" TextWrapping="Wrap" FontSize="11.5" Margin="0,8,0,0"
                                                    Foreground="{DynamicResource MutedTextBrush}" Text="" />
 
-                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,10,0,0">
                                             <Button x:Name="ConexionesLibroButton" Content="Dibujar conexiones en AutoCAD"
                                                     Style="{StaticResource PrimaryButtonStyle}"
                                                     Click="OnDibujarConexionesDelLibro"
-                                                    ToolTip="Dibuja las conexiones palomeadas en el dibujo abierto de AutoCAD, en renglones de tres." />
+                                                    ToolTip="Dibuja las conexiones palomeadas en el dibujo abierto de AutoCAD, un renglon por tipo de hoja." />
                                             <Button Content="Pasar placas base a su hoja" Margin="8,0,0,0"
                                                     Style="{StaticResource SecondaryButtonStyle}"
                                                     Click="OnPasarPlacasBaseDelLibro"
                                                     ToolTip="Agrega las placas base del libro a la hoja Placa Base, para verlas en su vista previa, ajustarlas y mandarlas a Revit." />
                                         </StackPanel>
-                                    </StackPanel>
+                                    </Grid>
                                 </Border>
 
-                                <TextBlock TextWrapping="Wrap" FontSize="11.5" Margin="0,14,0,0"
-                                           MaxWidth="980" HorizontalAlignment="Left"
+                                <TextBlock Grid.Row="2" TextWrapping="Wrap" FontSize="11.5" Margin="0,10,0,0"
                                            Foreground="{DynamicResource MutedTextBrush}"
                                            Text="Del libro todavia no se dibujan las hojas DIAFRAGMAS, CONTRAVENTEO V-K, CONTRAVENTEO (diagonal) ni ATIESADORES, ni la X en dos niveles: salen en la lista con el motivo." />
-                                </StackPanel>
-                            </ScrollViewer>
+                            </Grid>
                         </TabItem>
 
                         <!-- ===== LAS CONEXIONES CAPTURADAS A MANO =====
@@ -3405,7 +3420,7 @@
                                                Margin="0,6,0,4" Foreground="{DynamicResource BrandDarkBrush}" />
 
                                     <Border Style="{StaticResource TarjetaStyle}"
-                                            Padding="14,10" MaxWidth="980" HorizontalAlignment="Left">
+                                            Padding="14,10">
                                         <StackPanel>
                                             <TextBlock TextWrapping="Wrap" FontSize="12"
                                                        Foreground="{DynamicResource TextBrush}"

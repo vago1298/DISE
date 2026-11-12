@@ -26,7 +26,25 @@ public enum CapaConexion
 
 public sealed record LineaConexion(double X1, double Y1, double X2, double Y2, CapaConexion Capa);
 
-public sealed record ContornoConexion(IReadOnlyList<(double X, double Y)> Puntos, bool Cerrado, CapaConexion Capa, bool Relleno);
+public sealed record ContornoConexion(IReadOnlyList<(double X, double Y)> Puntos, bool Cerrado, CapaConexion Capa, bool Relleno)
+{
+    /// <summary>La seccion de un perfil EN CORTE: se raya como en las secciones de acero.</summary>
+    public CorteConexion Corte { get; init; }
+
+    /// <summary>El peralte del perfil cortado, en cm.</summary>
+    public double PeralteCm { get; init; }
+
+    /// <summary>El hueco del tubo, en cm: isla del rayado.</summary>
+    public IReadOnlyList<(double X, double Y)>? Isla { get; init; }
+}
+
+/// <summary>Que perfil se ve en corte.</summary>
+public enum CorteConexion
+{
+    Ninguno,
+    Laminado,
+    Tubo
+}
 
 public sealed record CirculoConexion(double X, double Y, double R, CapaConexion Capa);
 
@@ -68,9 +86,11 @@ public enum TipoTrazo
 /// <param name="Color">El color ACI propio (el relleno de la soldadura); 0 = el de la capa.</param>
 /// <param name="Transparencia">La transparencia del relleno, de 0 a 90.</param>
 /// <param name="Grueso">El ancho global de la polilinea (PEDIT Width).</param>
+/// <param name="Isla">El hueco del relleno (x, y, x, y…), si lo tiene.</param>
 public sealed record TrazoConexion(
     TipoTrazo Tipo, CapaConexion Capa, double[] Puntos, bool Cerrado = false, double Radio = 0,
-    string Texto = "", double Alto = 0, int Anclaje = 1, int Color = 0, double Transparencia = 0, double Grueso = 0);
+    string Texto = "", double Alto = 0, int Anclaje = 1, int Color = 0, double Transparencia = 0, double Grueso = 0,
+    double[]? Isla = null);
 
 /// <summary>Cota alineada de (X1, Y1) a (X2, Y2), desplazada hacia (Nx, Ny), con su texto.</summary>
 public sealed record CotaConexion(double X1, double Y1, double X2, double Y2, double Nx, double Ny, string Texto);
@@ -167,6 +187,16 @@ public static class ConexionAceroCapas
     public static int ColorSoldadura => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).ColorAci("soldadura.color");
 
     public static double TransparenciaSoldadura => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("soldadura.transparencia");
+
+    /// <summary>El rayado de los perfiles en corte: el MISMO de las secciones de acero (su perfil de estilo).</summary>
+    public static string PatronLaminado => EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).Texto("hatch.laminados");
+
+    public static double EscalaLaminado => EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).Numero("hatch.laminados.escala");
+
+    public static string PatronTubo => EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).Texto("hatch.tubo");
+
+    public static double EscalaTubo(bool menorDe5) =>
+        EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).Numero(menorDe5 ? "hatch.tubo.escala.chico" : "hatch.tubo.escala.grande");
 
     /// <summary>El ancho global (PEDIT Width) de las lineas de los perfiles.</summary>
     public static double GruesoDePerfil => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("perfil.ancho");

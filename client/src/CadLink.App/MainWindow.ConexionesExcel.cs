@@ -362,14 +362,18 @@ public partial class MainWindow
     /// <summary>De las piezas del nucleo (m) al detalle del dibujante (cm).</summary>
     private static ConexionAceroCad ACad(ModeloConexion m, HojaLeida h)
     {
+        // Los perfiles se escriben con la nomenclatura mexicana (IMCA): IR, OR, CE… en lugar de
+        // W, HSS, C. Solo en el plano: el libro y las busquedas siguen con sus nombres.
+        static string Mx(string t) => NomenclaturaMexicana.Convertir(t);
+
         var c = new ConexionAceroCad
         {
-            Titulo = m.Titulo,
-            Subtitulo = $"Hoja «{h.Hoja.Trim()}» del libro de acero · {m.Id}"
+            Titulo = Mx(m.Titulo),
+            Subtitulo = Mx($"Hoja «{h.Hoja.Trim()}» del libro de acero · {m.Id}")
         };
 
-        c.Renglones.AddRange(m.Renglones);
-        c.Notas.AddRange(m.Avisos);
+        c.Renglones.AddRange(m.Renglones.Select(Mx));
+        c.Notas.AddRange(m.Avisos.Select(Mx));
 
         static CapaConexion Capa(CapaDetalle d) => d switch
         {
@@ -397,17 +401,27 @@ public partial class MainWindow
 
             vc.Lineas.AddRange(v.Lineas.Select(l => new LineaConexion(l.X1 * 100, l.Y1 * 100, l.X2 * 100, l.Y2 * 100, Capa(l.Capa))));
             vc.Contornos.AddRange(v.Poligonos.Select(p => new ContornoConexion(
-                p.Puntos.Select(q => (q.X * 100, q.Y * 100)).ToList(), p.Cerrado, Capa(p.Capa), p.Relleno)));
+                p.Puntos.Select(q => (q.X * 100, q.Y * 100)).ToList(), p.Cerrado, Capa(p.Capa), p.Relleno)
+            {
+                Corte = p.Corte switch
+                {
+                    FormaMiembro.I => CorteConexion.Laminado,
+                    FormaMiembro.Cajon => CorteConexion.Tubo,
+                    _ => CorteConexion.Ninguno
+                },
+                PeralteCm = p.Peralte * 100,
+                Isla = p.Isla?.Select(q => (q.X * 100, q.Y * 100)).ToList()
+            }));
             vc.Circulos.AddRange(v.Circulos.Select(q => new CirculoConexion(q.X * 100, q.Y * 100, q.R * 100, Capa(q.Capa))));
             vc.Llamadas.AddRange(v.Llamadas.Select(q => q.Soldadura is { } s
-                ? new LlamadaConexion(q.X * 100, q.Y * 100, q.Texto)
+                ? new LlamadaConexion(q.X * 100, q.Y * 100, Mx(q.Texto))
                 {
                     Simbolo = Simbolo(s.Simbolo),
                     Tamano = s.Tamano,
                     Electrodo = s.Electrodo,
-                    Descripcion = s.Descripcion
+                    Descripcion = Mx(s.Descripcion)
                 }
-                : new LlamadaConexion(q.X * 100, q.Y * 100, q.Texto)));
+                : new LlamadaConexion(q.X * 100, q.Y * 100, Mx(q.Texto))));
             vc.Cotas.AddRange(v.Cotas.Select(q => new CotaConexion(q.X1 * 100, q.Y1 * 100, q.X2 * 100, q.Y2 * 100, q.Nx, q.Ny, q.Texto)));
             c.Vistas.Add(vc);
         }

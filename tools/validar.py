@@ -17131,6 +17131,13 @@ def v32_conexiones_del_libro() -> None:
           '_ => "ROTULOS"' in cad and 'capa.PlotStyleName = "Negro";' in drw and "Mayuscula(l.Texto)" in drw)
     check("break line en los extremos cortados y TRIM de la placa bajo los tubos",
           "Corte(mi.P1, a, dir, exterior, capa);" in nucleo["VistasConexion.cs"] and "FueraDe(" in nucleo["VistasConexion.cs"])
+    check("en AutoCAD los perfiles van con la nomenclatura mexicana (IR, OR, CE…)",
+          "NomenclaturaMexicana.Convertir(t)" in app and "static string Mx(" in app)
+    check("los perfiles en corte se rayan como en las secciones de acero",
+          "private void RayarCorte(" in drw and 'Perfil(EstiloDibujo.Acero).Texto("hatch.laminados")' in cad
+          and "AppendInnerLoop" in drw)
+    check("la tabla del libro crece con la ventana",
+          'x:Name="ConexionesLibroGrid" Margin="0,10,0,0"\n' in xaml and 'MaxHeight="360"' not in xaml.split('x:Name="ConexionesLibroGrid"')[1][:200])
     check("el despatinado se recorta de la viga, no se dibuja encima",
           'p.Despatinar("Viga soportada", arriba: true, cc, dce);' in nucleo["ConexionesDelLibro.cs"]
           and 'p.Trazo("Despatinado"' not in nucleo["ConexionesDelLibro.cs"])

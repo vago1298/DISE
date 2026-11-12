@@ -139,7 +139,7 @@ public partial class MainWindow
         Point P(double x, double y) => new(dx + ((x - minX) * escala), dy + ((maxY - y) * escala));
 
         var lineas = new Dictionary<CapaConexion, GeometryGroup>();
-        var rellenos = new Dictionary<(CapaConexion Capa, int Color, double Transparencia), GeometryGroup>();
+        var rellenos = new Dictionary<(CapaConexion Capa, int Color, double Transparencia, bool Solido), GeometryGroup>();
 
         GeometryGroup Grupo<TClave>(Dictionary<TClave, GeometryGroup> d, TClave capa)
             where TClave : notnull
@@ -151,6 +151,18 @@ public partial class MainWindow
             }
 
             return g;
+        }
+
+        PathFigure Figura(double[] a, bool cerrada)
+        {
+            var puntos = new List<Point>();
+
+            for (var i = 0; i + 1 < a.Length; i += 2)
+            {
+                puntos.Add(P(a[i], a[i + 1]));
+            }
+
+            return new PathFigure(puntos[0], new PathSegment[] { new PolyLineSegment(puntos.Skip(1), true) }, cerrada);
         }
 
         Geometry Poligonal(double[] a, bool cerrada)
@@ -179,7 +191,11 @@ public partial class MainWindow
                     Grupo(lineas, t.Capa).Children.Add(Poligonal(t.Puntos, t.Cerrado));
                     break;
                 case TipoTrazo.Relleno when t.Puntos.Length >= 6:
-                    Grupo(rellenos, (t.Capa, t.Color, t.Transparencia)).Children.Add(Poligonal(t.Puntos, true));
+                    var solido = string.Equals(t.Texto, "SOLID", StringComparison.OrdinalIgnoreCase);
+                    Geometry relleno = t.Isla is { Length: >= 6 } isla
+                        ? new PathGeometry(new[] { Figura(t.Puntos, true), Figura(isla, true) }) { FillRule = FillRule.EvenOdd }
+                        : Poligonal(t.Puntos, true);
+                    Grupo(rellenos, (t.Capa, t.Color, t.Transparencia, solido)).Children.Add(relleno);
                     break;
                 case TipoTrazo.Circulo when t.Puntos.Length >= 2:
                     var r = Math.Max(0.8, t.Radio * escala);
@@ -196,10 +212,13 @@ public partial class MainWindow
         }
 
         // Los rellenos con su color propio (la soldadura: el 9) y su transparencia, como en AutoCAD.
-        foreach (var ((capa, color, transparencia), g) in rellenos)
+        // Un patron (ANSI32 de los perfiles en corte) se insinua con un velo de su color: en la
+        // previa no se dibujan sus rayas.
+        foreach (var ((capa, color, transparencia, solido), g) in rellenos)
         {
             var tinta = color is > 0 and < 256 ? PincelAci(color) : Tinta(capa);
-            lienzo.Children.Add(new FormaPath { Data = g, Fill = tinta, Opacity = transparencia > 0 ? 1 - (Math.Min(90, transparencia) / 100) : 0.85 });
+            var opacidad = transparencia > 0 ? 1 - (Math.Min(90, transparencia) / 100) : solido ? 0.85 : 0.35;
+            lienzo.Children.Add(new FormaPath { Data = g, Fill = tinta, Opacity = opacidad });
         }
 
         foreach (var (capa, g) in lineas)

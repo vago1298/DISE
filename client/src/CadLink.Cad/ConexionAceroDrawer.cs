@@ -728,6 +728,32 @@ public sealed class ConexionAceroDrawer
         return arriba - fondo;
     }
 
+    // Los colores del rayado de las secciones de acero (SeccionDrawer.RayarPerfil, los de la macro).
+    private const int ColorRayaLaminado = 252;
+    private const int ColorFondoTubo = 141;
+    private const int ColorRayaTubo = 144;
+    private const int ColorRayaTuboChico = 142;
+    private const int ColorFondoTuboChico = 4;
+
+    /// <summary>
+    /// El rayado de un perfil en corte, el de las secciones de acero: los laminados con su patron
+    /// de color 252; el tubo de 5" o mas con fondo 141 y raya 144, y el chico con fondo 4 y raya
+    /// 142. El tubo lleva su hueco como isla.
+    /// </summary>
+    private void RayarCorte(object contorno, object? isla, ContornoConexion p)
+    {
+        if (p.Corte == CorteConexion.Laminado)
+        {
+            Rellenar(contorno, p.Capa, ConexionAceroCapas.PatronLaminado, ConexionAceroCapas.EscalaLaminado * _f, ColorRayaLaminado, isla: isla);
+            return;
+        }
+
+        var menorDe5 = p.PeralteCm / 2.54 < 5 - 0.01;
+        Rellenar(contorno, p.Capa, "SOLID", 1, menorDe5 ? ColorFondoTuboChico : ColorFondoTubo, isla: isla);
+        Rellenar(contorno, p.Capa, ConexionAceroCapas.PatronTubo, ConexionAceroCapas.EscalaTubo(menorDe5) * _f,
+            menorDe5 ? ColorRayaTuboChico : ColorRayaTubo, isla: isla);
+    }
+
     /// <summary>Lo alto de una vista con su nombre, sin dibujarla: lo mismo que devuelve <see cref="Vista"/>.</summary>
     private static double AltoDeVista(Acomodo a, double hVista) =>
         Math.Max(a.AltoGeo, a.AltoColumnas) + (2 * a.Holgura) + (2.2 * hVista);
@@ -755,6 +781,20 @@ public sealed class ConexionAceroDrawer
         {
             var puntos = p.Puntos.Select(q => (X(q.X), Y(q.Y))).ToList();
             var pl = Polilinea(puntos, p.Cerrado, p.Capa);
+
+            // Un perfil en corte se raya como en las secciones de acero.
+            if (p.Corte != CorteConexion.Ninguno && pl is not null && p.Cerrado && puntos.Count >= 3)
+            {
+                object? isla = null;
+
+                if (p.Isla is { Count: >= 3 } hueco)
+                {
+                    // Una segunda polilinea, la del hueco, que ademas se queda dibujada.
+                    isla = Polilinea(hueco.Select(q => (X(q.X), Y(q.Y))).ToList(), true, p.Capa);
+                }
+
+                RayarCorte(pl, isla, p);
+            }
 
             // La soldadura se rellena sobre su contorno: SOLID de color 9 con 70 de transparencia.
             if (p.Relleno && pl is not null && p.Cerrado && puntos.Count >= 3)
@@ -977,13 +1017,19 @@ public sealed class ConexionAceroDrawer
 
     /// <param name="color">El color ACI del relleno; 0 = por capa.</param>
     /// <param name="transparencia">De 0 a 90; 0 = sin transparencia.</param>
-    private void Rellenar(object contorno, CapaConexion capa, string patron, double escala, int color = 0, double transparencia = 0)
+    /// <param name="isla">El contorno del hueco (el del tubo), o null.</param>
+    private void Rellenar(object contorno, CapaConexion capa, string patron, double escala, int color = 0, double transparencia = 0,
+        object? isla = null)
     {
         if (_grabado is not null)
         {
             if (contorno is TrazoConexion t)
             {
-                _grabado.Add(t with { Tipo = TipoTrazo.Relleno, Capa = capa, Texto = patron, Color = color, Transparencia = transparencia, Grueso = 0 });
+                _grabado.Add(t with
+                {
+                    Tipo = TipoTrazo.Relleno, Capa = capa, Texto = patron, Color = color, Transparencia = transparencia, Grueso = 0,
+                    Isla = (isla as TrazoConexion)?.Puntos
+                });
             }
 
             return;
@@ -1010,6 +1056,12 @@ public sealed class ConexionAceroDrawer
                     }
 
                     return;
+                }
+
+                if (isla is not null)
+                {
+                    AcadArreglos.Llamar($"AppendInnerLoop del hatch '{patron}'", new[] { isla },
+                        arr => { hh.AppendInnerLoop(arr); }, Fallo, Nota);
                 }
 
                 if (!string.Equals(patron, "SOLID", StringComparison.OrdinalIgnoreCase))

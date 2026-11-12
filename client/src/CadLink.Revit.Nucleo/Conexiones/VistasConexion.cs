@@ -27,7 +27,17 @@ public enum CapaDetalle
 
 public sealed record Linea2D(double X1, double Y1, double X2, double Y2, CapaDetalle Capa);
 
-public sealed record Poligono2D(IReadOnlyList<(double X, double Y)> Puntos, bool Cerrado, CapaDetalle Capa, bool Relleno);
+public sealed record Poligono2D(IReadOnlyList<(double X, double Y)> Puntos, bool Cerrado, CapaDetalle Capa, bool Relleno)
+{
+    /// <summary>Si es la seccion de un perfil visto EN CORTE: se raya como en las secciones de acero.</summary>
+    public FormaMiembro? Corte { get; init; }
+
+    /// <summary>El peralte del perfil cortado, en m (el rayado del tubo cambia en 5").</summary>
+    public double Peralte { get; init; }
+
+    /// <summary>El hueco del tubo: va como isla del rayado.</summary>
+    public IReadOnlyList<(double X, double Y)>? Isla { get; init; }
+}
 
 public sealed record Circulo2D(double X, double Y, double R, CapaDetalle Capa);
 
@@ -545,7 +555,7 @@ public static class VistasConexion
                 (d, -b), (d, b), (d - tf, b), (d - tf, tw), (-d + tf, tw), (-d + tf, b), (-d, b), (-d, -b),
                 (-d + tf, -b), (-d + tf, -tw), (d - tf, -tw), (d - tf, -b)
             });
-            r.Poligonos.Add(new Poligono2D(i, true, capa, false));
+            r.Poligonos.Add(new Poligono2D(i, true, capa, false) { Corte = FormaMiembro.I, Peralte = mi.D });
 
             foreach (var (x, y) in i)
             {
@@ -558,8 +568,8 @@ public static class VistasConexion
         var t = mi.Tw;
         var fuera = Contorno(new[] { (d, -b), (d, b), (-d, b), (-d, -b) });
         var dentro = Contorno(new[] { (d - t, -b + t), (d - t, b - t), (-d + t, b - t), (-d + t, -b + t) });
-        r.Poligonos.Add(new Poligono2D(fuera, true, capa, false));
-        r.Poligonos.Add(new Poligono2D(dentro, true, capa, false));
+        // El hueco va como isla del contorno: quien dibuja traza las dos lineas y raya entre ellas.
+        r.Poligonos.Add(new Poligono2D(fuera, true, capa, false) { Corte = mi.Forma, Peralte = mi.D, Isla = dentro });
 
         foreach (var (x, y) in fuera)
         {

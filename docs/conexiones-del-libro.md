@@ -68,6 +68,12 @@ ATIESADORES y la X en dos niveles. Salen en la lista con el motivo.
 - **Perfiles con sus medidas reales:** lo que una hoja no trae (la conexión a cortante no da el
   patín de la viga que soporta) se completa con la hoja **IMCA5** del mismo libro. En la conexión
   a cortante se acota la holgura g0 entre la viga soportada y el alma de la que soporta.
+- **Nomenclatura mexicana (IMCA)** en todos los textos del plano: `W - 18'' x 97.03 lb/ft` →
+  `IR 457 x 144.4 kg/m`, `HSS - 5" x 5/16"` → `OR 127 x 127 x 7.9 mm`; también CE, TR, IE, OC, LI/LD.
+  Solo cambia el texto (`NomenclaturaMexicana`); el libro y los catálogos conservan sus nombres.
+- **Perfiles en corte rayados** como en las secciones de acero: los IR con `hatch.laminados`
+  (color 252) y los OR con fondo y raya (141/144, o 4/142 los de menos de 5") y su hueco como isla.
+  Los patrones y escalas son los del perfil «Perfiles de acero» de *Estilo de dibujo*.
 - **Break line** en los extremos cortados de vigas, columnas y diagonales, para que se lea que la
   estructura sigue.
 - **TRIM bajo los tubos:** en el contraventeo en X (y la gusset), la orilla de la placa que queda

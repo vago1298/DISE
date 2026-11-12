@@ -293,6 +293,14 @@ internal static class Program
         Check("X: la placa del cruce se recorta bajo las diagonales (TRIM), no se dibuja entera",
             cxv is not null && cxv.Lineas.Count(l => l.Capa == CapaDetalle.Placa) > 4);
 
+        var mwv = ConexionesAMano.Defectos("MW");
+        mwv["Tipo"] = "CONTINUIDAD";
+        var (mw, _) = ConexionesAMano.Armar("MW", "MW", mwv, Catalogo, out _);
+        Check("el perfil que se ve en corte va marcado para su rayado (la trabe del momento viga-viga)",
+            mw is not null && VistasConexion.Proyectar(mw).Any(vv => vv.Poligonos.Any(q => q.Corte == FormaMiembro.I)));
+        Check("el tubo en corte lleva su hueco como isla",
+            cx is not null && VistasConexion.Proyectar(cx).SelectMany(vv => vv.Poligonos).Where(q => q.Corte == FormaMiembro.Cajon).All(q => q.Isla is { Count: 4 }));
+
         var v = ConexionesAMano.Defectos("RB");
         v["ID"] = "RB-A";
         var rb = ConexionesAMano.Hoja("RB", "RB", v, Catalogo);
@@ -358,6 +366,22 @@ internal static class Program
         Check("pulgadas: 0.95 cm = 3/8\"", TextoMedida.Pulgadas(0.95) == "3/8\"", TextoMedida.Pulgadas(0.95));
         Check("pulgadas: 2.54 cm = 1\"", TextoMedida.Pulgadas(2.54) == "1\"", TextoMedida.Pulgadas(2.54));
         Check("sin copia: «PLACA GUSSET 1» → placa gusset", EtiquetasExcel.SinCopia("PLACA GUSSET 1") == "placa gusset");
+        foreach (var (de, a) in new[]
+        {
+            ("Viga W - 18'' x 97.03 lb/ft — A-992", "Viga IR 457 x 144.4 kg/m — A-992"),
+            ("Diagonal: HSS - 5\" x 5/16\" — A-500", "Diagonal: OR 127 x 127 x 7.9 mm — A-500"),
+            ("HSS - 8\" x 4\" x 1/2\"", "OR 203 x 102 x 12.7 mm"),
+            ("C - 8'' x 12.0 lb/ft", "CE 203 x 17.9 kg/m"),
+            ("WT - 8'' x 13.0 lb/ft", "TR 203 x 19.3 kg/m"),
+            ("L - 3'' x 1/4''", "LI 76 x 6.4 mm"),
+            ("PIPE - 4.02 in x 0.19 in", "OC 102 x 4.8 mm"),
+            ("Filetes en C 10 mm", "Filetes en C 10 mm"),
+        })
+        {
+            var hecho = NomenclaturaMexicana.Convertir(de);
+            Check($"nomenclatura mexicana: «{de}» → «{a}»", hecho == a, hecho);
+        }
+
         Check("cota con dos decimales", TextoMedida.Cota(80) == "80.00" && TextoMedida.Cota(12.345) == "12.35", TextoMedida.Cota(12.345));
 
     }
