@@ -14,8 +14,16 @@ namespace CadLink.Revit.Nucleo;
 //  aparecen en ese orden.
 // ============================================================================
 
-/// <summary>Un dato de una hoja: su nombre corto, la etiqueta de la columna B y su valor de fabrica.</summary>
-public sealed record DatoDelLibro(string Nombre, string Etiqueta, bool EsCaptura, string? Defecto);
+/// <summary>
+/// Un dato de una hoja: su nombre corto, la etiqueta de la columna B, su valor de fabrica, sus
+/// opciones («A|B|C»; «@IR», «@OR», «@IS», «@L», «@ACEROS» son listas del catalogo) y su unidad.
+/// </summary>
+public sealed record DatoDelLibro(string Nombre, string Etiqueta, bool EsCaptura, string? Defecto,
+    string? Opciones = null, string Unidad = "")
+{
+    /// <summary>La etiqueta sin el «=» del final, para mostrarla.</summary>
+    public string Descripcion => Etiqueta.TrimEnd('=', ' ');
+}
 
 /// <summary>Un tipo de hoja del libro: su codigo, su nombre, su titulo y sus datos en orden.</summary>
 public sealed record HojaDelLibro(string Codigo, string Hoja, string Titulo, IReadOnlyList<DatoDelLibro> Datos);
@@ -132,15 +140,67 @@ public sealed class HojaLeida
     /// <summary>Todos los datos capturables valen lo de fabrica: la hoja trae el ejemplo.</summary>
     public bool DeEjemplo { get; set; }
 
+    /// <summary>
+    /// Las revisiones que no dicen CUMPLE ni N/A, con lo que dicen: «Alma de la viga: V ≤ RN —
+    /// NO CUMPLE». Asi se puede ver en el libro CUAL es, y no solo cuantas.
+    /// </summary>
+    public List<string> Fallas { get; } = new();
+
+    /// <summary>Revisiones cuyo estado es un error de Excel (#N/A, #¡VALOR!): no es que no cumplan.</summary>
+    public int ConError { get; set; }
+
+    /// <summary>
+    /// Los datos que se pidieron con <see cref="Num"/> o <see cref="Txt"/>: con esto se sabe que
+    /// datos usa cada tipo de conexion para capturarlos a mano.
+    /// </summary>
+    public HashSet<string> Pedidos { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Una hoja armada con valores capturados a mano (sin libro): los numeros con punto decimal.
+    /// </summary>
+    public static HojaLeida DeValores(HojaDelLibro tipo, string hoja, IReadOnlyDictionary<string, string> valores)
+    {
+        var h = new HojaLeida(tipo, hoja);
+
+        foreach (var (nombre, texto) in valores)
+        {
+            var t = (texto ?? string.Empty).Trim();
+            double? n = double.TryParse(t.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : null;
+            h.Poner(nombre, new CeldaExcel(t, n, false));
+        }
+
+        return h;
+    }
+
     public IReadOnlyDictionary<string, CeldaExcel> Valores => _valores;
 
-    internal void Poner(string nombre, CeldaExcel c) => _valores[nombre] = c;
+    public void Poner(string nombre, CeldaExcel c) => _valores[nombre] = c;
+
+    /// <summary>Pone un numero si la hoja no lo trae (los calculados, al capturar a mano).</summary>
+    public void SiFalta(string nombre, double valor)
+    {
+        if (!_valores.TryGetValue(nombre, out var c) || (c.Numero is null && c.Texto.Length == 0))
+        {
+            _valores[nombre] = new CeldaExcel(valor.ToString("R", CultureInfo.InvariantCulture), valor, true);
+        }
+    }
+
+    /// <summary>Pone un texto si la hoja no lo trae.</summary>
+    public void SiFalta(string nombre, string valor)
+    {
+        if (!_valores.TryGetValue(nombre, out var c) || c.Texto.Length == 0)
+        {
+            _valores[nombre] = new CeldaExcel(valor, null, true);
+        }
+    }
 
     public bool Tiene(string nombre) => _valores.ContainsKey(nombre);
 
     /// <summary>El numero, o <paramref name="siNoHay"/> si falta o no es numero.</summary>
     public double Num(string nombre, double siNoHay = 0)
     {
+        Pedidos.Add(nombre);
+
         if (!_valores.TryGetValue(nombre, out var c))
         {
             return siNoHay;
@@ -157,8 +217,11 @@ public sealed class HojaLeida
     }
 
     /// <summary>El texto, sin espacios de mas. Vacio si falta.</summary>
-    public string Txt(string nombre) =>
-        _valores.TryGetValue(nombre, out var c) ? c.Texto.Trim() : string.Empty;
+    public string Txt(string nombre)
+    {
+        Pedidos.Add(nombre);
+        return _valores.TryGetValue(nombre, out var c) ? c.Texto.Trim() : string.Empty;
+    }
 
     /// <summary>El texto en mayusculas sin acentos, para comparar opciones («PENETRACION»).</summary>
     public string Opcion(string nombre) => EtiquetasExcel.Normalizar(Txt(nombre)).ToUpperInvariant();
@@ -287,20 +350,31 @@ public static class LectorDelLibro
                 continue;
             }
 
-            var estado = EtiquetasExcel.Normalizar(hoja.Texto(f, 4)).ToUpperInvariant();
+            var crudo = hoja.Texto(f, 4).Trim();
+            var estado = EtiquetasExcel.Normalizar(crudo).ToUpperInvariant();
 
-            if (estado.Length == 0 || estado == "CUMPLE" || estado == "N/A")
+            if (estado.Length == 0 || estado == "CUMPLE" || estado == "N/A" || estado == "-")
             {
                 continue;
             }
 
-            if (estado == "REQUIERE ATIESADOR")
+            var cual = hoja.Texto(f, 2).Trim();
+            cual = cual.StartsWith("Revisión:", StringComparison.OrdinalIgnoreCase) ? cual["Revisión:".Length..].Trim() : cual;
+
+            if (estado.StartsWith("#", StringComparison.Ordinal))
+            {
+                // Un error de Excel en la formula del estado: no es una revision que no cumple.
+                leida.ConError++;
+                leida.Fallas.Add($"{cual} — error de Excel {crudo}");
+            }
+            else if (estado == "REQUIERE ATIESADOR")
             {
                 leida.RequierenAtiesador++;
             }
             else
             {
                 leida.NoCumplen++;
+                leida.Fallas.Add($"{cual} — {crudo}");
             }
         }
 

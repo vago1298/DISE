@@ -3241,136 +3241,254 @@
 
             <!-- ===== Conexiones ===== -->
             <TabItem Header="Conexiones/Detalles">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="22">
+                <Grid Margin="22,22,22,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
                         <TextBlock Text="Conexiones/Detalles" Style="{StaticResource ModuleTitleStyle}"
                                    ToolTip="Detalles de union: simbologia de soldadura, tornillos, placas de cortante y momento." />
-
-                        <!-- ===== LA SIMBOLOGIA DE SOLDADURA =====
-                             El primer detalle de esta pestaña, y el que hace falta en TODO plano de
-                             estructura metalica: el cuadro de notas que explica que quiere decir
-                             cada simbolo de soldadura del plano.
-
-                             No se captura nada: son los cinco simbolos del estandar y siempre son
-                             los mismos. Lo unico que se elige es el titulo del cuadro, porque cada
-                             despacho lo rotula a su manera. -->
-                        <TextBlock Text="Simbologia de soldadura" FontWeight="SemiBold" FontSize="12.5"
-                                   Margin="0,6,0,4" Foreground="{DynamicResource BrandDarkBrush}" />
-
-                        <Border Style="{StaticResource TarjetaStyle}"
-                                Padding="14,10" MaxWidth="980" HorizontalAlignment="Left">
-                            <StackPanel>
-                                <TextBlock TextWrapping="Wrap" FontSize="12"
-                                           Foreground="{DynamicResource TextBrush}"
-                                           Text="El cuadro de notas de la AWS A2.4: la flecha, la linea de referencia, el simbolo del tipo de soldadura, sus modificadores -todo alrededor, de campo- y la cola donde va el electrodo. Se dibuja como UN bloque, asi que se coloca y se mueve entero al sitio del plano donde toque." />
-
-                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                    <TextBlock Text="Titulo del cuadro:" FontWeight="SemiBold" FontSize="11.5"
-                                               VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <TextBox x:Name="TituloSimbologiaBox" Width="260" Height="26"
-                                             VerticalContentAlignment="Center" Padding="6,0"
-                                             Text="SIMBOLOGIA DE SOLDADURA"
-                                             TextChanged="OnTituloSimbologiaCambiado"
-                                             ToolTip="Como se rotula el cuadro en el plano." />
-
-                                    <Border Width="1" Background="{DynamicResource BorderBrush}"
-                                            Margin="16,2,16,2" />
-
-                                    <Button x:Name="SimbologiaSoldaduraButton"
-                                            Content="Dibujar simbologia en AutoCAD"
-                                            Style="{StaticResource PrimaryButtonStyle}"
-                                            Click="OnDibujarSimbologiaSoldadura"
-                                            ToolTip="Dibuja el cuadro en el origen del dibujo y lo agrupa en un bloque.&#10;Si ya hay uno con ese nombre, el nuevo se llama SIMBOLOGIA DE SOLDADURA_2: no se pisa el del usuario." />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <!-- LA VISTA PREVIA. Es el mismo reparto que va a salir en AutoCAD -misma
-                             clase de geometria- asi que lo que se ve aqui es lo que se dibuja. -->
-                        <TextBlock Text="Asi se va a dibujar" FontWeight="SemiBold" FontSize="11.5"
-                                   Margin="0,16,0,4" Foreground="{DynamicResource BrandDarkBrush}" />
-
-                        <Border Style="{StaticResource TarjetaStyle}" Padding="0"
-                                MaxWidth="980" HorizontalAlignment="Left">
-                            <Canvas x:Name="SimbologiaPreviewCanvas" Height="330" Width="940"
-                                    Background="{DynamicResource SurfaceBrush}"
-                                    ClipToBounds="True" />
-                        </Border>
-
-                        <!-- ===== LAS CONEXIONES DEL LIBRO DE EXCEL =====
-                             El libro de revisiones de acero (NTC-Acero 2023) ya trae cada conexion
-                             disenada: aqui se lee, se elige que dibujar y se dibuja en AutoCAD. En
-                             Revit, el boton «Conexiones del libro» lee el mismo archivo. -->
-                        <TextBlock Text="Conexiones desde el libro de Excel" FontWeight="SemiBold" FontSize="12.5"
-                                   Margin="0,22,0,4" Foreground="{DynamicResource BrandDarkBrush}" />
-
-                        <Border Style="{StaticResource TarjetaStyle}"
-                                Padding="14,10" MaxWidth="980" HorizontalAlignment="Left">
-                            <StackPanel>
-                                <TextBlock TextWrapping="Wrap" FontSize="12"
-                                           Foreground="{DynamicResource TextBrush}"
-                                           Text="Lee el libro de revisiones de acero (.xlsm) y arma cada conexion con las medidas de sus hojas, copias incluidas: union viga-columna, RBS, placa de extremo, patines soldados, cortante, viga-viga soldada, placas gusset, contraventeo excentrico y en X, y placa base. Se dibuja en tamaño real con sus vistas, llamadas, cotas y el cuadro de datos de la hoja. En Revit, el boton «Conexiones del libro» de la cinta CadLink lee el mismo archivo y las modela en las vigas, columnas y diagonales que elijas." />
-
-                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                    <Button x:Name="LeerLibroConexionesButton" Content="Leer libro de Excel..."
-                                            Style="{StaticResource SecondaryButtonStyle}"
-                                            Click="OnLeerLibroDeConexiones"
-                                            ToolTip="Abre el .xlsm o .xlsx del libro de acero. Se puede leer aunque este abierto en Excel." />
-                                    <Button Content="Volver a leer" Margin="8,0,0,0"
-                                            Style="{StaticResource SecondaryButtonStyle}"
-                                            Click="OnVolverALeerLibro"
-                                            ToolTip="Lee otra vez el mismo libro, despues de cambiarlo y guardarlo en Excel." />
-                                    <Button Content="Todas / ninguna" Margin="8,0,0,0"
-                                            Style="{StaticResource SecondaryButtonStyle}"
-                                            Click="OnTodasLasConexiones" />
-                                    <TextBlock x:Name="ConexionesLibroText" Margin="12,0,0,0" FontSize="11"
-                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="420"
-                                               Foreground="{DynamicResource MutedTextBrush}" Text="Sin libro" />
-                                </StackPanel>
-
-                                <DataGrid x:Name="ConexionesLibroGrid" Margin="0,10,0,0" MaxHeight="360"
-                                          AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
-                                          HeadersVisibility="Column" SelectionMode="Single">
-                                    <DataGrid.Columns>
-                                        <DataGridTemplateColumn Header="Dibujar" Width="60">
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <CheckBox HorizontalAlignment="Center"
-                                                              IsChecked="{Binding Dibujar, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                              IsEnabled="{Binding SePuedeDibujar}" />
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                        </DataGridTemplateColumn>
-                                        <DataGridTextColumn Header="Hoja" Binding="{Binding Hoja}" IsReadOnly="True" Width="190" />
-                                        <DataGridTextColumn Header="Conexion" Binding="{Binding Tipo}" IsReadOnly="True" Width="230" />
-                                        <DataGridTextColumn Header="ID" Binding="{Binding Identificacion}" IsReadOnly="True" Width="120" />
-                                        <DataGridTextColumn Header="Revisiones" Binding="{Binding Estado}" IsReadOnly="True" Width="150" />
-                                        <DataGridTextColumn Header="Que se dibuja" Binding="{Binding Piezas}" IsReadOnly="True" Width="*" />
-                                    </DataGrid.Columns>
-                                </DataGrid>
-
-                                <TextBlock x:Name="ConexionesLibroNotas" TextWrapping="Wrap" FontSize="11.5" Margin="0,8,0,0"
-                                           Foreground="{DynamicResource MutedTextBrush}" Text="" />
-
-                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                    <Button x:Name="ConexionesLibroButton" Content="Dibujar conexiones en AutoCAD"
-                                            Style="{StaticResource PrimaryButtonStyle}"
-                                            Click="OnDibujarConexionesDelLibro"
-                                            ToolTip="Dibuja las conexiones palomeadas en el dibujo abierto de AutoCAD, en renglones de tres." />
-                                    <Button Content="Pasar placas base a su hoja" Margin="8,0,0,0"
-                                            Style="{StaticResource SecondaryButtonStyle}"
-                                            Click="OnPasarPlacasBaseDelLibro"
-                                            ToolTip="Agrega las placas base del libro a la hoja Placa Base, para verlas en su vista previa, ajustarlas y mandarlas a Revit." />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <TextBlock TextWrapping="Wrap" FontSize="11.5" Margin="0,14,0,0"
-                                   MaxWidth="980" HorizontalAlignment="Left"
-                                   Foreground="{DynamicResource MutedTextBrush}"
-                                   Text="Del libro todavia no se dibujan las hojas DIAFRAGMAS, CONTRAVENTEO V-K, CONTRAVENTEO (diagonal) ni ATIESADORES, ni la X en dos niveles: salen en la lista con el motivo." />
                     </StackPanel>
-                </ScrollViewer>
+
+                    <!-- LAS SUBPESTAÑAS: la simbologia, las conexiones leidas del libro de Excel y las
+                         mismas conexiones capturadas a mano, sin el libro. -->
+                    <TabControl x:Name="ConexionesTabs" Grid.Row="1" Margin="0,6,0,0">
+                        <TabItem Header="Simbologia de soldadura">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="10">
+
+                                <!-- ===== LA SIMBOLOGIA DE SOLDADURA =====
+                                     El primer detalle de esta pestaña, y el que hace falta en TODO plano de
+                                     estructura metalica: el cuadro de notas que explica que quiere decir
+                                     cada simbolo de soldadura del plano.
+
+                                     No se captura nada: son los cinco simbolos del estandar y siempre son
+                                     los mismos. Lo unico que se elige es el titulo del cuadro, porque cada
+                                     despacho lo rotula a su manera. -->
+                                <TextBlock Text="Simbologia de soldadura" FontWeight="SemiBold" FontSize="12.5"
+                                           Margin="0,6,0,4" Foreground="{DynamicResource BrandDarkBrush}" />
+
+                                <Border Style="{StaticResource TarjetaStyle}"
+                                        Padding="14,10" MaxWidth="980" HorizontalAlignment="Left">
+                                    <StackPanel>
+                                        <TextBlock TextWrapping="Wrap" FontSize="12"
+                                                   Foreground="{DynamicResource TextBrush}"
+                                                   Text="El cuadro de notas de la AWS A2.4: la flecha, la linea de referencia, el simbolo del tipo de soldadura, sus modificadores -todo alrededor, de campo- y la cola donde va el electrodo. Se dibuja como UN bloque, asi que se coloca y se mueve entero al sitio del plano donde toque." />
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                            <TextBlock Text="Titulo del cuadro:" FontWeight="SemiBold" FontSize="11.5"
+                                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBox x:Name="TituloSimbologiaBox" Width="260" Height="26"
+                                                     VerticalContentAlignment="Center" Padding="6,0"
+                                                     Text="SIMBOLOGIA DE SOLDADURA"
+                                                     TextChanged="OnTituloSimbologiaCambiado"
+                                                     ToolTip="Como se rotula el cuadro en el plano." />
+
+                                            <Border Width="1" Background="{DynamicResource BorderBrush}"
+                                                    Margin="16,2,16,2" />
+
+                                            <Button x:Name="SimbologiaSoldaduraButton"
+                                                    Content="Dibujar simbologia en AutoCAD"
+                                                    Style="{StaticResource PrimaryButtonStyle}"
+                                                    Click="OnDibujarSimbologiaSoldadura"
+                                                    ToolTip="Dibuja el cuadro en el origen del dibujo y lo agrupa en un bloque.&#10;Si ya hay uno con ese nombre, el nuevo se llama SIMBOLOGIA DE SOLDADURA_2: no se pisa el del usuario." />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- LA VISTA PREVIA. Es el mismo reparto que va a salir en AutoCAD -misma
+                                     clase de geometria- asi que lo que se ve aqui es lo que se dibuja. -->
+                                <TextBlock Text="Asi se va a dibujar" FontWeight="SemiBold" FontSize="11.5"
+                                           Margin="0,16,0,4" Foreground="{DynamicResource BrandDarkBrush}" />
+
+                                <Border Style="{StaticResource TarjetaStyle}" Padding="0"
+                                        MaxWidth="980" HorizontalAlignment="Left">
+                                    <Canvas x:Name="SimbologiaPreviewCanvas" Height="330" Width="940"
+                                            Background="{DynamicResource SurfaceBrush}"
+                                            ClipToBounds="True" />
+                                </Border>
+
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabItem>
+
+                        <TabItem Header="Desde el libro de Excel">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="10">
+                                <!-- ===== LAS CONEXIONES DEL LIBRO DE EXCEL =====
+                                     El libro de revisiones de acero (NTC-Acero 2023) ya trae cada conexion
+                                     disenada: aqui se lee, se elige que dibujar y se dibuja en AutoCAD. En
+                                     Revit, el boton «Conexiones del libro» lee el mismo archivo. -->
+                                <TextBlock Text="Conexiones desde el libro de Excel" FontWeight="SemiBold" FontSize="12.5"
+                                           Margin="0,6,0,4" Foreground="{DynamicResource BrandDarkBrush}" />
+
+                                <Border Style="{StaticResource TarjetaStyle}"
+                                        Padding="14,10" MaxWidth="980" HorizontalAlignment="Left">
+                                    <StackPanel>
+                                        <TextBlock TextWrapping="Wrap" FontSize="12"
+                                                   Foreground="{DynamicResource TextBrush}"
+                                                   Text="Lee el libro de revisiones de acero (.xlsm) y arma cada conexion con las medidas de sus hojas, copias incluidas: union viga-columna, RBS, placa de extremo, patines soldados, cortante, viga-viga soldada, placas gusset, contraventeo excentrico y en X, y placa base. Se dibuja en tamaño real con sus vistas, llamadas, cotas y el cuadro de datos de la hoja. En Revit, el boton «Conexiones del libro» de la cinta CadLink lee el mismo archivo y las modela en las vigas, columnas y diagonales que elijas." />
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                            <Button x:Name="LeerLibroConexionesButton" Content="Leer libro de Excel..."
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Click="OnLeerLibroDeConexiones"
+                                                    ToolTip="Abre el .xlsm o .xlsx del libro de acero. Se puede leer aunque este abierto en Excel." />
+                                            <Button Content="Volver a leer" Margin="8,0,0,0"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Click="OnVolverALeerLibro"
+                                                    ToolTip="Lee otra vez el mismo libro, despues de cambiarlo y guardarlo en Excel." />
+                                            <Button Content="Todas / ninguna" Margin="8,0,0,0"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Click="OnTodasLasConexiones" />
+                                            <TextBlock x:Name="ConexionesLibroText" Margin="12,0,0,0" FontSize="11"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="420"
+                                                       Foreground="{DynamicResource MutedTextBrush}" Text="Sin libro" />
+                                        </StackPanel>
+
+                                        <DataGrid x:Name="ConexionesLibroGrid" Margin="0,10,0,0" MaxHeight="360"
+                                                  AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                                                  HeadersVisibility="Column" SelectionMode="Single">
+                                            <DataGrid.Columns>
+                                                <DataGridTemplateColumn Header="Dibujar" Width="60">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <CheckBox HorizontalAlignment="Center"
+                                                                      IsChecked="{Binding Dibujar, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                      IsEnabled="{Binding SePuedeDibujar}" />
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTextColumn Header="Hoja" Binding="{Binding Hoja}" IsReadOnly="True" Width="190" />
+                                                <DataGridTextColumn Header="Conexion" Binding="{Binding Tipo}" IsReadOnly="True" Width="230" />
+                                                <DataGridTextColumn Header="ID" Binding="{Binding Identificacion}" IsReadOnly="True" Width="120" />
+                                                <DataGridTextColumn Header="Revisiones" Binding="{Binding Estado}" IsReadOnly="True" Width="150" />
+                                                <DataGridTextColumn Header="Que se dibuja" Binding="{Binding Piezas}" IsReadOnly="True" Width="*" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+
+                                        <TextBlock x:Name="ConexionesLibroNotas" TextWrapping="Wrap" FontSize="11.5" Margin="0,8,0,0"
+                                                   Foreground="{DynamicResource MutedTextBrush}" Text="" />
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                            <Button x:Name="ConexionesLibroButton" Content="Dibujar conexiones en AutoCAD"
+                                                    Style="{StaticResource PrimaryButtonStyle}"
+                                                    Click="OnDibujarConexionesDelLibro"
+                                                    ToolTip="Dibuja las conexiones palomeadas en el dibujo abierto de AutoCAD, en renglones de tres." />
+                                            <Button Content="Pasar placas base a su hoja" Margin="8,0,0,0"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Click="OnPasarPlacasBaseDelLibro"
+                                                    ToolTip="Agrega las placas base del libro a la hoja Placa Base, para verlas en su vista previa, ajustarlas y mandarlas a Revit." />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <TextBlock TextWrapping="Wrap" FontSize="11.5" Margin="0,14,0,0"
+                                           MaxWidth="980" HorizontalAlignment="Left"
+                                           Foreground="{DynamicResource MutedTextBrush}"
+                                           Text="Del libro todavia no se dibujan las hojas DIAFRAGMAS, CONTRAVENTEO V-K, CONTRAVENTEO (diagonal) ni ATIESADORES, ni la X en dos niveles: salen en la lista con el motivo." />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabItem>
+
+                        <!-- ===== LAS CONEXIONES CAPTURADAS A MANO =====
+                             Las mismas conexiones del libro sin el libro: se elige el tipo, se
+                             capturan los datos de su hoja y se dibuja igual. Lo que el libro
+                             calcula con sus formulas (las medidas del perfil, el angulo de la
+                             diagonal…) sale del catalogo de perfiles de CadLink. -->
+                        <TabItem Header="Capturar a mano">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="10">
+                                    <TextBlock Text="Conexiones capturadas a mano" FontWeight="SemiBold" FontSize="12.5"
+                                               Margin="0,6,0,4" Foreground="{DynamicResource BrandDarkBrush}" />
+
+                                    <Border Style="{StaticResource TarjetaStyle}"
+                                            Padding="14,10" MaxWidth="980" HorizontalAlignment="Left">
+                                        <StackPanel>
+                                            <TextBlock TextWrapping="Wrap" FontSize="12"
+                                                       Foreground="{DynamicResource TextBrush}"
+                                                       Text="Sin el libro de Excel: elige el tipo de conexion, agregala y captura los mismos datos de su hoja del libro (perfiles, placas, tornillos, soldaduras). Las medidas de los perfiles salen del catalogo de CadLink. Se dibuja igual que las del libro, con sus vistas, llamadas, cotas y su cuadro de datos. No se revisa el diseño: eso lo hace el libro." />
+
+                                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                                <TextBlock Text="Tipo:" FontWeight="SemiBold" FontSize="11.5"
+                                                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                                                <ComboBox x:Name="TipoConexionAManoCombo" Width="300" Height="26"
+                                                          DisplayMemberPath="Nombre" SelectedValuePath="Codigo"
+                                                          VerticalContentAlignment="Center"
+                                                          ToolTip="El tipo de conexion: el mismo de la hoja del libro de acero." />
+                                                <Button Content="Agregar" Margin="8,0,0,0"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                        Click="OnAgregarConexionAMano"
+                                                        ToolTip="Agrega una conexion de ese tipo con los valores de fabrica de su hoja." />
+                                                <Button Content="Duplicar" Margin="8,0,0,0"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                        Click="OnDuplicarConexionAMano"
+                                                        ToolTip="Copia la conexion elegida, con todos sus datos." />
+                                                <Button Content="Quitar" Margin="8,0,0,0"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                        Click="OnQuitarConexionAMano"
+                                                        ToolTip="Quita la conexion elegida de la lista." />
+                                            </StackPanel>
+
+                                            <Grid Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="260" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <ListBox x:Name="ConexionesAManoLista" Grid.Column="0" Height="380"
+                                                         DisplayMemberPath="Titulo"
+                                                         SelectionChanged="OnConexionAManoElegida"
+                                                         ToolTip="Las conexiones capturadas. Se dibujan todas, agrupadas por tipo." />
+
+                                                <DataGrid x:Name="DatosConexionAManoGrid" Grid.Column="1" Margin="10,0,0,0" Height="380"
+                                                          AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                                                          CanUserSortColumns="False"
+                                                          HeadersVisibility="Column" SelectionMode="Single">
+                                                    <DataGrid.Columns>
+                                                        <DataGridTextColumn Header="Dato" Binding="{Binding Descripcion}" IsReadOnly="True" Width="*" />
+                                                        <DataGridTemplateColumn Header="Valor" Width="190">
+                                                            <DataGridTemplateColumn.CellTemplate>
+                                                                <DataTemplate>
+                                                                    <TextBlock Text="{Binding Valor}" Padding="4,0"
+                                                                               VerticalAlignment="Center" />
+                                                                </DataTemplate>
+                                                            </DataGridTemplateColumn.CellTemplate>
+                                                            <DataGridTemplateColumn.CellEditingTemplate>
+                                                                <DataTemplate>
+                                                                    <ComboBox IsEditable="True"
+                                                                              BorderThickness="0"
+                                                                              Padding="2,0"
+                                                                              VerticalContentAlignment="Center"
+                                                                              ItemsSource="{Binding Opciones}"
+                                                                              Text="{Binding Valor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                              ToolTip="Elige de la lista o escribe el valor." />
+                                                                </DataTemplate>
+                                                            </DataGridTemplateColumn.CellEditingTemplate>
+                                                        </DataGridTemplateColumn>
+                                                        <DataGridTextColumn Header="Unidad" Binding="{Binding Unidad}" IsReadOnly="True" Width="70" />
+                                                    </DataGrid.Columns>
+                                                </DataGrid>
+                                            </Grid>
+
+                                            <TextBlock x:Name="ConexionesAManoNotas" TextWrapping="Wrap" FontSize="11.5" Margin="0,8,0,0"
+                                                       Foreground="{DynamicResource MutedTextBrush}" Text="" />
+
+                                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                                <Button x:Name="ConexionesAManoButton" Content="Dibujar en AutoCAD"
+                                                        Style="{StaticResource PrimaryButtonStyle}"
+                                                        Click="OnDibujarConexionesAMano"
+                                                        ToolTip="Dibuja todas las conexiones de la lista en el dibujo abierto de AutoCAD, un renglon por tipo, a la izquierda de X = -25." />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabItem>
+                    </TabControl>
+                </Grid>
             </TabItem>
 
             <!-- ===== Dibujar planos estructurales ===== -->

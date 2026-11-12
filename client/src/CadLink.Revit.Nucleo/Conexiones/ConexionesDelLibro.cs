@@ -98,7 +98,8 @@ public static class ConexionesDelLibro
     {
         if (h.NoCumplen > 0)
         {
-            m.Avisos.Add($"La hoja tiene {h.NoCumplen} revision(es) que NO CUMPLEN. Corrigela antes de mandar el detalle a obra.");
+            m.Avisos.Add($"La hoja tiene {h.NoCumplen} revision(es) que NO CUMPLEN: " + string.Join("; ", h.Fallas.Take(4))
+                + ". Corrigela antes de mandar el detalle a obra.");
         }
 
         if (h.DeEjemplo)

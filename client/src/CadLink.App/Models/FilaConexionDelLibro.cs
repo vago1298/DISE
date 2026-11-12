@@ -54,7 +54,12 @@ public sealed class FilaConexionDelLibro : INotifyPropertyChanged
             var h = Conexion.Hoja;
             var partes = new List<string>();
 
-            partes.Add(h.NoCumplen > 0 ? $"{h.NoCumplen} NO CUMPLE(N)" : "Cumple");
+            partes.Add(h.NoCumplen > 0 ? $"{h.NoCumplen} NO CUMPLE(N): {string.Join("; ", h.Fallas)}" : "Cumple");
+
+            if (h.ConError > 0)
+            {
+                partes.Add($"{h.ConError} con error de Excel");
+            }
 
             if (h.RequierenAtiesador > 0)
             {

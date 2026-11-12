@@ -3,8 +3,9 @@
 El libro de revisiones de acero (NTC-Acero 2023) escribe cada dato en una fila: la etiqueta en la
 columna B -«Grueso de la placa, tp =»- y el valor en la C. Las filas se mueven cuando la hoja crece,
 asi que CadLink NO lee por fila: lee por etiqueta. Esta tabla dice, hoja por hoja y EN EL ORDEN DE
-LA HOJA, que etiqueta lleva cada dato, y el valor de fabrica de cada dato capturable (para saber si
-una hoja todavia trae los datos de ejemplo).
+LA HOJA, que etiqueta lleva cada dato, el valor de fabrica de cada dato capturable (para saber si
+una hoja todavia trae los datos de ejemplo), sus opciones y su unidad (para capturarlo a mano en
+CadLink). Las opciones van separadas por «|»; «@IR», «@OR», «@ACEROS» son las listas del catalogo.
 
 La fuente es tools/datos/etiquetas-libro-acero.json, que sale del mismo generador del libro.
 
@@ -50,8 +51,13 @@ def main():
     for code, h in datos.items():
         out.append("        new(%s, %s, %s, new DatoDelLibro[]" % (cs(code), cs(h["hoja"]), cs(h["titulo"])))
         out.append("        {")
-        for nombre, etiqueta, clase, dv in h["items"]:
-            out.append("            new(%s, %s, %s, %s)," % (cs(nombre), cs(etiqueta), "true" if clase == "I" else "false", defecto(dv)))
+        for item in h["items"]:
+            nombre, etiqueta, clase, dv = item[:4]
+            opciones = item[4] if len(item) > 4 else None
+            unidad = item[5] if len(item) > 5 else ""
+            ops = "null" if not opciones else cs("|".join(opciones))
+            out.append("            new(%s, %s, %s, %s, %s, %s)," % (cs(nombre), cs(etiqueta), "true" if clase == "I" else "false",
+                                                              defecto(dv), ops, cs(unidad)))
         out.append("        }),")
     out.append("    };")
     out.append("}")

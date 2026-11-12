@@ -222,6 +222,52 @@ internal static class Program
     }
 
     // ==================================================================
+    //  Las conexiones capturadas a mano, sin el libro
+    // ==================================================================
+    private static void AMano()
+    {
+        Console.WriteLine();
+        Console.WriteLine("  -- Capturadas a mano --");
+
+        // Un catalogo de mentiras: todos los IR iguales y todos los OR iguales.
+        static PerfilDeCatalogo? Catalogo(string n) =>
+            n.StartsWith("W", StringComparison.Ordinal) ? new PerfilDeCatalogo(45.7, 19.0, 1.45, 0.90, 1650, false)
+            : n.StartsWith("HSS", StringComparison.Ordinal) ? new PerfilDeCatalogo(15.2, 15.2, 1.27, 1.27, 0, true)
+            : null;
+
+        foreach (var codigo in ConexionesAMano.Codigos)
+        {
+            var datos = ConexionesAMano.Datos(codigo);
+            Check($"{codigo}: tiene datos que capturar", datos.Count > 3 && datos.All(d => d.EsCaptura), datos.Count.ToString(CultureInfo.InvariantCulture));
+            Check($"{codigo}: cada dato trae su descripcion", datos.All(d => d.Descripcion.Length > 0));
+
+            var h = ConexionesAMano.Hoja(codigo, "A MANO " + codigo, ConexionesAMano.Defectos(codigo), Catalogo);
+            var m = ConexionesDelLibro.Construir(h, out var porQueNo);
+            if (codigo == "BP")
+            {
+                // La placa base se dibuja con el detalle de la hoja Placa Base, no con vistas propias.
+                var pb = PlacaBaseDelLibro.Datos(h);
+                Check("BP: se arma la placa base con el peralte del catalogo",
+                    m?.PlacaBase is not null && Casi(pb.PeralteCm, 45.7) && pb.NCm > pb.PeralteCm, porQueNo ?? string.Empty);
+            }
+            else
+            {
+                Check($"{codigo}: se arma con lo capturado y el catalogo", m is not null && Finitos(m) && VistasBien(m), porQueNo ?? string.Empty);
+            }
+        }
+
+        // Lo capturado manda; lo que el libro calcula sale del catalogo.
+        var ce = ConexionesAMano.Hoja("CE", "CE", ConexionesAMano.Defectos("CE"), Catalogo);
+        Check("CE: el peralte de la viga sale del catalogo", Casi(ce.Num("d"), 45.7), ce.Num("d").ToString(CultureInfo.InvariantCulture));
+        Check("CE: la pared del tubo de diseño es 0.93 de la nominal", Casi(ce.Num("tb"), 0.93 * 1.27), ce.Num("tb").ToString(CultureInfo.InvariantCulture));
+
+        var v = ConexionesAMano.Defectos("RB");
+        v["ID"] = "RB-A";
+        var rb = ConexionesAMano.Hoja("RB", "RB", v, Catalogo);
+        Check("lo capturado se respeta", rb.Id == "RB-A", rb.Id);
+    }
+
+    // ==================================================================
     private static void ElLector()
     {
         Console.WriteLine("\n[1] El lector del libro");
@@ -266,8 +312,15 @@ internal static class Program
         conNoCumple.Poner(900, 4, "NO CUMPLE", "f");
         conNoCumple.Poner(901, 2, "Revisión: alma de la columna");
         conNoCumple.Poner(901, 4, "REQUIERE ATIESADOR", "f");
+        conNoCumple.Poner(902, 2, "Revisión: bloque de cortante");
+        conNoCumple.Poner(902, 4, "#DIV/0!", "f");
+        conNoCumple.Poner(903, 2, "Revisión: no aplica");
+        conNoCumple.Poner(903, 4, "-", "f");
         var sc = Leer(conNoCumple);
         Check("cuenta las revisiones que no cumplen", sc.NoCumplen == 1 && sc.RequierenAtiesador == 1, $"{sc.NoCumplen}/{sc.RequierenAtiesador}");
+        Check("dice CUAL revision no cumple", sc.Fallas.Any(f => f.StartsWith("la placa aguanta", StringComparison.Ordinal)), string.Join("; ", sc.Fallas));
+        Check("un error de Excel (#DIV/0!) se cuenta aparte, no como no cumple", sc.ConError == 1, sc.ConError.ToString(CultureInfo.InvariantCulture));
+        Check("«-» es como cumple", sc.Fallas.All(f => !f.Contains("no aplica", StringComparison.Ordinal)));
 
         Check("pulgadas: 3.18 cm = 1 1/4\"", TextoMedida.Pulgadas(3.18) == "1 1/4\"", TextoMedida.Pulgadas(3.18));
         Check("pulgadas: 0.95 cm = 3/8\"", TextoMedida.Pulgadas(0.95) == "3/8\"", TextoMedida.Pulgadas(0.95));
@@ -476,6 +529,11 @@ internal static class Program
                 Check($"{c.Hoja.Hoja}: finito y con vistas", Finitos(m) && VistasBien(m));
             }
 
+            foreach (var f in c.Hoja.Fallas)
+            {
+                Console.WriteLine("            falla: " + f);
+            }
+
             if (m is not null && Environment.GetEnvironmentVariable("CADLINK_VER_SOLDADURAS") == "1")
             {
                 foreach (var x in m.Cordones.Select(k => $"{k.Simbolo} | {k.Tamano} | {k.Electrodo} | {k.Descripcion}").Distinct())
@@ -523,6 +581,7 @@ internal static class Program
 
         ElLector();
         LasPiezas();
+        AMano();
 
         var ruta = args.Length > 0 ? args[0] : Environment.GetEnvironmentVariable("CADLINK_LIBRO_ACERO");
 

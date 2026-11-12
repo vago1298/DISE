@@ -17067,7 +17067,7 @@ def v32_conexiones_del_libro() -> None:
     spec.loader.exec_module(gen)
     datos = _json.load(open(ruta("tools/datos/etiquetas-libro-acero.json"), encoding="utf-8"))
     check("la tabla de etiquetas esta al dia con su JSON",
-          all(gen.cs(e) in nucleo["EtiquetasExcel.g.cs"] for h in datos.values() for _, e, _, _ in h["items"]))
+          all(gen.cs(it[1]) in nucleo["EtiquetasExcel.g.cs"] for h in datos.values() for it in h["items"]))
 
     cnx = nucleo["ConexionesDelLibro.cs"]
     for codigo in ("UV", "WF", "RB", "EP", "SC", "MW", "GP", "CE", "CX", "BP"):
@@ -17118,13 +17118,26 @@ def v32_conexiones_del_libro() -> None:
     check("el cordon se rellena con el hatch de la soldadura de la placa base",
           'Perfil(EstiloDibujo.PlacaBase).Texto("hatch.soldadura")' in cad and "AddLightWeightPolyline" in drw
           and "ConstantWidth" not in drw)
-    check("los textos del detalle son de 0.07 y el cuadro de datos va en un MTEXT justificado",
-          '"alto.texto", GrupoLetras, "Altura de las llamadas, de la simbología de soldadura y del cuadro de datos", TipoAjuste.Medida, N(0.07)' in est
-          and '"\\\\pqj;"' in drw)
+    check("los textos del detalle son de 0.09 y el cuadro de datos va centrado en un MTEXT",
+          '"alto.texto", GrupoLetras, "Altura de las llamadas y del cuadro de datos", TipoAjuste.Medida, N(0.09)' in est
+          and '"\\\\pqc;"' in drw)
+    check("la simbologia de soldadura tiene su propio tamaño, mas chico que el texto",
+          '"alto.simbolo", GrupoLetras,' in est and 'N(0.04))' in est and "AltoSimbolo" in cad)
     check("las cotas van con dos decimales", 'ToString("0.00", CultureInfo.InvariantCulture)' in nucleo["ModeloConexion.cs"]
           and "TextoMedida.Cota(" in nucleo["PiezasLocales.cs"])
     check("los detalles van aparte, a la izquierda de X = -25",
-          "private const double XDeLosDetalles = -25;" in app and "x - dibujante.Medir(detalle)" in app)
+          "private const double XDeLosDetalles = -25;" in app and "dibujante.Dibujar(detalle, x - medida, y)" in app)
+    check("y van ordenados: un renglon por tipo de hoja",
+          "elegidas.GroupBy(c => c.M.Codigo)" in app)
+    amano = leer(ruta("client/src/CadLink.App/MainWindow.ConexionesAMano.cs"))
+    check("las conexiones se pueden capturar a mano, sin el libro, en su subpestaña",
+          '<TabItem Header="Capturar a mano">' in xaml and '<TabItem Header="Desde el libro de Excel">' in xaml
+          and 'Click="OnDibujarConexionesAMano"' in xaml and "ConexionesAMano.Hoja(" in amano
+          and "DibujarConexiones(elegidas);" in amano)
+    check("las capturadas a mano se guardan con el proyecto y entran al deshacer",
+          "p.ConexionesAMano.Add(new ConexionAManoGuardada" in mw and "_datos.ConexionesAMano.Add(new ConexionAMano(" in mw)
+    check("capturar a mano lo decide la misma licencia",
+          "ConexionesAManoButton.IsEnabled = puedeDibujar;" in mw)
     check("un dato que no se encuentra se avisa", "No se encontraron {faltan.Count} dato(s)" in cnx)
     check("hay prueba ejecutable de las conexiones", os.path.exists(ruta("tools/prueba-conexiones/Program.cs")))
 

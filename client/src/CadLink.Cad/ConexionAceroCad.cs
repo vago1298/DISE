@@ -101,6 +101,9 @@ public static class ConexionAceroCapas
 
     public static double AltoTitulo => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("alto.titulo");
 
+    /// <summary>La altura de texto con que se arma la simbologia de soldadura: sus proporciones van en ella.</summary>
+    public static double AltoSimbolo => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("alto.simbolo");
+
     public static double AltoVista => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("alto.vista");
 
     public static double AltoCota => EstiloDibujo.Actual.Perfil(EstiloDibujo.Conexiones).Numero("cota.alto");

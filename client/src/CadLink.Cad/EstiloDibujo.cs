@@ -428,9 +428,10 @@ public sealed class EstiloDibujo
         e._perfiles.Add(new PerfilEstilo(Conexiones, "Conexiones de acero (libro de Excel)",
                 "Los detalles de las conexiones que se leen del libro de revisiones de acero: uniones viga-columna, placas gusset, contraventeos.")
             .Con("fuente", GrupoLetras, "Fuente del estilo ACERO_CONEXION", TipoAjuste.Fuente, "Bahnschrift Light SemiCondensed")
-            .Con("alto.texto", GrupoLetras, "Altura de las llamadas, de la simbología de soldadura y del cuadro de datos", TipoAjuste.Medida, N(0.07))
-            .Con("alto.titulo", GrupoLetras, "Altura del título del detalle", TipoAjuste.Medida, N(0.07))
-            .Con("alto.vista", GrupoLetras, "Altura del nombre de cada vista (ELEVACIÓN, PLANTA)", TipoAjuste.Medida, N(0.07))
+            .Con("alto.texto", GrupoLetras, "Altura de las llamadas y del cuadro de datos", TipoAjuste.Medida, N(0.09))
+            .Con("alto.titulo", GrupoLetras, "Altura del título del detalle", TipoAjuste.Medida, N(0.09))
+            .Con("alto.vista", GrupoLetras, "Altura del nombre de cada vista (ELEVACIÓN, PLANTA)", TipoAjuste.Medida, N(0.09))
+            .Con("alto.simbolo", GrupoLetras, "Tamaño de la simbología de soldadura (la altura de texto con que se arma)", TipoAjuste.Medida, N(0.04))
             .Con("cota.alto", GrupoCotas, "Altura del número de las cotas (COTA_CONEXION)", TipoAjuste.Medida, N(0.016))
             .Con("cota.marca.tam", GrupoCotas, "Tamaño de la marca", TipoAjuste.Medida, N(0.012))
             .Con("cota.marca", GrupoCotas, "Tipo de marca", TipoAjuste.Marca, "_OBLIQUE")

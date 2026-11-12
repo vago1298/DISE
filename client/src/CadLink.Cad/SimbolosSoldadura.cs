@@ -437,13 +437,14 @@ public static class SimbolosSoldadura
 
     /// <summary>
     /// Una llamada de soldadura que APUNTA a un cordón del detalle: la flecha desde el cordón hasta
-    /// el codo, la línea de referencia hacia la DERECHA con su símbolo, el tamaño a su izquierda y
-    /// la cola con el electrodo al final. Es el mismo renglón de la simbología, con la flecha
-    /// donde está la soldadura.
+    /// el codo, la línea de referencia con su símbolo, el tamaño a la izquierda del símbolo y la
+    /// cola con el electrodo al final. Es el mismo renglón de la simbología, con la flecha donde está
+    /// la soldadura. La línea va hacia la derecha o hacia la izquierda del codo, según de qué lado
+    /// del detalle quede la llamada; el símbolo conserva su cateto vertical a la izquierda.
     /// </summary>
-    /// <returns>El renglón; su último punto del leader es el final de la línea de referencia.</returns>
     public static Renglon Apuntado(
-        Tipo t, double xPunta, double yPunta, double xCodo, double yRef, double h, string tamano, string cola)
+        Tipo t, double xPunta, double yPunta, double xCodo, double yRef, double h, string tamano, string cola,
+        bool haciaLaDerecha = true)
     {
         var abiertas = new List<double[]>();
         var cerradas = new List<double[]>();
@@ -451,10 +452,13 @@ public static class SimbolosSoldadura
         var textos = new List<TextoDwg>();
         (double X, double Y, double R)? circulo = null;
 
-        var xFin = xCodo + (LineaReferencia * h);
+        var s = haciaLaDerecha ? 1.0 : -1.0;
+        var xFin = xCodo + (s * LineaReferencia * h);
         var leader = new[] { xPunta, yPunta, xCodo, yRef, xFin, yRef };
-        var xs = xCodo + (SimboloDesdeCodo * h);
         var lado = LadoSimbolo * h;
+
+        // El canto izquierdo del símbolo: a SimboloDesdeCodo del codo, del lado de la línea.
+        var xs = haciaLaDerecha ? xCodo + (SimboloDesdeCodo * h) : xCodo - (SimboloDesdeCodo * h) - lado;
 
         switch (t)
         {
@@ -491,7 +495,6 @@ public static class SimbolosSoldadura
 
         if (tamano.Trim().Length > 0)
         {
-            // El tamaño a la izquierda del símbolo, del lado de la flecha, como en la placa base.
             textos.Add(new TextoDwg(tamano.Trim(), xs - (0.4 * h), yRef + (0.55 * lado), 0.8 * h, 11));
         }
 
@@ -514,22 +517,26 @@ public static class SimbolosSoldadura
             });
         }
 
+        // La cola se abre hacia fuera, con el electrodo dentro.
         abiertas.Add(new[]
         {
-            xFin + (LargoCola * h), yRef + (SemiAltoCola * h),
+            xFin + (s * LargoCola * h), yRef + (SemiAltoCola * h),
             xFin, yRef,
-            xFin + (LargoCola * h), yRef - (SemiAltoCola * h),
+            xFin + (s * LargoCola * h), yRef - (SemiAltoCola * h),
         });
 
         textos.Add(new TextoDwg(cola.Trim().Length > 0 ? cola.Trim() : TextoDeLaCola,
-            xFin + ((LargoCola + 0.25) * h), yRef, AlturaCola * h, 9));
+            xFin + (s * (LargoCola + 0.25) * h), yRef, AlturaCola * h, haciaLaDerecha ? 9 : 11));
 
         return new Renglon(t, leader, abiertas, cerradas, rellenas, circulo, textos);
     }
 
     /// <summary>Lo que mide un renglón apuntado, del codo al final de la cola con su texto.</summary>
     public static double LargoApuntado(double h, string cola) =>
-        (LineaReferencia + LargoCola + 0.25) * h + (Math.Max(cola.Trim().Length, TextoDeLaCola.Length) * 0.62 * AlturaCola * h);
+        ((LineaReferencia + LargoCola + 0.25) * h) + (Math.Max(cola.Trim().Length, TextoDeLaCola.Length) * 0.62 * AlturaCola * h);
+
+    /// <summary>Lo alto que ocupa un renglón apuntado: el símbolo arriba y abajo de la línea.</summary>
+    public static double AltoApuntado(double h) => 2.6 * LadoSimbolo * h;
 
     // IzquierdaDelSimbolo SE QUITÓ. Servía para colocar la frase «SOLDADURA CON E70XX DE 3/16" DE
     // ESP.» justo antes de la cola, y esa frase ya no se escribe: el símbolo dice el tamaño y el

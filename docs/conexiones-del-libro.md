@@ -42,22 +42,40 @@ ATIESADORES y la X en dos niveles. Salen en la lista con el motivo.
   `python3 tools/generar_etiquetas_conexiones.py` desde `tools/datos/etiquetas-libro-acero.json`.
 - Se leen los **resultados guardados** de las fórmulas. Si el libro se modificó fuera de Excel y
   pide recalcular, CadLink lo avisa: ábrelo en Excel, guárdalo y vuelve a leerlo.
-- De cada hoja se cuentan las revisiones que **NO CUMPLEN** y se avisa; también se detectan las
-  hojas que todavía traen **los datos de ejemplo** del libro, que salen sin palomita.
+- De cada hoja se cuentan las revisiones que **NO CUMPLEN** y se dice **cuáles** (su texto de la
+  columna B). Un error de Excel (`#DIV/0!`, `#N/A`…) en la columna D se cuenta aparte, y «-» o
+  «N/A» cuentan como que cumple. También se detectan las hojas que todavía traen **los datos de
+  ejemplo** del libro, que salen sin palomita.
+- **Si en Excel una hoja cumple y CadLink dice que no**: CadLink lee lo que Excel GUARDÓ la última
+  vez. Si el archivo se cambió fuera de Excel, o se guardó sin recalcular, esos valores están
+  viejos. Ábrelo en Excel, guárdalo y pulsa «Volver a leer».
 
 ## Cómo sale en AutoCAD
 
 - **Aparte del resto del dibujo**: el primer detalle termina en X = -25 y los demás siguen hacia la
-  izquierda, en renglones de tres y hacia abajo.
+  izquierda. **Un renglón por tipo de hoja** (todas las viga-columna juntas, luego las placas
+  gusset…), hasta cuatro por renglón, y hacia abajo.
 - **Las soldaduras se llaman con la simbología de soldadura de CadLink** (la misma del cuadro de
   la pestaña Conexiones/Detalles): flecha al cordón, tamaño, símbolo (filete, filete en ambos lados,
   todo alrededor o bisel para la penetración completa) y el electrodo en la cola.
 - **El cordón se rellena con el hatch de la soldadura de la placa base** (patrón y escala de su
   perfil en *Estilo de dibujo*), sobre su contorno; no es una polilínea con ancho.
-- Los textos son MTEXT de **0.07** de alto con su punto de justificación; el cuadro de datos y las
-  notas van cada uno en un solo MTEXT justificado. Se cambian en *Estilo de dibujo*, perfil
-  «Conexiones de acero».
+- Los textos son MTEXT de **0.09** de alto. Las llamadas se reparten en dos columnas, a la
+  izquierda y a la derecha de cada vista, para que no se encimen. El título, los nombres de las
+  vistas y el cuadro de datos y notas van **centrados** bajo el detalle.
+- La simbología de soldadura tiene su propio tamaño (**0.04**, `alto.simbolo`), más chico que el
+  texto. Todo se cambia en *Estilo de dibujo*, perfil «Conexiones de acero».
 - Las cotas dicen los centímetros con **dos decimales**.
+
+## Capturar a mano, sin el libro
+
+En *Conexiones/Detalles* → *Capturar a mano* se elige el tipo de conexión, se agrega y se capturan
+los mismos datos de su hoja del libro (los que el detalle usa). Los perfiles y aceros se eligen de
+los catálogos de CadLink. Lo que el libro calcula con sus fórmulas (medidas del perfil, `k` ≈ tf +
+tw, pared de diseño del tubo = 0.93 de la nominal, ángulo de la diagonal, tipo de eslabón) se
+completa con el catálogo (`ConexionesAMano` del núcleo). No se revisa el diseño: eso lo hace el
+libro. Las conexiones capturadas se guardan con el proyecto (`.clk`) y se dibujan igual que las del
+libro. La subpestaña *Desde el libro de Excel* sigue igual.
 
 ## Si cambias el libro
 

@@ -235,32 +235,61 @@ public sealed class ConexionAceroDrawer
     //  El detalle
     // =====================================================================
 
-    /// <summary>El acomodo de una vista: lo que mide su dibujo y la columna de sus llamadas.</summary>
-    private readonly record struct Acomodo(double Holgura, double AnchoGeo, double AltoGeo, double AnchoLlamadas, double AltoLlamadas)
+    /// <summary>
+    /// El acomodo de una vista: las llamadas se reparten en DOS columnas, la de la izquierda para
+    /// las piezas de la mitad izquierda y la de la derecha para las otras. Asi las lineas no cruzan
+    /// todo el detalle ni se enciman.
+    /// </summary>
+    private sealed record Acomodo(
+        double Holgura, double AnchoGeo, double AltoGeo, double AnchoIzq, double AnchoDer,
+        List<LlamadaConexion> Izquierda, List<LlamadaConexion> Derecha, double AltoColumnas)
     {
-        public double Ancho => (2 * Holgura) + AnchoGeo + AnchoLlamadas;
+        public double Ancho => AnchoIzq + (2 * Holgura) + AnchoGeo + AnchoDer;
     }
+
+    private double HSimbolo => ConexionAceroCapas.AltoSimbolo * _f;
 
     private Acomodo Acomodar(VistaConexionCad v)
     {
         var h = HTexto;
-        var anchoLlamadas = 0.0;
-        var altoLlamadas = 0.0;
+        var centro = (v.MinX + v.MaxX) / 2;
+        var izq = v.Llamadas.Where(l => l.X < centro).OrderByDescending(l => l.Y).ToList();
+        var der = v.Llamadas.Where(l => l.X >= centro).OrderByDescending(l => l.Y).ToList();
 
-        foreach (var l in v.Llamadas)
+        // Que ninguna columna se cargue de mas: si una tiene el doble que la otra, pasan las mas cercanas al centro.
+        while (izq.Count > der.Count + 2)
         {
-            anchoLlamadas = Math.Max(anchoLlamadas, l.Simbolo is null
-                ? AnchoDeTexto(l.Texto, h)
-                : SimbolosSoldadura.LargoApuntado(h, l.Electrodo) + h + AnchoDeTexto(l.Descripcion, h));
-            altoLlamadas += Paso(l, h);
+            var l = izq.OrderByDescending(q => q.X).First();
+            izq.Remove(l);
+            der.Add(l);
         }
 
-        return new Acomodo(4 * h, (v.MaxX - v.MinX) * _escala, (v.MaxY - v.MinY) * _escala,
-            v.Llamadas.Count > 0 ? (6 * h) + anchoLlamadas : 0, altoLlamadas);
+        while (der.Count > izq.Count + 2)
+        {
+            var l = der.OrderBy(q => q.X).First();
+            der.Remove(l);
+            izq.Add(l);
+        }
+
+        izq = izq.OrderByDescending(l => l.Y).ToList();
+        der = der.OrderByDescending(l => l.Y).ToList();
+
+        double Ancho(List<LlamadaConexion> lista) => lista.Count == 0
+            ? 0
+            : (4 * h) + lista.Max(l => l.Simbolo is null
+                ? AnchoDeTexto(l.Texto, h)
+                : SimbolosSoldadura.LargoApuntado(HSimbolo, l.Electrodo) + (0.6 * h) + AnchoDeTexto(l.Descripcion, h));
+
+        double Alto(List<LlamadaConexion> lista) => lista.Sum(l => Paso(l));
+
+        return new Acomodo(2 * h, (v.MaxX - v.MinX) * _escala, (v.MaxY - v.MinY) * _escala, Ancho(izq), Ancho(der),
+            izq, der, Math.Max(Alto(izq), Alto(der)));
     }
 
     /// <summary>De renglon a renglon: el simbolo de soldadura pide mas que un texto.</summary>
-    private static double Paso(LlamadaConexion l, double h) => l.Simbolo is null ? 2.2 * h : 3.6 * h;
+    private double Paso(LlamadaConexion l) => l.Simbolo is null
+        ? 1.9 * HTexto
+        : Math.Max(1.9 * HTexto, SimbolosSoldadura.AltoApuntado(HSimbolo) + (0.5 * HTexto));
 
     private static double AnchoDeTexto(string texto, double h) => texto.Length * 0.62 * h;
 
@@ -268,36 +297,32 @@ public sealed class ConexionAceroDrawer
     public double Medir(ConexionAceroCad c)
     {
         var h = HTexto;
-        var margen = 6 * h;
+        var margen = 4 * h;
         var vistas = c.Vistas.Select(Acomodar).Sum(a => a.Ancho + margen) - (c.Vistas.Count > 0 ? margen : 0);
-        var textos = AnchoDelBloque(c);
-        return Math.Max(vistas, Math.Max(textos, AnchoDeTexto(c.Titulo, ConexionAceroCapas.AltoTitulo * _f)));
-    }
-
-    /// <summary>El ancho del cuadro de datos y de las notas: el de las vistas, o el de su renglon mas largo.</summary>
-    private double AnchoDelBloque(ConexionAceroCad c)
-    {
-        var h = HTexto;
-        return c.Renglones.Concat(c.Notas).Select(t => AnchoDeTexto(t, h)).DefaultIfEmpty(0).Max();
+        return Math.Max(vistas, AnchoDeTexto(c.Titulo, ConexionAceroCapas.AltoTitulo * _f));
     }
 
     /// <summary>
     /// Dibuja el detalle con su esquina de arriba a la izquierda en (<paramref name="x0"/>,
     /// <paramref name="y0"/>), en unidades del dibujo. Devuelve cuantas entidades se crearon.
     /// </summary>
+    /// <remarks>
+    /// El titulo, el nombre de cada vista y el cuadro de datos van CENTRADOS en el detalle.
+    /// </remarks>
     public int Dibujar(ConexionAceroCad c, double x0, double y0)
     {
         var antes = Contar();
         var h = HTexto;
         var hTitulo = ConexionAceroCapas.AltoTitulo * _f;
         var hVista = ConexionAceroCapas.AltoVista * _f;
-        var margen = 6 * h;
+        var margen = 4 * h;
         var ancho = Medir(c);
+        var centro = x0 + (ancho / 2);
 
-        Texto(c.Titulo, x0, y0, hTitulo, CapaConexion.Texto);
-        Texto(c.Subtitulo, x0, y0 - (1.8 * hTitulo), h, CapaConexion.Texto);
+        Texto(c.Titulo, centro, y0, hTitulo, CapaConexion.Texto, anclaje: 2);
+        Texto(c.Subtitulo, centro, y0 - (1.7 * hTitulo), 0.8 * h, CapaConexion.Texto, anclaje: 2);
 
-        var arriba = y0 - (1.8 * hTitulo) - (4 * h);
+        var arriba = y0 - (1.7 * hTitulo) - (3 * h);
         var x = x0;
         var abajo = arriba;
 
@@ -308,31 +333,36 @@ public sealed class ConexionAceroDrawer
             abajo = Math.Min(abajo, arriba - alto);
         }
 
-        // El cuadro de datos y las notas, bajo las vistas: un MTEXT por bloque, justificado al ancho
-        // del detalle, para que se lean como un parrafo y se muevan de una pieza.
-        var y = abajo - (3 * h);
-        var anchoBloque = Math.Max(ancho, 40 * h);
+        // El cuadro de datos y las notas, centrados bajo las vistas: un MTEXT por bloque, con sus
+        // renglones centrados, para que se lean como una tabla y se muevan de una pieza.
+        var y = abajo - (2 * h);
+        var anchoBloque = Math.Min(Math.Max(ancho, 30 * h),
+            Math.Max(c.Renglones.Concat(c.Notas).Select(t => AnchoDeTexto(t, h)).DefaultIfEmpty(0).Max() * 1.05, 30 * h));
 
         if (c.Renglones.Count > 0)
         {
-            Texto("DATOS DE LA HOJA", x0, y, hVista, CapaConexion.Texto);
-            y -= 2 * hVista;
-            Bloque(c.Renglones, x0, y, h, anchoBloque);
-            y -= (c.Renglones.Count * 1.7 * h) + h;
+            Texto("DATOS DE LA HOJA", centro, y, hVista, CapaConexion.Texto, anclaje: 2);
+            y -= 1.8 * hVista;
+            Bloque(c.Renglones, centro, y, h, anchoBloque);
+            y -= Renglones(c.Renglones, h, anchoBloque) * 1.7 * h + h;
         }
 
         if (c.Notas.Count > 0)
         {
-            Texto("NOTAS", x0, y, hVista, CapaConexion.Texto);
-            y -= 2 * hVista;
-            Bloque(c.Notas.Select((n, i) => $"{i + 1}. {n}").ToList(), x0, y, h, anchoBloque);
-            y -= c.Notas.Sum(n => Math.Ceiling(Math.Max(1, AnchoDeTexto(n, h) / anchoBloque))) * 1.7 * h;
+            Texto("NOTAS", centro, y, hVista, CapaConexion.Texto, anclaje: 2);
+            y -= 1.8 * hVista;
+            var notas = c.Notas.Select((n, i) => $"{i + 1}. {n}").ToList();
+            Bloque(notas, centro, y, h, anchoBloque);
+            y -= Renglones(notas, h, anchoBloque) * 1.7 * h;
         }
 
-        UltimoAncho = ancho;
+        UltimoAncho = Math.Max(ancho, anchoBloque);
         UltimoAlto = y0 - y;
         return Contar() - antes;
     }
+
+    private static double Renglones(IEnumerable<string> textos, double h, double ancho) =>
+        textos.Sum(t => Math.Ceiling(Math.Max(1, AnchoDeTexto(t, h) / ancho)));
 
     /// <summary>Lo que midio a lo alto el ultimo detalle.</summary>
     public double UltimoAlto { get; private set; }
@@ -343,9 +373,13 @@ public sealed class ConexionAceroDrawer
         var h = HTexto;
         var desfase = ConexionAceroCapas.DesfaseCota * _f;
         var a = Acomodar(v);
+        var alto = Math.Max(a.AltoGeo, a.AltoColumnas) + (2 * a.Holgura);
 
-        double X(double cx) => x + a.Holgura + ((cx - v.MinX) * _escala);
-        double Y(double cy) => y - a.Holgura - ((v.MaxY - cy) * _escala);
+        // El dibujo, centrado a lo alto en lo que ocupan sus llamadas.
+        var xGeo = x + a.AnchoIzq + a.Holgura;
+        var yGeo = y - ((alto - a.AltoGeo) / 2);
+        double X(double cx) => xGeo + ((cx - v.MinX) * _escala);
+        double Y(double cy) => yGeo - ((v.MaxY - cy) * _escala);
 
         foreach (var l in v.Lineas)
         {
@@ -374,39 +408,42 @@ public sealed class ConexionAceroDrawer
             Cota(X(c.X1), Y(c.Y1), X(c.X2), Y(c.Y2), c.Nx * desfase, c.Ny * desfase, c.Texto);
         }
 
-        // Las llamadas: una columna a la derecha de la vista, de arriba abajo. Las de soldadura con
-        // el simbolo de la simbologia de CadLink -la flecha al cordon, el tamaño, el simbolo y el
-        // electrodo en la cola- y su descripcion despues; las demas, texto con su linea.
-        var xTexto = x + a.Holgura + a.AnchoGeo + (6 * h);
-        var orden = v.Llamadas.OrderByDescending(l => l.Y).ToList();
-        var yTexto = y - a.Holgura - Math.Max(0, (a.AltoGeo - a.AltoLlamadas) / 2) - h;
-
-        foreach (var l in orden)
+        // Las dos columnas de llamadas, centradas a lo alto en el dibujo.
+        void Columna(List<LlamadaConexion> lista, double xCodo, bool derecha)
         {
-            var px = X(l.X);
-            var py = Y(l.Y);
+            var total = lista.Sum(Paso);
+            var yl = y - ((alto - total) / 2) - (Paso(lista.FirstOrDefault() ?? new LlamadaConexion(0, 0, "")) / 2);
 
-            if (l.Simbolo is { } tipo)
+            foreach (var l in lista)
             {
-                var r = SimbolosSoldadura.Apuntado(tipo, px, py, xTexto, yTexto, h, l.Tamano, l.Electrodo);
-                DibujarSimbolo(r);
-                var xDesc = xTexto + SimbolosSoldadura.LargoApuntado(h, l.Electrodo) + h;
-                Texto(l.Descripcion, xDesc, yTexto, h, CapaConexion.Texto, anclaje: 4);
-            }
-            else
-            {
-                Linea(px, py, xTexto - h, yTexto, CapaConexion.Texto);
-                Linea(xTexto - h, yTexto, xTexto - (0.3 * h), yTexto, CapaConexion.Texto);
-                Circulo(px, py, 0.25 * h, CapaConexion.Texto);
-                Texto(l.Texto, xTexto, yTexto, h, CapaConexion.Texto, anclaje: 4);
-            }
+                var px = X(l.X);
+                var py = Y(l.Y);
 
-            yTexto -= Paso(l, h);
+                if (l.Simbolo is { } tipo)
+                {
+                    var hs = HSimbolo;
+                    var r = SimbolosSoldadura.Apuntado(tipo, px, py, xCodo, yl, hs, l.Tamano, l.Electrodo, derecha);
+                    DibujarSimbolo(r);
+                    var largo = SimbolosSoldadura.LargoApuntado(hs, l.Electrodo) + (0.6 * h);
+                    Texto(l.Descripcion, derecha ? xCodo + largo : xCodo - largo, yl, h, CapaConexion.Texto, anclaje: derecha ? 4 : 6);
+                }
+                else
+                {
+                    var xt = derecha ? xCodo + (0.4 * h) : xCodo - (0.4 * h);
+                    Linea(px, py, xCodo, yl, CapaConexion.Texto);
+                    Circulo(px, py, 0.2 * h, CapaConexion.Texto);
+                    Texto(l.Texto, xt, yl, h, CapaConexion.Texto, anclaje: derecha ? 4 : 6);
+                }
+
+                yl -= Paso(l);
+            }
         }
 
-        var alto = Math.Max(a.AltoGeo + (2 * a.Holgura), y - yTexto);
-        Texto(v.Titulo, x + a.Holgura, y - alto - (0.5 * hVista), hVista, CapaConexion.Texto);
-        return (a.Ancho, alto + (2.5 * hVista));
+        Columna(a.Izquierda, x + a.AnchoIzq - (2 * h), derecha: false);
+        Columna(a.Derecha, xGeo + a.AnchoGeo + a.Holgura + (2 * h), derecha: true);
+
+        Texto(v.Titulo, xGeo + (a.AnchoGeo / 2), y - alto - (0.4 * hVista), hVista, CapaConexion.Texto, anclaje: 2);
+        return (a.Ancho, alto + (2.2 * hVista));
     }
 
     /// <summary>Un renglon de la simbologia: leader, simbolo, rellenos, circulo y textos.</summary>
@@ -597,8 +634,8 @@ public sealed class ConexionAceroDrawer
     }
 
     /// <summary>
-    /// Un MTEXT en (x, y) con su punto de anclaje: 1 arriba a la izquierda, 4 al medio a la
-    /// izquierda, 5 al centro, 6 al medio a la derecha.
+    /// Un MTEXT en (x, y) con su punto de anclaje: 1 arriba a la izquierda, 2 arriba al centro, 4 al
+    /// medio a la izquierda, 5 al centro, 6 al medio a la derecha.
     /// </summary>
     private void Texto(string texto, double x, double y, double alto, CapaConexion capa, int anclaje = 1)
     {
@@ -636,14 +673,14 @@ public sealed class ConexionAceroDrawer
             return;
         }
 
-        var contenido = "\\pqj;" + string.Join("\\P", renglones.Select(Escapar));
+        var contenido = "\\pqc;" + string.Join("\\P", renglones.Select(Escapar));
 
         try
         {
             AcadConnection.Retry(() =>
             {
                 dynamic t = _ms.AddMText(P(x, y), ancho, contenido);
-                t.AttachmentPoint = 1;
+                t.AttachmentPoint = 2;
                 t.InsertionPoint = P(x, y);
                 t.StyleName = ConexionAceroCapas.EstiloTexto;
                 t.Height = alto;

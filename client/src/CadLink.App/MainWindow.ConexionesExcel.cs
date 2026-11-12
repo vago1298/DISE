@@ -98,11 +98,13 @@ public partial class MainWindow
                 notas.Add("El libro se modificó fuera de Excel y pide recalcular: ábrelo en Excel, guárdalo y vuelve a leerlo, para que los valores calculados estén al día.");
             }
 
-            var noCumplen = lista.Where(c => c.Hoja.NoCumplen > 0 && !c.Hoja.DeEjemplo).Select(c => c.Hoja.Hoja.Trim()).ToList();
+            var noCumplen = lista.Where(c => c.Hoja.NoCumplen > 0 && !c.Hoja.DeEjemplo)
+                .Select(c => $"«{c.Hoja.Hoja.Trim()}»: {string.Join("; ", c.Hoja.Fallas)}").ToList();
 
             if (noCumplen.Count > 0)
             {
-                notas.Add("Tienen revisiones que NO CUMPLEN: " + string.Join(", ", noCumplen) + ". Se pueden dibujar, pero corrígelas antes de mandar el plano.");
+                notas.Add("Revisiones que el libro GUARDÓ como no cumple (es lo que dice la columna D de la hoja la última vez que Excel guardó el libro): "
+                    + string.Join(" · ", noCumplen) + ". Si en Excel ya cumplen, guarda el libro y pulsa «Volver a leer».");
             }
 
             ConexionesLibroNotas.Text = string.Join("\n", notas);
@@ -131,19 +133,30 @@ public partial class MainWindow
 
     private void OnDibujarConexionesDelLibro(object sender, RoutedEventArgs e)
     {
-        if (!_license.HasFeature("export-dxf"))
-        {
-            MessageBox.Show("Tu licencia no incluye la generación de dibujos.",
-                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var elegidas = _conexionesDelLibro.Where(f => f.Dibujar && f.Conexion.Modelo is not null).ToList();
+        var elegidas = _conexionesDelLibro.Where(f => f.Dibujar && f.Conexion.Modelo is not null)
+            .Select(f => (f.Conexion.Modelo!, f.Conexion.Hoja)).ToList();
 
         if (elegidas.Count == 0)
         {
             MessageBox.Show(this, "Lee un libro y palomea las conexiones que quieres dibujar.",
                 AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        DibujarConexiones(elegidas);
+    }
+
+    /// <summary>
+    /// Dibuja las conexiones en AutoCAD, APARTE: a la izquierda de X = -25, un renglon por cada
+    /// tipo de hoja (todas las uniones viga-columna juntas, luego las placas gusset…) en el orden
+    /// en que aparecen, y en cada renglon de derecha a izquierda.
+    /// </summary>
+    private void DibujarConexiones(List<(ModeloConexion M, HojaLeida H)> elegidas)
+    {
+        if (!_license.HasFeature("export-dxf"))
+        {
+            MessageBox.Show("Tu licencia no incluye la generación de dibujos.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -159,65 +172,75 @@ public partial class MainWindow
             dibujante.AsegurarCapas();
             PlacaBaseDrawer? placas = null;
 
-            // LOS DETALLES VAN APARTE, a la izquierda de X = -25: el primero termina ahi y los demas
-            // siguen hacia la izquierda, en renglones de tres y hacia abajo. Asi no se encima nada
-            // con lo que ya este dibujado en las X positivas.
-            var x = XDeLosDetalles;
-            var y = 0.0;
-            var altoDelRenglon = 0.0;
-            var enElRenglon = 0;
             var separacion = 60 * escala;
             var hechas = 0;
             var fallos = new List<string>();
+            var y = 0.0;
 
-            foreach (var f in elegidas)
+            // Un renglon por tipo de hoja, en el orden en que salen en la lista.
+            var grupos = elegidas.GroupBy(c => c.M.Codigo).ToList();
+
+            foreach (var grupo in grupos)
             {
-                var m = f.Conexion.Modelo!;
+                var x = XDeLosDetalles;
+                var altoDelRenglon = 0.0;
+                var enElRenglon = 0;
 
-                if (m.PlacaBase is not null)
+                foreach (var (m, h) in grupo)
                 {
-                    placas ??= NuevoDibujanteDePlacas(doc, escala);
-                    var p = PlacaBaseDelLibroAFila(PlacaBaseDelLibro.Datos(f.Conexion.Hoja)).AFormatoCad();
+                    double ancho, alto;
 
-                    // La insercion de la placa va en unidades del dibujo, como en la hoja Placa Base,
-                    // y en su esquina izquierda: se recorre a la izquierda lo que va a medir.
-                    var anchoPlaca = (p.AnchoTotalDibujoCm + 60) * escala;
-                    p.InsercionX = x - anchoPlaca;
-                    p.InsercionY = y + p.InsercionY;
-
-                    if (placas.Dibujar(p) > 0)
+                    if (m.PlacaBase is not null)
                     {
-                        hechas++;
-                        Avanzar(Math.Max(placas.UltimoAnchoDibujado, anchoPlaca), 250 * escala);
+                        placas ??= NuevoDibujanteDePlacas(doc, escala);
+                        var p = PlacaBaseDelLibroAFila(PlacaBaseDelLibro.Datos(h)).AFormatoCad();
+
+                        // La insercion de la placa va en unidades del dibujo, como en la hoja Placa
+                        // Base, y en su esquina izquierda: se recorre a la izquierda lo que va a medir.
+                        var anchoPlaca = (p.AnchoTotalDibujoCm + 60) * escala;
+                        p.InsercionX = x - anchoPlaca;
+                        p.InsercionY = y + p.InsercionY;
+
+                        if (placas.Dibujar(p) <= 0)
+                        {
+                            fallos.Add($"{h.Hoja.Trim()}: la placa base no se dibujó (revisa las separaciones de las anclas en la hoja Placa Base).");
+                            continue;
+                        }
+
+                        ancho = Math.Max(placas.UltimoAnchoDibujado, anchoPlaca);
+                        alto = 250 * escala;
                     }
                     else
                     {
-                        fallos.Add($"{f.Hoja}: la placa base no se dibujó (revisa las separaciones de las anclas en la hoja Placa Base).");
+                        var detalle = ACad(m, h);
+                        var medida = dibujante.Medir(detalle);
+
+                        if (dibujante.Dibujar(detalle, x - medida, y) <= 0)
+                        {
+                            continue;
+                        }
+
+                        ancho = Math.Max(medida, dibujante.UltimoAncho);
+                        alto = dibujante.UltimoAlto;
                     }
 
-                    continue;
-                }
-
-                var detalle = ACad(m, f.Conexion.Hoja);
-
-                if (dibujante.Dibujar(detalle, x - dibujante.Medir(detalle), y) > 0)
-                {
                     hechas++;
-                    Avanzar(dibujante.UltimoAncho, dibujante.UltimoAlto);
+                    altoDelRenglon = Math.Max(altoDelRenglon, alto);
+                    x -= ancho + separacion;
+
+                    // Mas de cuatro del mismo tipo: se sigue en el renglon de abajo.
+                    if (++enElRenglon >= 4)
+                    {
+                        x = XDeLosDetalles;
+                        y -= altoDelRenglon + separacion;
+                        altoDelRenglon = 0;
+                        enElRenglon = 0;
+                    }
                 }
-            }
 
-            void Avanzar(double ancho, double alto)
-            {
-                altoDelRenglon = Math.Max(altoDelRenglon, alto);
-                x -= ancho + separacion;
-
-                if (++enElRenglon >= 3)
+                if (enElRenglon > 0)
                 {
-                    x = XDeLosDetalles;
-                    y -= altoDelRenglon + separacion;
-                    altoDelRenglon = 0;
-                    enElRenglon = 0;
+                    y -= altoDelRenglon + (2 * separacion);
                 }
             }
 
@@ -230,14 +253,14 @@ public partial class MainWindow
                 fallos.AddRange(placas.Fallos);
             }
 
-            var resumen = $"{hechas} de {elegidas.Count} conexión(es) dibujada(s) en tamaño real, aparte: a la izquierda de X = {XDeLosDetalles:0}.";
+            var resumen = $"{hechas} de {elegidas.Count} conexión(es) dibujada(s) en tamaño real, aparte: a la izquierda de X = {XDeLosDetalles:0}, un renglón por tipo de hoja.";
 
             if (fallos.Count > 0)
             {
                 resumen += "\n\nAvisos:\n" + string.Join("\n", fallos.Distinct().Take(12));
             }
 
-            StatusText.Text = $"Conexiones del libro: {hechas} dibujadas.";
+            StatusText.Text = $"Conexiones: {hechas} dibujadas.";
             MessageBox.Show(this, resumen, AppInfo.ProductName, MessageBoxButton.OK,
                 fallos.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
         }
