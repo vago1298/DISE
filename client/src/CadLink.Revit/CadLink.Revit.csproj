@@ -155,6 +155,12 @@
       <LogicalName>CadLink.Revit.cimentacion-16.png</LogicalName>
     </EmbeddedResource>
 
+    <EmbeddedResource Include="Assets\conexiones-libro-32.png">
+      <LogicalName>CadLink.Revit.conexiones-libro-32.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assets\conexiones-libro-16.png">
+      <LogicalName>CadLink.Revit.conexiones-libro-16.png</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="Assets\soldar-viga-32.png">
       <LogicalName>CadLink.Revit.soldar-viga-32.png</LogicalName>
     </EmbeddedResource>

@@ -72,6 +72,7 @@ Antes de invertir tiempo, ten claro qué está listo y qué no:
 | **Lectura de SAP2000** | 🚧 En proceso — CSI comparte la OAPI, así que es el mismo lector con otro ProgID |
 | **Exportar a Revit por IFC** | ✅ Completo, sin probar en Revit real — ver [`docs/exportar-a-revit.md`](docs/exportar-a-revit.md) |
 | **Complemento propio para Revit**, con cuadro de mapeo sección → familia | ✅ Núcleo completo y probado; la capa de la Revit API sin ejecutar — ver [`docs/complemento-revit.md`](docs/complemento-revit.md) |
+| **Conexiones de acero desde el libro de Excel** (NTC-Acero 2023): se leen sus hojas y se dibujan en AutoCAD y se modelan en Revit | ✅ Lector y piezas probados con un libro real; el dibujo en AutoCAD y la capa de la Revit API sin ejecutar — ver [`docs/conexiones-del-libro.md`](docs/conexiones-del-libro.md) |
 
 Los pendientes están marcados en el código con el comentario
 `PENDIENTE DE IMPLEMENTAR`.

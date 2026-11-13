@@ -1311,6 +1311,9 @@ public sealed class DatosProyecto
     /// </remarks>
     public ObservableCollection<PlacaBaseRow> PlacasBase { get; } = new();
 
+    /// <summary>Las conexiones de acero capturadas a mano, sin el libro de Excel.</summary>
+    public ObservableCollection<ConexionAMano> ConexionesAMano { get; } = new();
+
     /// <summary>Carga un ejemplo para que la interfaz no arranque vacía.</summary>
     /// <remarks>
     /// <b>Ninguna sección de concreto del ejemplo escribe su ESTRIBO ni su ESCALA a mano</b>,

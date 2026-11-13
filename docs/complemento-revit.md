@@ -561,6 +561,8 @@ Tres botones para lo que va **debajo y entre** las piezas ya modeladas. Funciona
 colocadas, así que en Revit se **eligen las piezas** y se escoge la fila. La posición, el giro y
 la cota salen de la pieza de Revit.
 
+El botón **Conexiones del libro** del mismo panel lee directamente el libro de revisiones de acero (.xlsm) y modela sus conexiones; está descrito en [`conexiones-del-libro.md`](conexiones-del-libro.md).
+
 ### Cómo se usa
 
 1. En CadLink, en la hoja **Placa Base**, **Zapatas Aisladas** o **Zapatas Corridas**, pulsa

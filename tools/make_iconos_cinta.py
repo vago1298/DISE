@@ -237,6 +237,18 @@ def soldar_columna():
     return f + lineas(pie + [pie[0]], 1.6, ROJO)
 
 
+def conexiones_libro():
+    # La columna, la viga con su placa de patin y una hoja verde de Excel: la conexion del libro.
+    f = caja(0, 0, 0, 6, 6, 24, cx=9, cy=28, s=0.95)
+    f += caja(6, 1.5, 13, 15, 3, 5, cx=9, cy=28, s=0.95)
+    f += caja(6, 0.5, 18, 9, 5, 1.2, cx=9, cy=28, s=0.95, colores=((245, 140, 140, 255), ROJO, (170, 40, 40, 255)))
+    verde = ((120, 200, 140, 255), (40, 150, 80, 255), (20, 100, 55, 255))
+    f += caja(14, 10, 0, 9, 1, 11, cx=9, cy=28, s=0.95, colores=verde)
+    for z in (3, 5.5, 8):
+        f.append(linea(iso(15, 11, z, 9, 28, 0.95), iso(22, 11, z, 9, 28, 0.95), 0.7, BORDE))
+    return f
+
+
 ICONOS = {
     "importar-etabs": importar_etabs,
     "armar-modelo": armar_modelo,
@@ -253,6 +265,7 @@ ICONOS = {
     "encamisar": encamisar,
     "armar-muros": armar_muros,
     "armar-cimentacion": armar_cimentacion,
+    "conexiones-libro": conexiones_libro,
 }
 
 

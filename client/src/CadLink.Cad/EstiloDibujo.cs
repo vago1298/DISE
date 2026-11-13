@@ -203,6 +203,7 @@ public sealed class EstiloDibujo
     public const string Muros = "muros";
     public const string PlacaBase = "placa";
     public const string PlantaEtabs = "planta";
+    public const string Conexiones = "conexiones";
 
     // ---------- Los grupos de la ventana ----------
     public const string GrupoLetras = "Letras";
@@ -418,6 +419,43 @@ public sealed class EstiloDibujo
             .Con("hatch.grout.escala", GrupoHatch, "Escala del grout", TipoAjuste.Medida, N(0.0006))
             .Con("hatch.soldadura", GrupoHatch, "Patrón de la soldadura", TipoAjuste.Patron, "JIS_RC_10")
             .Con("hatch.soldadura.escala", GrupoHatch, "Escala de la soldadura", TipoAjuste.Medida, N(0.0005)));
+
+        // ------------------------------------------------------------------
+        // Conexiones de acero leidas del libro de Excel: ConexionAceroDrawer. Se dibujan en
+        // tamaño real, como la placa base. El hatch de la soldadura es el de la placa base: se
+        // ajusta en su perfil y los dos detalles salen iguales.
+        // ------------------------------------------------------------------
+        e._perfiles.Add(new PerfilEstilo(Conexiones, "Conexiones de acero (libro de Excel)",
+                "Los detalles de las conexiones que se leen del libro de revisiones de acero: uniones viga-columna, placas gusset, contraventeos.")
+            .Con("fuente", GrupoLetras, "Fuente del estilo ACERO_CONEXION", TipoAjuste.Fuente, "Bahnschrift Light SemiCondensed")
+            .Con("alto.texto", GrupoLetras, "Altura de las llamadas y del cuadro de datos", TipoAjuste.Medida, N(0.09))
+            .Con("alto.titulo", GrupoLetras, "Altura del título del detalle", TipoAjuste.Medida, N(0.09))
+            .Con("alto.vista", GrupoLetras, "Altura del nombre de cada vista (ELEVACIÓN, PLANTA)", TipoAjuste.Medida, N(0.09))
+            .Con("alto.simbolo", GrupoLetras, "Tamaño de la simbología de soldadura (la altura de texto con que se arma)", TipoAjuste.Medida, N(0.04))
+            .Con("flecha.largo", GrupoLetras, "Largo de la punta de flecha de las llamadas de soldadura", TipoAjuste.Medida, N(0.025))
+            .Con("llamada.punto", GrupoLetras, "Radio del punto donde muerde una llamada de texto", TipoAjuste.Medida, N(0.006))
+            .Con("llamada.letras", GrupoLetras, "Letras por renglón de una llamada (más largas se parten en dos)", TipoAjuste.Medida, N(32))
+            .Con("perfil.ancho", GrupoLetras, "Ancho global (PEDIT Width) de las líneas de los perfiles", TipoAjuste.Medida, N(0.001))
+            .Con("soldadura.hatch", GrupoHatch, "Relleno de la soldadura", TipoAjuste.Patron, "SOLID")
+            .Con("soldadura.hatch.escala", GrupoHatch, "Escala del relleno de la soldadura (si no es SOLID)", TipoAjuste.Medida, N(0.0005))
+            .Con("soldadura.color", GrupoHatch, "Color del relleno de la soldadura", TipoAjuste.ColorAci, C(9))
+            .Con("soldadura.transparencia", GrupoHatch, "Transparencia del relleno de la soldadura (0 a 90)", TipoAjuste.Medida, N(70))
+            .Con("separacion.detalles", GrupoLetras, "Separación entre detalles y entre sus vistas", TipoAjuste.Medida, N(0.25))
+            .Con("cota.alto", GrupoCotas, "Altura del número de las cotas (COTA_CONEXION)", TipoAjuste.Medida, N(0.016))
+            .Con("cota.marca.tam", GrupoCotas, "Tamaño de la marca", TipoAjuste.Medida, N(0.012))
+            .Con("cota.marca", GrupoCotas, "Tipo de marca", TipoAjuste.Marca, "_OBLIQUE")
+            .Con("cota.color.texto", GrupoCotas, "Color del número", TipoAjuste.ColorAci, C(1))
+            .Con("cota.desfase", GrupoCotas, "Separación de la línea de cota a la pieza", TipoAjuste.Medida, N(0.05))
+            .Con("escala.lineas", GrupoColores, "Escala de las líneas ocultas y de eje", TipoAjuste.Medida, N(0.25))
+            .Con("capa.CONEXION PERFIL", GrupoColores, "Capa CONEXION PERFIL (los principales: columna, trabe, la viga que soporta)", TipoAjuste.ColorAci, C(7))
+            .Con("capa.CONEXION PERFIL SECUNDARIO", GrupoColores, "Capa CONEXION PERFIL SECUNDARIO (la viga que llega, las diagonales)", TipoAjuste.ColorAci, C(51))
+            .Con("capa.CONEXION OCULTO", GrupoColores, "Capa CONEXION OCULTO", TipoAjuste.ColorAci, C(8))
+            .Con("capa.CONEXION EJE", GrupoColores, "Capa CONEXION EJE (naranja: no se confunde con las cotas ni la soldadura)", TipoAjuste.ColorAci, C(30))
+            .Con("capa.CONEXION PLACAS", GrupoColores, "Capa CONEXION PLACAS", TipoAjuste.ColorAci, C(140))
+            .Con("capa.CONEXION TORNILLOS", GrupoColores, "Capa CONEXION TORNILLOS", TipoAjuste.ColorAci, C(6))
+            .Con("capa.CONEXION SOLDADURA", GrupoColores, "Capa CONEXION SOLDADURA", TipoAjuste.ColorAci, C(240))
+            .Con("capa.CONEXION COTAS", GrupoColores, "Capa CONEXION COTAS", TipoAjuste.ColorAci, C(7))
+            .Con("capa.ROTULOS", GrupoColores, "Capa ROTULOS de los textos (verde en pantalla, negra al imprimir)", TipoAjuste.ColorAci, C(3)));
 
         // ------------------------------------------------------------------
         // Planta estructural: PlantaDrawer. Las claves SON los parametros de su hoja CONFIG

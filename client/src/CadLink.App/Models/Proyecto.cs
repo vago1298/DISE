@@ -115,6 +115,17 @@ public sealed class ProyectoGuardado
     /// puede dar.
     /// </remarks>
     public List<FilaGuardada> PlacasBase { get; set; } = new();
+
+    /// <summary>Las conexiones de acero capturadas a mano. Un .clk de antes no las trae.</summary>
+    public List<ConexionAManoGuardada> ConexionesAMano { get; set; } = new();
+}
+
+/// <summary>Una conexion capturada a mano: su tipo y los datos de su hoja, por su nombre.</summary>
+public sealed class ConexionAManoGuardada
+{
+    public string Codigo { get; set; } = string.Empty;
+
+    public Dictionary<string, string> Valores { get; set; } = new();
 }
 
 public sealed class PlanoGuardado

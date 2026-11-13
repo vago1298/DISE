@@ -107,7 +107,7 @@ public sealed class OpcionesDetalle
 /// siguen.
 /// </para>
 /// </remarks>
-internal static class Detallador
+internal static partial class Detallador
 {
     // ======================================================================
     //  PLACAS BASE

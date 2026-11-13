@@ -255,6 +255,8 @@ public partial class MainWindow : Window
         EnlazarZapatasCorridas();
         EnlazarMuros();
         EnlazarPlacaBase();
+        EnlazarConexionesDelLibro();
+        EnlazarConexionesAMano();
 
         DatosCambiaron();
     }
@@ -591,6 +593,10 @@ public partial class MainWindow : Window
         // Y las placas base: dibujar el detalle de una placa es generar dibujo igual que lo
         // demas, asi que lo decide la MISMA licencia.
         PlacaBaseButton.IsEnabled = puedeDibujar;
+
+        // Las conexiones del libro de Excel tambien dibujan en AutoCAD.
+        ConexionesLibroButton.IsEnabled = puedeDibujar;
+        ConexionesAManoButton.IsEnabled = puedeDibujar;
 
         MostrarNotas(puedeDibujar
             ? "Cada sección se dibuja y se agrupa en un bloque con el nombre de su ID."
@@ -2490,6 +2496,12 @@ public partial class MainWindow : Window
             p.PlacasBase.Add(FilaSerializable.Leer(b));
         }
 
+        // Las conexiones capturadas a mano, por lo mismo: el deshacer serializa este objeto.
+        foreach (var c in _datos.ConexionesAMano)
+        {
+            p.ConexionesAMano.Add(new ConexionAManoGuardada { Codigo = c.Codigo, Valores = c.Valores() });
+        }
+
         return p;
     }
 
@@ -2699,6 +2711,17 @@ public partial class MainWindow : Window
                 var nueva = new PlacaBaseRow();
                 FilaSerializable.Aplicar(nueva, fila);
                 _datos.PlacasBase.Add(nueva);
+            }
+
+            // ---- Conexiones capturadas a mano ----
+            _datos.ConexionesAMano.Clear();
+
+            foreach (var c in p.ConexionesAMano ?? new List<ConexionAManoGuardada>())
+            {
+                if (CadLink.Revit.Nucleo.ConexionesAMano.Codigos.Contains(c.Codigo))
+                {
+                    _datos.ConexionesAMano.Add(new ConexionAMano(c.Codigo, c.Valores ?? new Dictionary<string, string>()));
+                }
             }
         }
         finally

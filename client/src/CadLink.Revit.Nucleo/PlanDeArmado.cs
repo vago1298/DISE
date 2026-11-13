@@ -18,6 +18,8 @@ public readonly record struct V3(double X, double Y, double Z)
 
     public static V3 operator -(V3 a, V3 b) => new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
 
+    public static V3 operator -(V3 a) => new(-a.X, -a.Y, -a.Z);
+
     public static V3 operator *(V3 a, double k) => new(a.X * k, a.Y * k, a.Z * k);
 
     public double Punto(V3 b) => (X * b.X) + (Y * b.Y) + (Z * b.Z);

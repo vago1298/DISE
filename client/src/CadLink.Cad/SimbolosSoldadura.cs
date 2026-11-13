@@ -435,6 +435,112 @@ public static class SimbolosSoldadura
         return new Renglon(t, leader, abiertas, cerradas, new List<double[]>(), circulo, textos);
     }
 
+    /// <summary>
+    /// Una llamada de soldadura que APUNTA a un cordón del detalle: la flecha desde el cordón hasta
+    /// el codo, la línea de referencia con su símbolo, el tamaño a la izquierda del símbolo y la
+    /// cola con el electrodo al final. Es el mismo renglón de la simbología, con la flecha donde está
+    /// la soldadura. La línea va hacia la derecha o hacia la izquierda del codo, según de qué lado
+    /// del detalle quede la llamada; el símbolo conserva su cateto vertical a la izquierda.
+    /// </summary>
+    /// <param name="largoFlecha">El largo de la punta; con cero, el de siempre (0.9 de la altura).</param>
+    public static Renglon Apuntado(
+        Tipo t, double xPunta, double yPunta, double xCodo, double yRef, double h, string tamano, string cola,
+        bool haciaLaDerecha = true, double largoFlecha = 0)
+    {
+        var abiertas = new List<double[]>();
+        var cerradas = new List<double[]>();
+        var rellenas = new List<double[]>();
+        var textos = new List<TextoDwg>();
+        (double X, double Y, double R)? circulo = null;
+
+        var s = haciaLaDerecha ? 1.0 : -1.0;
+        var xFin = xCodo + (s * LineaReferencia * h);
+        var leader = new[] { xPunta, yPunta, xCodo, yRef, xFin, yRef };
+        var lado = LadoSimbolo * h;
+
+        // El canto izquierdo del símbolo: a SimboloDesdeCodo del codo, del lado de la línea.
+        var xs = haciaLaDerecha ? xCodo + (SimboloDesdeCodo * h) : xCodo - (SimboloDesdeCodo * h) - lado;
+
+        switch (t)
+        {
+            case Tipo.FileteAmbosLados:
+                cerradas.Add(Triangulo(xs, yRef, lado, arriba: true));
+                cerradas.Add(Triangulo(xs, yRef, lado, arriba: false));
+                break;
+
+            case Tipo.BiselSimple:
+                abiertas.Add(new[] { xs, yRef, xs + (0.85 * lado), yRef + (1.25 * lado) });
+                textos.Add(new TextoDwg("45%%d", xs - (0.2 * h), yRef - (1.15 * h), 0.72 * h, 11));
+                break;
+
+            case Tipo.DeCampo:
+                abiertas.Add(new[] { xs, yRef, xs, yRef + (AstaBandera * h) });
+                rellenas.Add(new[]
+                {
+                    xs, yRef + (AstaBandera * h),
+                    xs + (VueloBandera * h), yRef + ((AstaBandera - 0.35) * h),
+                    xs, yRef + ((AstaBandera - 0.7) * h),
+                });
+                cerradas.Add(Triangulo(xs + (VueloBandera * h) + (0.5 * h), yRef, lado, arriba: true));
+                break;
+
+            default:
+                cerradas.Add(Triangulo(xs, yRef, lado, arriba: true));
+                break;
+        }
+
+        if (t == Tipo.TodoAlrededor)
+        {
+            circulo = (xCodo, yRef, RadioCirculo * h);
+        }
+
+        if (tamano.Trim().Length > 0)
+        {
+            textos.Add(new TextoDwg(tamano.Trim(), xs - (0.4 * h), yRef + (0.55 * lado), 0.8 * h, 11));
+        }
+
+        // La flecha en la punta, a lo largo del primer tramo.
+        var dx = xPunta - xCodo;
+        var dy = yPunta - yRef;
+        var l = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (l > 1e-9)
+        {
+            var ux = dx / l;
+            var uy = dy / l;
+            // La punta, del largo del estilo: en un nudo con placas de un centimetro una flecha del
+            // tamaño del texto tapa la junta que señala.
+            var largo = largoFlecha > 0 ? Math.Min(largoFlecha, 0.45 * l) : 0.9 * h;
+            var ancho = 0.3 * largo;
+            rellenas.Add(new[]
+            {
+                xPunta, yPunta,
+                xPunta - (ux * largo) - (uy * ancho), yPunta - (uy * largo) + (ux * ancho),
+                xPunta - (ux * largo) + (uy * ancho), yPunta - (uy * largo) - (ux * ancho),
+            });
+        }
+
+        // La cola se abre hacia fuera, con el electrodo dentro.
+        abiertas.Add(new[]
+        {
+            xFin + (s * LargoCola * h), yRef + (SemiAltoCola * h),
+            xFin, yRef,
+            xFin + (s * LargoCola * h), yRef - (SemiAltoCola * h),
+        });
+
+        textos.Add(new TextoDwg(cola.Trim().Length > 0 ? cola.Trim() : TextoDeLaCola,
+            xFin + (s * (LargoCola + 0.25) * h), yRef, AlturaCola * h, haciaLaDerecha ? 9 : 11));
+
+        return new Renglon(t, leader, abiertas, cerradas, rellenas, circulo, textos);
+    }
+
+    /// <summary>Lo que mide un renglón apuntado, del codo al final de la cola con su texto.</summary>
+    public static double LargoApuntado(double h, string cola) =>
+        ((LineaReferencia + LargoCola + 0.25) * h) + (Math.Max(cola.Trim().Length, TextoDeLaCola.Length) * 0.62 * AlturaCola * h);
+
+    /// <summary>Lo alto que ocupa un renglón apuntado: el símbolo arriba y abajo de la línea.</summary>
+    public static double AltoApuntado(double h) => 2.6 * LadoSimbolo * h;
+
     // IzquierdaDelSimbolo SE QUITÓ. Servía para colocar la frase «SOLDADURA CON E70XX DE 3/16" DE
     // ESP.» justo antes de la cola, y esa frase ya no se escribe: el símbolo dice el tamaño y el
     // electrodo en el sitio donde el estándar manda buscarlos. Sin ella, esta cuenta no la usaba
