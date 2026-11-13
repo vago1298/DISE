@@ -42,6 +42,9 @@ public sealed class Transform
     public XYZ OfVector(XYZ v) => v;
 
     public XYZ OfPoint(XYZ p) => p;
+
+    /// <summary>Revit API: Transform.CreateTranslation(XYZ).</summary>
+    public static Transform CreateTranslation(XYZ v) => new();
 }
 
 public sealed class ViewSection : View
@@ -183,6 +186,9 @@ public sealed class GeometryInstance : GeometryObject
 public abstract class Face
 {
     public Reference? Reference => null;
+
+    /// <summary>Revit API: Face.GetEdgesAsCurveLoops(). El contorno que se suelda.</summary>
+    public IList<CurveLoop> GetEdgesAsCurveLoops() => new List<CurveLoop>();
 }
 
 /// <summary>Revit API: PlanarFace.FaceNormal y Origin.</summary>

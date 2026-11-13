@@ -60,4 +60,34 @@ public sealed class Rebar : Element
         bool usarFormaExistente, bool crearFormaNueva) => new();
 
     public RebarShapeDrivenAccessor GetShapeDrivenAccessor() => new();
+
+    // Los ganchos por punta y el eje, para el armado de muros con ganchos distintos. SIN COMPROBAR:
+    //   Rebar.SetHookTypeId(int, ElementId), GetHookOrientation(int), SetHookOrientation(int, ...)
+    //   Rebar.GetCenterlineCurves(bool, bool, bool, MultiplanarOption, int)
+    public void SetHookTypeId(int extremo, ElementId gancho) { }
+
+    public RebarHookOrientation GetHookOrientation(int extremo) => RebarHookOrientation.Left;
+
+    public void SetHookOrientation(int extremo, RebarHookOrientation o) { }
+
+    public IList<Curve> GetCenterlineCurves(
+        bool ajustarCruces, bool sinGanchos, bool sinDobleces, MultiplanarOption opcion, int barra) => new List<Curve>();
+}
+
+public enum MultiplanarOption { IncludeOnlyPlanarCurves, IncludeAllMultiplanarCurves }
+
+// El ARMADO DE MUROS. SIN COMPROBAR contra la DLL: de la documentacion de la API.
+//   AreaReinforcement.Create(Document, Element anfitrion, IList<Curve> contorno, XYZ direccionMayor,
+//       ElementId tipoDeArea, ElementId tipoDeVarilla, ElementId tipoDeGancho)
+//   Y los BuiltInParameter REBAR_SYSTEM_* de las cuatro capas, en Recortes.cs.
+public sealed class AreaReinforcementType : ElementType { }
+
+public sealed class AreaReinforcement : Element
+{
+    public static AreaReinforcement Create(
+        Document doc, Element anfitrion, IList<Curve> contorno, XYZ direccionMayor,
+        ElementId tipoDeArea, ElementId tipoDeVarilla, ElementId tipoDeGancho) => new();
+
+    /// <summary>Revit API: AreaReinforcement.RemoveAreaReinforcementSystem(Document, AreaReinforcement). SIN COMPROBAR.</summary>
+    public static IList<ElementId> RemoveAreaReinforcementSystem(Document doc, AreaReinforcement area) => new List<ElementId>();
 }

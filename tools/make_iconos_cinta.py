@@ -169,6 +169,74 @@ def corte_seccion():
     return seccion(16, 16, 26)
 
 
+def placa_base():
+    # La placa en el piso, sus cuatro anclas y la columna que arranca encima.
+    f = caja(0, 0, 0, 16, 16, 1.6, cx=16, cy=17, s=1.0, colores=(GRIS, (150, 158, 168, 255), (110, 118, 130, 255)))
+    for x, y in ((2.5, 2.5), (13.5, 2.5), (2.5, 13.5), (13.5, 13.5)):
+        cx, cy = iso(x, y, 1.6, 16, 17)
+        f.append(circulo(cx, cy, 1.3, OSCURO))
+    return f + caja(5.5, 5.5, 1.6, 5, 5, 14, cx=16, cy=17, s=1.0)
+
+
+def cimentacion():
+    # La zapata, el dado y el arranque de la columna.
+    gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
+    f = caja(0, 0, 0, 18, 18, 4, cx=16, cy=19, s=0.95, colores=gris)
+    f += caja(5.5, 5.5, 4, 7, 7, 7, cx=16, cy=19, s=0.95, colores=gris)
+    return f + caja(7, 7, 11, 4, 4, 9, cx=16, cy=19, s=0.95)
+
+
+def soldar_viga():
+    # La columna, la viga que llega y el cordon alrededor del perfil, en rojo.
+    f = caja(0, 0, 0, 6, 6, 24, cx=9, cy=28, s=0.95)
+    f += caja(6, 1.5, 14, 16, 3, 5, cx=9, cy=28, s=0.95)
+    anillo = [iso(6.4, 1.2, 13.6, 9, 28, 0.95), iso(6.4, 4.8, 13.6, 9, 28, 0.95),
+              iso(6.4, 4.8, 19.4, 9, 28, 0.95), iso(6.4, 1.2, 19.4, 9, 28, 0.95)]
+    return f + lineas(anillo + [anillo[0]], 1.6, ROJO)
+
+
+def armar_cimentacion():
+    # La zapata gris con su parrilla roja y el dado encima.
+    gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
+    f = caja(0, 0, 0, 18, 18, 5, cx=16, cy=17, s=0.95, colores=gris)
+    for t in (4, 9, 14):
+        f.append(linea(iso(t, 1, 5.2, 16, 17, 0.95), iso(t, 17, 5.2, 16, 17, 0.95), 1.0, ROJO))
+        f.append(linea(iso(1, t, 5.2, 16, 17, 0.95), iso(17, t, 5.2, 16, 17, 0.95), 1.0, ROJO))
+    return f + caja(6, 6, 5, 6, 6, 8, cx=16, cy=17, s=0.95, colores=gris)
+
+
+def armar_muros():
+    # El muro gris con su malla clara: verticales y horizontales.
+    gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
+    f = caja(0, 0, 0, 22, 3, 20, cx=6, cy=22, s=0.9, colores=gris)
+    for x in (4, 9, 14, 19):
+        f.append(linea(iso(x, 3, 1.5, 6, 22, 0.9), iso(x, 3, 18.5, 6, 22, 0.9), 1.0, IZQ))
+    for z in (4, 9, 14):
+        f.append(linea(iso(1.5, 3, z, 6, 22, 0.9), iso(20.5, 3, z, 6, 22, 0.9), 1.0, ROJO))
+    return f
+
+
+def encamisar():
+    # La trabe de concreto gris con sus placas azules abrazandola y dos soleras rojas.
+    gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
+    f = caja(0, 0, 0, 26, 6, 9, cx=8, cy=11, s=0.7, colores=gris)
+    f += caja(0, 6, -1, 26, 1, 10, cx=8, cy=11, s=0.7)
+    f += caja(0, -1, -1.2, 26, 8, 1.2, cx=8, cy=11, s=0.7)
+    for x in (7, 18):
+        f += lineas([iso(x, 7.2, 9, 8, 11, 0.7), iso(x, 7.2, -1.4, 8, 11, 0.7), iso(x, -1, -1.4, 8, 11, 0.7)], 1.2, ROJO)
+    return f
+
+
+def soldar_columna():
+    # La columna sobre su placa y el cordon rojo alrededor de su pie.
+    gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
+    f = caja(0, 0, 0, 16, 16, 2, cx=16, cy=19, s=0.95, colores=gris)
+    f += caja(5, 5, 2, 6, 6, 16, cx=16, cy=19, s=0.95)
+    pie = [iso(4.6, 4.6, 2.3, 16, 19, 0.95), iso(11.4, 4.6, 2.3, 16, 19, 0.95),
+           iso(11.4, 11.4, 2.3, 16, 19, 0.95), iso(4.6, 11.4, 2.3, 16, 19, 0.95)]
+    return f + lineas(pie + [pie[0]], 1.6, ROJO)
+
+
 ICONOS = {
     "importar-etabs": importar_etabs,
     "armar-modelo": armar_modelo,
@@ -178,6 +246,13 @@ ICONOS = {
     "viga-corte": viga_corte,
     "armar-tipo": armar_tipo,
     "corte-seccion": corte_seccion,
+    "placa-base": placa_base,
+    "cimentacion": cimentacion,
+    "soldar-viga": soldar_viga,
+    "soldar-columna": soldar_columna,
+    "encamisar": encamisar,
+    "armar-muros": armar_muros,
+    "armar-cimentacion": armar_cimentacion,
 }
 
 

@@ -112,6 +112,74 @@ public sealed class Aplicacion : IExternalApplication
             "Crea una vista de corte transversal de la seccion que pidas, con su nombre "
             + "y sus cotas.",
             TextoCorte("columna o trabe"), "corte-seccion");
+
+        // ---- Detalles: lo que va DEBAJO y ENTRE las piezas ya modeladas ----
+        //
+        // Placas base, zapatas y soldaduras. Las tablas de CadLink son de tipos, asi que se eligen
+        // las piezas en el modelo y se les pone la fila de la tabla que toque.
+        var detalles = app.CreateRibbonPanel(Pestana, "Detalles");
+
+        Boton(detalles, dll, "CadLinkPlacasBase", "Placas\nbase", typeof(ComandoPlacasBase).FullName,
+            "Pone la placa base de CadLink bajo las columnas elegidas: placa, anclas, grout y soldadura.",
+            "Lee el .cadlink-detalles.json que escribe CadLink con el boton «Para Revit…» de la hoja "
+            + "Placa Base. Se eligen las columnas, se escoge la placa, y en cada una se modela la "
+            + "placa con sus barrenos, las anclas con su tuerca y su doblez, la cama de grout y el "
+            + "filete de la columna todo alrededor.\n\n"
+            + "Las anclas van donde las pone el detalle de AutoCAD. La placa se orienta midiendo "
+            + "la columna; volver a ponerla reemplaza la anterior.",
+            "placa-base");
+
+        Boton(detalles, dll, "CadLinkCimentacion", "Cimenta-\nción", typeof(ComandoCimentacion).FullName,
+            "Pone zapatas aisladas bajo las columnas y zapatas corridas bajo los muros elegidos.",
+            "Lee el mismo .cadlink-detalles.json, que trae las hojas Zapatas Aisladas y Zapatas "
+            + "Corridas. Bajo cada columna: la zapata, el dado y la plantilla, con la profundidad de "
+            + "desplante de la tabla; si la columna ya tiene placa base de CadLink, el dado termina "
+            + "bajo su grout. Bajo cada muro recto: la zapata corrida con su contratrabe o su enrase.",
+            "cimentacion");
+
+        Boton(detalles, dll, "CadLinkSoldarVigas", "Conectar\nvigas", typeof(ComandoSoldarVigas).FullName,
+            "Conecta los extremos de las vigas: a una columna con filete o a momento; a un muro, con placa embebida.",
+            "A una COLUMNA: filete todo alrededor del perfil, o a momento IR a IR con placa en cada patin "
+            + "y placa de cortante atornillada al alma, cada placa soldada a la columna.\n\n"
+            + "A un MURO de concreto: placa embebida a paño del muro, con sus anclas, y la viga soldada a "
+            + "ella.\n\n"
+            + "Se conectan los dos extremos, o uno: das clic en la viga cerca del extremo. El contorno sale "
+            + "de la viga tal como Revit la dibujo. No necesita archivo de CadLink.",
+            "soldar-viga");
+
+        Boton(detalles, dll, "CadLinkSoldarColumnas", "Soldar\ncolumnas", typeof(ComandoSoldarColumnas).FullName,
+            "Pone el filete todo alrededor de la base o de la cabeza de las columnas elegidas.",
+            "Sobre lo que la columna tenga: una placa, una losa, un dado o la columna de abajo. El "
+            + "contorno sale de la columna tal como esta dibujada; solo se pregunta donde y de que "
+            + "tamaño. La placa base de CadLink ya trae su propia soldadura.",
+            "soldar-columna");
+
+        Boton(detalles, dll, "CadLinkEncamisar", "Encamisar\ntrabes", typeof(ComandoEncamisar).FullName,
+            "Refuerza las trabes de concreto elegidas con placas de acero, o con angulos y soleras.",
+            "Placas corridas en el fondo, los lados y si se pide arriba, con tornillos pasantes a media "
+            + "altura; o angulos en las esquinas con soleras rodeando la trabe a cada tanto. Con su capa de "
+            + "adhesivo epoxico.\n\n"
+            + "La seccion y el largo se miden de la trabe dibujada, de cara a cara de columna y bajo la "
+            + "losa. Volver a encamisar la misma trabe reemplaza el encamisado anterior.",
+            "encamisar");
+
+        Boton(detalles, dll, "CadLinkArmarMuros", "Armar\nmuros", typeof(ComandoArmarMuros).FullName,
+            "Pone verticales y horizontales, en una o dos parrillas, en todos los muros de concreto elegidos.",
+            "Un Area Reinforcement por muro, de punta a punta y de la base a la corona, con el "
+            + "recubrimiento del muro: varilla y separacion de las verticales y de las horizontales, una o "
+            + "dos parrillas y el gancho de las verticales. Recorta solo en puertas y ventanas.\n\n"
+            + "Los muros que no sean estructurales de concreto se saltan. Volver a armar reemplaza el "
+            + "armado de CadLink.",
+            "armar-muros");
+
+        Boton(detalles, dll, "CadLinkArmarCimentacion", "Armar\ncimentación", typeof(ComandoArmarCimentacion).FullName,
+            "Pone las parrillas de las zapatas elegidas, escritas en Revit o leidas de la hoja de CadLink.",
+            "Parrilla de abajo y, si se pide, la de arriba, en las dos direcciones, con sus patas. El armado "
+            + "se escribe en el cuadro o se lee del .cadlink-detalles.json; las zapatas de CadLink toman su "
+            + "fila por su marca.\n\n"
+            + "En las zapatas de Revit van varillas nativas, que se cuantifican. En las de CadLink -DirectShape, "
+            + "que Revit no acepta como anfitrion de armado- van como solidos que se ven pero no se cuantifican.",
+            "armar-cimentacion");
     }
 
     private static string TextoAcero(string elemento) =>
@@ -169,6 +237,13 @@ public sealed class Aplicacion : IExternalApplication
         "viga-corte" => (Imagen("CadLink.Revit.viga-corte-32.png"), Imagen("CadLink.Revit.viga-corte-16.png")),
         "armar-tipo" => (Imagen("CadLink.Revit.armar-tipo-32.png"), Imagen("CadLink.Revit.armar-tipo-16.png")),
         "corte-seccion" => (Imagen("CadLink.Revit.corte-seccion-32.png"), Imagen("CadLink.Revit.corte-seccion-16.png")),
+        "placa-base" => (Imagen("CadLink.Revit.placa-base-32.png"), Imagen("CadLink.Revit.placa-base-16.png")),
+        "cimentacion" => (Imagen("CadLink.Revit.cimentacion-32.png"), Imagen("CadLink.Revit.cimentacion-16.png")),
+        "soldar-viga" => (Imagen("CadLink.Revit.soldar-viga-32.png"), Imagen("CadLink.Revit.soldar-viga-16.png")),
+        "soldar-columna" => (Imagen("CadLink.Revit.soldar-columna-32.png"), Imagen("CadLink.Revit.soldar-columna-16.png")),
+        "encamisar" => (Imagen("CadLink.Revit.encamisar-32.png"), Imagen("CadLink.Revit.encamisar-16.png")),
+        "armar-muros" => (Imagen("CadLink.Revit.armar-muros-32.png"), Imagen("CadLink.Revit.armar-muros-16.png")),
+        "armar-cimentacion" => (Imagen("CadLink.Revit.armar-cimentacion-32.png"), Imagen("CadLink.Revit.armar-cimentacion-16.png")),
         _ => (null, null)
     };
 

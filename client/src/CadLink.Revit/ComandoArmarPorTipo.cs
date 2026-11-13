@@ -44,6 +44,27 @@ public class ComandoArmarPorTipo : IExternalCommand
             return Result.Cancelled;
         }
 
+        // ---- 0. De donde sale el armado: la hoja de CadLink o escrito aqui ----
+        var fuente = new VentanaDetalle("CadLink - Armar",
+            "¿De donde sale el armado de las columnas y trabes?\n\n"
+            + "De la hoja: el .cadlink-armado.json que escribe CadLink con «Armado para Revit», un renglon por "
+            + "tipo. Escrito aqui: eliges las piezas y escribes las varillas y los estribos.");
+        var deDonde = fuente.Lista("Armado:", new[]
+        {
+            "De la hoja de CadLink (.cadlink-armado.json)",
+            "Escribirlo aqui, en Revit"
+        });
+
+        if (!fuente.Mostrar(commandData!.Application?.MainWindowHandle, "Siguiente"))
+        {
+            return Result.Cancelled;
+        }
+
+        if (deDonde.SelectedIndex == 1)
+        {
+            return ArmadoEscritoEnRevit.Ejecutar(commandData, Solo);
+        }
+
         // ---- 1. Las secciones de CadLink ----
         var abrir = new OpenFileDialog
         {

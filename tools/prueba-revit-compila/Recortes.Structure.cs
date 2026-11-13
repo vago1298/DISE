@@ -8,6 +8,9 @@ namespace Autodesk.Revit.DB.Structure;
 
 public enum StructuralType { NonStructural, Beam, Column, Brace, Footing }
 
+/// <summary>Revit API: StructuralMaterialType. SIN COMPROBAR contra la DLL: de la documentacion.</summary>
+public enum StructuralMaterialType { Undefined, Steel, Concrete, Wood, Other, PrecastConcrete, Generic, Aluminum }
+
 public sealed class StructuralSection
 {
     /// <summary>

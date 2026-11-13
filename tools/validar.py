@@ -12201,7 +12201,7 @@ def main() -> int:
               v24_rediseno,
               v25_ifc,
               v26_plugin_revit, v27_muros_contencion, v28_estilo_dibujo,
-              v29_paquete_oficina, v30_armado_por_tipo):
+              v29_paquete_oficina, v30_armado_por_tipo, v31_detalles_revit):
         f()
 
     print("\n" + "=" * 66)
@@ -15797,7 +15797,8 @@ def v29_paquete_oficina() -> None:
 
 # Los iconos de la cinta de Revit, uno por boton (tools/make_iconos_cinta.py).
 ICONOS_CINTA = ("importar-etabs", "armar-modelo", "columna-acero", "columna-corte",
-                "viga-acero", "viga-corte", "armar-tipo", "corte-seccion")
+                "viga-acero", "viga-corte", "armar-tipo", "corte-seccion",
+                "placa-base", "cimentacion", "soldar-viga", "soldar-columna", "encamisar", "armar-muros", "armar-cimentacion")
 
 def v30_armado_por_tipo() -> None:
     print("\n[30] Revit: armar por tipo, todas las piezas de un jalon")
@@ -17035,6 +17036,168 @@ def v26_plugin_revit() -> None:
           "typeof(ComandoArmar).FullName" in leer(ruta("client/src/CadLink.Revit/Aplicacion.cs")))
     check("el arnes compila el armador",
           "CadLink.Revit\\Armador.cs" in leer(ruta("tools/prueba-revit-compila/Prueba.csproj")))
+
+
+# ======================================================================
+# 31. Revit: placas base, cimentacion y soldadura de vigas
+# ======================================================================
+def v31_detalles_revit() -> None:
+    print("\n[31] Revit: placas base, cimentacion y soldadura de vigas")
+
+    nuc = leer(ruta("client/src/CadLink.Revit.Nucleo/Detalles.cs"))
+    det = leer(ruta("client/src/CadLink.Revit/Detallador.cs"))
+    sol = leer(ruta("client/src/CadLink.Revit/Solidos.cs"))
+    com = leer(ruta("client/src/CadLink.Revit/ComandoDetalles.cs"))
+    ven = leer(ruta("client/src/CadLink.Revit/VentanaDetalle.cs"))
+    apl = leer(ruta("client/src/CadLink.Revit/Aplicacion.cs"))
+    app = leer(ruta("client/src/CadLink.App/MainWindow.DetallesRevit.cs"))
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    compila = leer(ruta("tools/prueba-revit-compila/Prueba.csproj"))
+
+    # El archivo lleva version desde el primer dia y rechaza los mas nuevos, como los demas.
+    check("el .cadlink-detalles.json lleva version y rechaza las mas nuevas",
+          "public const int VersionActual = 1;" in nuc
+          and "a.Version > ArchivoDetallesJson.VersionActual" in nuc
+          and 'Extension = ".cadlink-detalles.json"' in nuc)
+    check("el nucleo de los detalles no conoce Revit",
+          "Autodesk" not in re.sub(r"//[^\n]*", "", nuc))
+
+    # Las anclas salen de las MISMAS cuentas que el detalle de AutoCAD.
+    check("las anclas se colocan con AnclasPlacaBase.Construir, como en AutoCAD",
+          "AnclasPlacaBase.Construir(" in app and "AnclasPlacaBase.SepBordeAjustada(" in app)
+    check("el alzado del ancla sale de ElevacionPlacaBase.AnclasDeCanto",
+          "ElevacionPlacaBase.AnclasDeCanto(" in app)
+    check("la contratrabe toma sus medidas de la hoja de secciones de concreto",
+          "_datos.SeccionesConcreto.FirstOrDefault(" in app)
+    check("las tres hojas tienen su boton «Para Revit…»",
+          xaml.count('Click="OnDetallesParaRevit"') == 3)
+
+    # Reponer reemplaza: la llave en ApplicationDataId.
+    check("volver a poner un detalle reemplaza el anterior (llave en ApplicationDataId)",
+          "ds.ApplicationDataId = llave;" in sol and "Solidos.Borrar(doc, llave)" in det)
+    check("la zapata termina bajo el grout de la placa de CadLink",
+          "Solidos.FondoDe(doc, LlaveDetalle.De(ClaseDetalle.Placa, col.Id.Value))" in det)
+    check("la soldadura sale del contorno de la pieza dibujada, no de una tabla",
+          "GetEdgesAsCurveLoops()" in det and "CreateBlendGeometry(" in sol)
+    check("una sola transaccion por boton, sin cuadros",
+          "new SinCuadros()" in det)
+
+    # La ventana no puede usar los TextBox/ComboBox de la cinta de Revit.
+    check("la ventana de los detalles no importa Autodesk.Revit.UI (CS0104)",
+          "using Autodesk.Revit.UI" not in ven)
+    check("el panel Detalles tiene sus tres botones",
+          '"Detalles"' in apl and all(f"typeof({c}).FullName" in apl
+                                      for c in ("ComandoPlacasBase", "ComandoCimentacion", "ComandoSoldarVigas", "ComandoSoldarColumnas"))
+          and all(f"class {c} : IExternalCommand" in com
+                  for c in ("ComandoPlacasBase", "ComandoCimentacion", "ComandoSoldarVigas", "ComandoSoldarColumnas")))
+    # Lo que se pidio despues de probarlo en Revit.
+    check("la placa base va sobre el dado o el muro, o embebida, a eleccion",
+          "public static CotasPlaca Cotas(" in nuc and "SobreElApoyo = posicion.SelectedIndex != 1" in com
+          and "FAMILY_BASE_LEVEL_OFFSET_PARAM" in det)
+    check("la tuerca lleva chaflan y barreno: hexagono cortado por un solido de revolucion",
+          "CreateRevolvedGeometry(" in sol and "BooleanOperationsType.Intersect" in sol)
+    check("el ancla se modela con su codo: barrido a lo largo de su eje",
+          "CreateSweptGeometry(" in sol and "RadioDobleM = alzado.Radio / 100" in app
+          and "ElevacionPlacaBase.RadioDelDoblez(" in app)
+    check("conectar vigas: uno o los dos extremos, eligiendo el extremo con un clic",
+          "ObjectType.PointOnElement" in com and "Conexion.ExtremoMasCercano(" in det)
+    check("la viga que llega a un muro deja su placa embebida con anclas",
+          "Conexion.PlacaEnMuro(" in det and "PlacaEmbebida(" in det)
+    check("conexion a momento IR a IR: placas en los patines y de cortante con tornillos",
+          "Conexion.Momento(" in det and "Conexion.MedirI(" in det and '"placa de cortante"' in nuc)
+    check("hay boton para soldar columnas, en la base o en la cabeza",
+          "typeof(ComandoSoldarColumnas).FullName" in apl and "ClaseDetalle.SoldaduraColumna" in det)
+
+    # Tercera vuelta: la placa salia duplicada, el grout negro y la viga no se soldaba.
+    check("la placa base no se pone en los dados de concreto modelados como columna",
+          "public static bool EsDeConcreto(FamilyInstance col)" in det
+          and "var deAcero = elegidas.Where(c => !Detallador.EsDeConcreto(c))" in com)
+    check("placa de apoyo de viga: busca el apoyo con la linea de la viga y toma castillos de columna arquitectonica",
+          "public static double? CaraDeApoyo(" in nuc and "BuiltInCategory.OST_Columns," in det
+          and "var tLinea = " in det)
+    check("la viga que llega al COSTADO del concreto lleva placa vertical, no horizontal en el aire",
+          "public static bool LlegaAlCostado(" in nuc and "ApoyoHorizontal = false" in com
+          and "SeApoya(fondoVigaM, maxM) && minM < maxM ? maxM : null" in nuc)
+    check("placas base pregunta si la viga llega al muro/cabezal/castillo/columna (vertical) o al dado/cimentacion (horizontal)",
+          '"Vigas: a donde llega la placa:"' in com and "var modo = llegaA?.SelectedIndex ?? 2;" in com)
+    check("la viga toca el cabezal con cualquier parte de su cara, y si no se dice a cuanto queda",
+          "MasCercanoEnfrente(cajasMuros, marco)" in det and "public static double? Enfrente(" in nuc)
+    check("la placa embebida lleva sus anclas a la vista: barreno, tuerca por fuera y rosca, solo en el perimetro",
+          "tuerca del ancla de la placa embebida" in det and "if (i > 0 && i < columnas - 1 && j > 0 && j < filas - 1)" in nuc)
+    check("la placa vertical de Placas base usa la placa de la hoja con SUS anclas",
+          "public static (CajaLocal Placa, List<PernoLocal> Pernos) PlacaEnMuroDeArchivo(" in nuc
+          and "PlacaDeArchivo = placa," in com and "Conexion.PlacaEnMuroDeArchivo(deArchivo, o.Girar)" in det)
+    check("placas base: se pueden elegir los muros, castillos o cabezales y se buscan las piezas de acero que llegan",
+          "public static List<FamilyInstance> AceroSobre(" in det and "Detallador.AceroSobre(doc, concreto)" in com)
+    check("conectar vigas: sobre cabezal, columna o castillo la placa va horizontal bajo la viga",
+          "ApoyoDeUnaViga(doc, viga, null, o, r, apoyos, null, extremo," in det
+          and "public static PlacaBaseJson DeApoyo(" in nuc)
+    check("la contraplaca solo si se pide, al fondo de las anclas",
+          "public bool Contraplaca { get; set; }" in det and "Contraplaca = contra.IsChecked == true" in com)
+    check("los materiales de CadLink toman la apariencia de uno del proyecto (el grout no sale negro)",
+          "propio.AppearanceAssetId = modelo.AppearanceAssetId;" in sol)
+    check("las anclas no cuentan para saber donde termina el dado",
+          'var llaveAnclas = llave + "|anclas";' in det)
+    check("con un extremo, cada clic conecta al momento y Esc termina",
+          "public static ResultadoDetalles ConectarConCadaClic(" in com)
+
+    check("encamisado de trabes de concreto: placas, o angulos y soleras, medido de la trabe dibujada",
+          "public static class Encamisado" in nuc and "Detallador.Encamisar(" in com
+          and "typeof(ComandoEncamisar).FullName" in apl and "Geometria.PuntosDelSolido(trabe)" in det)
+
+    check("encamisado: varias filas en tresbolillo y anclas al concreto abajo y arriba",
+          "public static List<double> AlLargo(" in nuc and "if (o.Fondo) { Cara(-g - t, 1); }" in nuc
+          and "o.Tresbolillo = tres.IsChecked == true;" in com)
+
+    check("armar muros: Area Reinforcement en todos los muros elegidos, reemplazando el de CadLink",
+          "AreaReinforcement.Create(" in leer(ruta("client/src/CadLink.Revit/ArmadorDeMuros.cs"))
+          and "typeof(ComandoArmarMuros).FullName" in apl
+          and "CadLink.Revit\\ArmadorDeMuros.cs" in compila)
+
+    check("conexion a momento y a cortante con ancho, largo, espesor y filete de cada placa",
+          "public double PlacaPatinAnchoM { get; set; }" in nuc and "public double SoldaduraCortanteM { get; set; }" in nuc
+          and "2 => TipoConexion.Cortante," in com and "mc.SoldaduraPatinM" in det)
+
+    check("la placa de cortante se puede soldar al alma, sin tornillos",
+          "public bool CortanteSoldada { get; set; }" in nuc and "mc.CortanteSoldada" in det
+          and "medidas.CortanteSoldada = union.SelectedIndex == 1;" in com)
+
+    check("los cuadros llevan croquis de guia con la letra de cada renglon",
+          "public void Guia(" in ven and "internal sealed class Croquis" in ven
+          and com.count("ventana.Guia(") >= 6 and '"(A) Placas de patin: ancho' in com)
+    check("armar muros: gancho distinto arriba y abajo, con su largo en diametros",
+          "public readonly record struct GanchoMuro(" in leer(ruta("client/src/CadLink.Revit.Nucleo/ArmadoDeMuros.cs"))
+          and "RemoveAreaReinforcementSystem(" in leer(ruta("client/src/CadLink.Revit/ArmadorDeMuros.cs")))
+    check("el grout se apoya en el dado antes que en la losa, y su espesor se elige",
+          "debajo.Where(a => !a.EsLosa)" in det and "GroutM = VentanaDetalle.Leer(grout" in com)
+
+    check("conexiones: el extremo se mide en el centro de su cara, la I se busca en otra cara si esta recortada, y cortante en las dos caras",
+          "MasCercanoEnfrente(cajasColumnas, marco)" in det and "perfil = MedirI(c, m0);" in det
+          and "public bool CortanteDosCaras { get; set; }" in nuc)
+
+    check("placa de apoyo de viga de acero sobre muro, cabezal o columna de concreto",
+          "public static ResultadoDetalles PlacasDeViga(" in det and "Detallador.PlacasDeViga(doc, vigas" in com
+          and "public static CotasPlaca CotasDeApoyoDeViga(" in nuc)
+    check("conectar vigas: cabezales y columnas de concreto reciben la placa embebida, no la conexion de acero",
+          ".Where(Detallador.EsDeConcreto))" in com)
+    check("armar cimentacion: escrito en Revit o de la hoja de CadLink, nativo o como solidos",
+          "public sealed class ComandoArmarCimentacion" in com and "DeArchivo(doc, zapatas, dueno)" in com
+          and "Armado = ArmadoDe(" in app and "CadLink.Revit\\ArmadorDeZapatas.cs" in compila
+          and "typeof(ComandoArmarCimentacion).FullName" in apl)
+
+    check("armar cimentacion acepta zapatas modeladas como Floor",
+          "BuiltInCategory.OST_StructuralFoundation, BuiltInCategory.OST_Floors)" in com)
+
+    check("armar cimentacion: una o doble parrilla se elige primero, tambien desde la hoja",
+          "public static ArmadoZapataJson ConParrillas(" in nuc and "ModoParrillas.Doble" in com
+          and "parrillas.SelectedIndex == 1" in com)
+
+    check("armar columnas y trabes: de la hoja de CadLink o escrito en Revit",
+          "ArmadoEscritoEnRevit.Ejecutar(commandData, Solo)" in leer(ruta("client/src/CadLink.Revit/ComandoArmarPorTipo.cs"))
+          and "public static ArmadoJson Columna(" in leer(ruta("client/src/CadLink.Revit.Nucleo/ArmadoEscrito.cs")))
+
+    check("la capa de Revit de los detalles se compila contra los recortes",
+          "CadLink.Revit\\Solidos.cs" in compila and "CadLink.Revit\\Detallador.cs" in compila)
 
 
 if __name__ == "__main__":
