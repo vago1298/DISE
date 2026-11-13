@@ -199,7 +199,11 @@ public sealed class ComandoPlacasBase : IExternalCommand
                     SoldaduraM = placa.SoldaduraM > 0 ? placa.SoldaduraM : Cordon.PorOmisionM,
                     PlacaEnMuro = true,
                     SoloEnApoyos = true,
-                    ApoyoHorizontal = false
+                    ApoyoHorizontal = false,
+
+                    // La placa elegida de la hoja, con sus anclas, y su giro.
+                    PlacaDeArchivo = placa,
+                    Girar = opciones.Girar
                 });
 
             // Que una viga no llegue a ningun costado no es un aviso: puede ir encima.

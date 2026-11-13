@@ -982,6 +982,39 @@ public static class Conexion
         return (placa, pernos);
     }
 
+    /// <summary>
+    /// La placa VERTICAL hecha con la placa de la hoja de CadLink: sus medidas, su espesor y SUS
+    /// anclas, tal cual vienen en el archivo -cuantas y donde-. La X del detalle va de lado (U) y la
+    /// Y hacia arriba (V); con <paramref name="girar"/>, al reves. Centrada en el perfil.
+    /// </summary>
+    /// <remarks>
+    /// Cada ancla se mete en el concreto lo que baja en el alzado de AutoCAD -su fondo bajo la cara
+    /// de la placa-, con un minimo de 10 cm.
+    /// </remarks>
+    public static (CajaLocal Placa, List<PernoLocal> Pernos) PlacaEnMuroDeArchivo(PlacaBaseJson p, bool girar)
+    {
+        var lu = girar ? p.LadoYM : p.LadoXM;
+        var lv = girar ? p.LadoXM : p.LadoYM;
+        var placa = new CajaLocal("placa embebida", -lu / 2, lu / 2, -lv / 2, lv / 2, -p.EspesorM, 0);
+
+        var pernos = p.Anclas.Select(a => new PernoLocal(
+                girar ? a.Y : a.X,
+                girar ? a.X : a.Y,
+                a.DiametroM > 0 ? a.DiametroM : 0.019,
+                Math.Max(0.10, -a.FondoM)))
+            .ToList();
+
+        return (placa, pernos);
+    }
+
+    /// <summary>Cuantas anclas caen detras del perfil -con media tuerca de holgura- y chocarian con el.</summary>
+    public static int DetrasDelPerfil(IEnumerable<PernoLocal> pernos, double u0, double u1, double v0, double v1) =>
+        pernos.Count(q =>
+        {
+            var h = 0.8 * q.DiametroM;
+            return q.U > u0 - h && q.U < u1 + h && q.V > v0 - h && q.V < v1 + h;
+        });
+
     private static int Hileras(double libre) =>
         libre <= 0 ? 1 : Math.Max(2, 1 + (int)Math.Ceiling((libre / 0.25) - 1e-9));
 

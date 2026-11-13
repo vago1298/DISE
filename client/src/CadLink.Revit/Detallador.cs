@@ -84,6 +84,12 @@ public sealed class OpcionesDetalle
 
     /// <summary>Las medidas de las placas y los tornillos de las conexiones.</summary>
     public OpcionesConexion MedidasDeConexion { get; set; } = new();
+
+    /// <summary>
+    /// La placa de la hoja de CadLink para la placa VERTICAL embebida. Null = la de CadLink por
+    /// omision, que reparte sus propias anclas en el perimetro.
+    /// </summary>
+    public PlacaBaseJson? PlacaDeArchivo { get; set; }
 }
 
 /// <summary>
@@ -1304,11 +1310,37 @@ internal static partial class Detallador
         MarcoExtremo m, CurveLoop contorno, double lado, OpcionesDetalle o, Materiales mat,
         List<(GeometryObject, string)> piezas, ResultadoDetalles r, string donde)
     {
-        var (placa, pernos) = Conexion.PlacaEnMuro(
-            Unidades.AMetros(m.U0), Unidades.AMetros(m.U1), Unidades.AMetros(m.V0), Unidades.AMetros(m.V1),
-            o.MedidasDeConexion);
+        // CON LA PLACA DE LA HOJA, SUS ANCLAS: cuantas y donde dice el archivo de CadLink. Antes la
+        // placa vertical repartia anclas propias y no respetaba las de la hoja.
+        var deArchivo = o.PlacaDeArchivo;
+        var (placa, pernos) = deArchivo is not null
+            ? Conexion.PlacaEnMuroDeArchivo(deArchivo, o.Girar)
+            : Conexion.PlacaEnMuro(
+                Unidades.AMetros(m.U0), Unidades.AMetros(m.U1), Unidades.AMetros(m.V0), Unidades.AMetros(m.V1),
+                o.MedidasDeConexion);
 
-        var t = Unidades.AInternas(o.MedidasDeConexion.PlacaMuroEspesorM);
+        var espesorM = deArchivo?.EspesorM ?? o.MedidasDeConexion.PlacaMuroEspesorM;
+        var t = Unidades.AInternas(espesorM);
+
+        if (deArchivo is not null)
+        {
+            var mu0 = Unidades.AMetros(m.U0);
+            var mu1 = Unidades.AMetros(m.U1);
+            var mv0 = Unidades.AMetros(m.V0);
+            var mv1 = Unidades.AMetros(m.V1);
+
+            if (placa.U0 > mu0 || placa.U1 < mu1 || placa.V0 > mv0 || placa.V1 < mv1)
+            {
+                r.Avisos.Add($"{donde}: La placa {deArchivo.Marca} ({Cm(placa.U1 - placa.U0)}x{Cm(placa.V1 - placa.V0)} cm) es mas chica que el perfil de la viga; marca «Girar 90°» o usa una placa mayor.");
+            }
+
+            var detras = Conexion.DetrasDelPerfil(pernos, mu0, mu1, mv0, mv1);
+
+            if (detras > 0)
+            {
+                r.Avisos.Add($"{donde}: {detras} de las {pernos.Count} anclas de la placa {deArchivo.Marca} caen detras de la viga; su tuerca choca con ella. Prueba «Girar 90°».");
+            }
+        }
         var solidoPlaca = Solidos.Caja(m.Origen, m.U, m.V, m.A, AInternas(placa), mat.Acero);
         var holgura = Unidades.AInternas(0.002);
 
@@ -1334,7 +1366,7 @@ internal static partial class Detallador
         }
 
         piezas.Insert(0, (solidoPlaca,
-            $"placa embebida de {Cm(placa.U1 - placa.U0)}x{Cm(placa.V1 - placa.V0)} cm, {Mm(o.MedidasDeConexion.PlacaMuroEspesorM)} mm, {pernos.Count} anclas"));
+            $"placa embebida {deArchivo?.Marca ?? string.Empty} de {Cm(placa.U1 - placa.U0)}x{Cm(placa.V1 - placa.V0)} cm, {Mm(espesorM)} mm, {pernos.Count} anclas".Replace("  ", " ")));
 
         piezas.Add((Filete(contorno, m.A, lado, mat.Soldadura, r, donde),
             $"filete de {Mm(o.SoldaduraM)} mm todo alrededor, a la placa embebida"));
