@@ -2130,6 +2130,101 @@ internal static partial class Programa
         var aMedia = new AjusteDeMuros.HuellaColumna(Castillo(2, 0, 0.2).Puntos, 0, 2.7);
         Check("ni una a media pared", AjusteDeMuros.APanoDeColumnas(deEje, new[] { aMedia })!.Puntas == 0);
 
+        // ---------- Los tableros que se tocan, en UNA losa, y toda a paño ----------
+        var mu = new ModeloJson();
+        var ua = Losa((0, 0), (4, 0), (4, 5), (0, 5));
+        var ub = Losa((4, 0), (8, 0), (8, 5), (4, 5));
+        ua.Etiqueta = "F1";
+        ub.Etiqueta = "F2";
+        mu.Panos.AddRange(new[] { ua, ub, Muro(0, 0, 8, 0, 0.15), Muro(0, 0, 0, 5, 0.15) });
+        mu.Barras.Add(new BarraJson { Clase = ClasePieza.Trabe, P1 = P(0, 5), P2 = P(8, 5), Seccion = new SeccionJson { AnchoM = 0.20, PeralteM = 0.40 } });
+        mu.Barras.Add(new BarraJson { Clase = ClasePieza.Trabe, P1 = P(4, 0), P2 = P(4, 5), Seccion = new SeccionJson { AnchoM = 0.20, PeralteM = 0.40 } });
+
+        var avUnir = UnirLosas.AplicarATodos(mu);
+        var unaLosa = mu.Panos.Where(p => p.Clase == ClasePieza.Losa).ToList();
+        Check("dos tableros que se tocan son UNA losa", unaLosa.Count == 1 && avUnir.Count == 1, string.Join(" | ", avUnir));
+        Igual("con las etiquetas de sus tableros, para la llave", unaLosa[0].Etiqueta, "F1+F2");
+        Check("de 8 x 5, con solo sus cuatro esquinas",
+            unaLosa[0].Vertices.Count == 4 && XMin(unaLosa[0]) == 0 && XMax(unaLosa[0]) == 8 && YMax(unaLosa[0]) == 5);
+
+        LosasAPano.AplicarATodos(mu);
+        var u = unaLosa[0];
+        Casi("unida, la orilla del muro de abajo va a su cara de fuera", YMin(u), -0.075, 1e-9);
+        Casi("la de la trabe de arriba, a su paño", YMax(u), 5.10, 1e-9);
+        Casi("el volado sigue donde estaba", XMax(u), 8.0, 1e-9);
+        Check("y ya no hay ningun lado en el eje de la trabe interior", !u.Vertices.Any(v => Math.Abs(v.X - 4) < 1e-6));
+
+        // Por tramos: muro solo en la mitad izquierda de la orilla de abajo.
+        var mt = new ModeloJson();
+        var lt2 = Losa((0, 0), (8, 0), (8, 5), (0, 5));
+        mt.Panos.AddRange(new[] { lt2, Muro(0, 0, 4, 0, 0.15) });
+        LosasAPano.AplicarATodos(mt);
+        Check("con muro en media orilla, va al paño SOLO donde hay muro y escalona",
+            lt2.Vertices.Any(v => Math.Abs(v.X - 4) < 1e-9 && Math.Abs(v.Y + 0.075) < 1e-9)
+            && lt2.Vertices.Any(v => Math.Abs(v.X - 4) < 1e-9 && Math.Abs(v.Y) < 1e-9)
+            && lt2.Vertices.Any(v => Math.Abs(v.X - 8) < 1e-9 && Math.Abs(v.Y) < 1e-9));
+
+        // Tableros en T: el lado de abajo se parte donde le llegan los dos de arriba.
+        var tA = Losa((0, 0), (8, 0), (8, 5), (0, 5));
+        var tB = Losa((0, 5), (4, 5), (4, 10), (0, 10));
+        var tC = Losa((4, 5), (8, 5), (8, 10), (4, 10));
+        var enT = UnirLosas.Unir(new[] { tA, tB, tC });
+        Check("tres tableros en T, una losa de 8 x 10", enT is { Vertices.Count: 4, Huecos.Count: 0 }
+            && enT.Vertices.Max(v => v.Y) == 10 && enT.Vertices.Max(v => v.X) == 8);
+
+        // Una escalera rodeada de tableros: la losa unida lleva su hueco, y el hueco va a paño.
+        var mh = new ModeloJson();
+
+        for (var i = 0; i < 3; i++)
+        {
+            for (var j = 0; j < 3; j++)
+            {
+                if (i == 1 && j == 1)
+                {
+                    continue;
+                }
+
+                mh.Panos.Add(Losa((i * 3, j * 3), ((i + 1) * 3, j * 3), ((i + 1) * 3, (j + 1) * 3), (i * 3, (j + 1) * 3)));
+            }
+        }
+
+        foreach (var (x1, y1, x2, y2) in new[] { (3.0, 3.0, 6.0, 3.0), (6.0, 3.0, 6.0, 6.0), (6.0, 6.0, 3.0, 6.0), (3.0, 6.0, 3.0, 3.0) })
+        {
+            mh.Barras.Add(new BarraJson { Clase = ClasePieza.Trabe, P1 = P(x1, y1), P2 = P(x2, y2), Seccion = new SeccionJson { AnchoM = 0.20, PeralteM = 0.40 } });
+        }
+
+        UnirLosas.AplicarATodos(mh);
+        var conHueco = mh.Panos.Where(p => p.Clase == ClasePieza.Losa).ToList();
+        Check("ocho tableros alrededor de un vacio, una losa con UN hueco",
+            conHueco.Count == 1 && conHueco[0].Huecos.Count == 1 && conHueco[0].Huecos[0].Count == 4);
+        LosasAPano.AplicarATodos(mh);
+        var hueco = conHueco[0].Huecos[0];
+        Check("el hueco queda al paño de sus trabes: de 3.10 a 5.90",
+            Math.Abs(hueco.Min(v => v.X) - 3.10) < 1e-9 && Math.Abs(hueco.Max(v => v.X) - 5.90) < 1e-9
+            && Math.Abs(hueco.Min(v => v.Y) - 3.10) < 1e-9 && Math.Abs(hueco.Max(v => v.Y) - 5.90) < 1e-9);
+
+        // Lo que NO se une.
+        var e1 = Losa((0, 0), (4, 0), (4, 4), (0, 4));
+        var e2 = Losa((3, 0), (7, 0), (7, 4), (3, 4));
+        Check("dos tableros encimados no se unen", UnirLosas.Unir(new[] { e1, e2 }) is null);
+        var mo = new ModeloJson();
+        var o1 = Losa((0, 0), (4, 0), (4, 4), (0, 4));
+        var o2 = Losa((4, 0), (8, 0), (8, 4), (4, 4));
+        o2.Seccion = new SeccionJson { Nombre = "LOSA20", EspesorM = 0.20 };
+        mo.Panos.AddRange(new[] { o1, o2 });
+        Check("con otra seccion, cada una con su tipo", UnirLosas.AplicarATodos(mo).Count == 0 && mo.Panos.Count == 2);
+        var mq = new ModeloJson();
+        mq.Panos.AddRange(new[] { Losa((0, 0), (4, 0), (4, 4), (0, 4)), Losa((4, 4), (8, 4), (8, 8), (4, 8)) });
+        Check("tocandose solo por una esquina, no se unen", UnirLosas.AplicarATodos(mq).Count == 0 && mq.Panos.Count == 2);
+
+        // El muro del piso de ARRIBA que arranca en la losa no es su orilla.
+        var ma = new ModeloJson();
+        var la = Losa((0, 0), (4, 0), (4, 5), (0, 5));
+        var arriba = new PanoJson { Clase = ClasePieza.Muro, Seccion = new SeccionJson { EspesorM = 0.15 } };
+        arriba.Vertices.AddRange(new[] { P(0, 0, 3), P(4, 0, 3), P(4, 0, 5.6), P(0, 0, 5.6) });
+        ma.Panos.AddRange(new[] { la, arriba });
+        Check("el muro de arriba no mueve la orilla", LosasAPano.AplicarATodos(ma).Count == 0 && YMin(la) == 0);
+
         var conTipo = new ModeloJson();
         var lt = Losa((0, 0), (4, 0), (4, 5), (0, 5));
         conTipo.Panos.AddRange(new[] { lt, Muro(0, 0, 4, 0, 0.15) });

@@ -1178,7 +1178,33 @@ internal static class Modelador
 
         if (forma.EsPlana)
         {
-            return Floor.Create(doc, new List<CurveLoop> { lazo }, tipoId, nivel.Id);
+            // Los huecos de la losa unida (una escalera rodeada de tableros), a la misma cota.
+            var lazos = new List<CurveLoop> { lazo };
+            var cotaPlana = forma.EnPlanta[0].Z;
+
+            foreach (var hueco in p.Huecos ?? new List<List<PuntoJson>>())
+            {
+                var h = Contornos.SinRepetidos(hueco, 0.001);
+                var lados = new List<Curve>();
+
+                for (var i = 0; i < h.Count; i++)
+                {
+                    var a = Unidades.Punto(new PuntoJson { X = h[i].X, Y = h[i].Y, Z = cotaPlana });
+                    var z = Unidades.Punto(new PuntoJson { X = h[(i + 1) % h.Count].X, Y = h[(i + 1) % h.Count].Y, Z = cotaPlana });
+
+                    if (a.DistanceTo(z) >= Unidades.AInternas(0.001))
+                    {
+                        lados.Add(Line.CreateBound(a, z));
+                    }
+                }
+
+                if (lados.Count >= 3)
+                {
+                    lazos.Add(CurveLoop.Create(lados));
+                }
+            }
+
+            return Floor.Create(doc, lazos, tipoId, nivel.Id);
         }
 
         // La FLECHA DE PENDIENTE: una linea horizontal que va del vertice mas bajo hacia la

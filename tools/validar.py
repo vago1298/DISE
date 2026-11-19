@@ -15979,6 +15979,21 @@ def v30_armado_por_tipo() -> None:
           and "LosasAPano.AplicarATodos(" in imp and "Orientacion.MedidorDeMuros(modelo, mapeo, catalogo)" in imp
           and "LosasAPanoDeOrilla();" in leer(ruta("tools/prueba-revit/Program.cs")))
 
+    # Se pidio: TODAS las losas a paño, como en AutoCAD. Los tableros que se tocan se unen en una
+    # losa continua (sin junta en el eje de las trabes interiores) ANTES de llevarla a paño, por
+    # tramos, y con los huecos que deje la union (escaleras).
+    unir = leer(ruta("client/src/CadLink.Revit.Nucleo/UnirLosas.cs"))
+    pano = leer(ruta("client/src/CadLink.Revit.Nucleo/LosasAPano.cs"))
+    check("los tableros que se tocan se unen en una sola losa antes de llevarla a paño",
+          "public static PanoJson? Unir(" in unir
+          and 0 <= imp.find("UnirLosas.AplicarATodos(modelo)") < imp.find("LosasAPano.AplicarATodos("),
+          "si se lleva a paño primero, los lados compartidos se quedan en el eje")
+    check("la losa a paño por tramos y con sus huecos, como PanoDeLosa.AlPano de AutoCAD",
+          "PorTramos(original, deEstaLosa, z)" in pano and "AjustarHuecos(" in pano
+          and "o.ZMin < z - ToleranciaZM" in pano)
+    check("y Revit crea la losa con sus huecos",
+          "foreach (var hueco in p.Huecos" in mod and "Floor.Create(doc, lazos, tipoId, nivel.Id)" in mod)
+
     # Se pidio: los muros SIEMPRE a paño de las columnas, ni separados ni metidos en ellas. Se
     # miden las columnas ya dibujadas en Revit en vez de calcular medio castillo.
     check("los muros van al paño de las columnas MEDIDAS en Revit: se recortan o se alargan",

@@ -133,6 +133,15 @@ public sealed class PanoJson
 
     /// <summary>El contorno, en orden y sin repetir el primero al final. En metros.</summary>
     public List<PuntoJson> Vertices { get; set; } = new();
+
+    /// <summary>
+    /// Los huecos de una losa: contornos interiores, como el de una escalera rodeada de tableros.
+    /// </summary>
+    /// <remarks>
+    /// CadLink no los manda: salen en el complemento al unir en una sola losa los tableros que se
+    /// tocan (<see cref="UnirLosas"/>). Un archivo viejo los trae nulos y es lo mismo que ninguno.
+    /// </remarks>
+    public List<List<PuntoJson>> Huecos { get; set; } = new();
 }
 
 /// <summary>
@@ -278,6 +287,11 @@ public static class ArchivoModelo
         m.Panos ??= new List<PanoJson>();
         m.Avisos ??= new List<string>();
         m.Armados ??= new List<ArmadoJson>();
+
+        foreach (var p in m.Panos)
+        {
+            p.Huecos ??= new List<List<PuntoJson>>();
+        }
 
         // La cuadricula puede no venir -un archivo de la version 1 no la trae- y sus listas
         // pueden llegar nulas por lo mismo que las de arriba.
