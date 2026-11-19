@@ -2716,6 +2716,9 @@ internal static partial class Programa
         Check("un tipo YA ARMADO no se marca solo: armar otro no le borra el suyo",
             !f3060.Armar && f3060.Diagnostico.Contains("se dejan como estan"));
 
+        var vacia = new VistaArmadoPorTipo(tipos, new List<ArmadoJson> { t01 });
+        Check("sin columnas en el archivo, la fila de columna dice por que no se puede armar",
+            vacia.Filas.Single(f => f.Tipo.Id == 3).Diagnostico.Contains("no trae ninguna columna, castillo"));
         var fCol = vista.Filas.Single(f => f.Tipo.Id == 3);
         Check("la columna girada tambien se reconoce por medidas", fCol.Seccion == "C-01" && fCol.Coherente);
         Check("a una columna no se le ofrecen trabes", !fCol.Secciones.Contains("T-01"));

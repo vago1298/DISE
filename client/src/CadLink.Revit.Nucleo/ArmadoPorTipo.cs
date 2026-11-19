@@ -339,12 +339,27 @@ public sealed class FilaArmadoTipo : Avisador
     /// <summary>Si las medidas del tipo cuadran con las de la seccion elegida.</summary>
     public bool Coherente => Armado is null || MedidasCuadran(Armado) != false;
 
+    /// <summary>Por que no se sugirio ninguna seccion. Vacio si se sugirio.</summary>
+    public string SinSugerencia { get; private set; } = string.Empty;
+
     /// <summary>Lo que conviene saber de la fila antes de armar.</summary>
     public string Diagnostico
     {
         get
         {
             var partes = new List<string>();
+
+            if (Armado is null)
+            {
+                var hay = Secciones.Count - 1;
+
+                partes.Add(hay == 0
+                    ? (Tipo.Clase == ClasePieza.Columna
+                        ? "el archivo no trae ninguna columna, castillo ni dado rectangular: en CadLink actualizado vuelve a pulsar «Armado para Revit…» y abre ese archivo"
+                        : "el archivo no trae ninguna trabe, contratrabe ni cadena rectangular: en CadLink actualizado vuelve a pulsar «Armado para Revit…» y abre ese archivo")
+                    : (SinSugerencia.Length > 0 ? SinSugerencia + ". " : string.Empty)
+                      + $"Elige a mano en «Sección de CadLink» (hay {hay}) y se podra marcar Armar");
+            }
 
             if (DeConcreto == 0)
             {
@@ -397,6 +412,9 @@ public sealed class FilaArmadoTipo : Avisador
     {
         if (r.Armado is null)
         {
+            // Que se vea POR QUE no hay seccion: con las Notas vacias no se sabia que hacer.
+            SinSugerencia = r.Motivo;
+            Aviso(nameof(Diagnostico));
             return;
         }
 
