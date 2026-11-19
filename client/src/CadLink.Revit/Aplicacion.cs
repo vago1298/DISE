@@ -75,6 +75,13 @@ public sealed class Aplicacion : IExternalApplication
             + "Volver a armar rehace el armado de CadLink; el puesto a mano no se toca.",
             "armar-modelo");
 
+        Boton(entrada, dll, "CadLinkDesunir", "Soltar\npiezas", typeof(ComandoDesunir).FullName,
+            "Quita las uniones de las piezas elegidas -o de todo el modelo- para moverlas libremente.",
+            "Puntas de vigas y muros sin union (Disallow Join) y Join Geometry separado entre cualquier par. "
+            + "Cada viga conserva su largo de cara a cara: no crece hasta el centro de la columna.\n\n"
+            + "La importacion desde ETABS ya lo hace sola con lo que crea; este boton es para modelos de antes.",
+            "soltar-piezas");
+
         // ---- Columnas y Vigas: su acero y su corte ----
         //
         // «Acero» es «Armar por tipo» solo con los tipos de ESE elemento, y «Corte» es «Corte de
@@ -254,6 +261,7 @@ public sealed class Aplicacion : IExternalApplication
         "encamisar" => (Imagen("CadLink.Revit.encamisar-32.png"), Imagen("CadLink.Revit.encamisar-16.png")),
         "armar-muros" => (Imagen("CadLink.Revit.armar-muros-32.png"), Imagen("CadLink.Revit.armar-muros-16.png")),
         "armar-cimentacion" => (Imagen("CadLink.Revit.armar-cimentacion-32.png"), Imagen("CadLink.Revit.armar-cimentacion-16.png")),
+        "soltar-piezas" => (Imagen("CadLink.Revit.soltar-piezas-32.png"), Imagen("CadLink.Revit.soltar-piezas-16.png")),
         "conexiones-libro" => (Imagen("CadLink.Revit.conexiones-libro-32.png"), Imagen("CadLink.Revit.conexiones-libro-16.png")),
         _ => (null, null)
     };

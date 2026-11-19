@@ -195,6 +195,14 @@ def soldar_viga():
     return f + lineas(anillo + [anillo[0]], 1.6, ROJO)
 
 
+def soltar_piezas():
+    # Una columna y una viga separadas, con un hueco entre ellas: ya no van unidas.
+    f = caja(0, 0, 0, 6, 6, 22, cx=8, cy=28, s=0.95)
+    f += caja(9, 1.5, 15, 16, 3, 5, cx=8, cy=28, s=0.95)
+    f += lineas([iso(7.2, 0, 13, 8, 28, 0.95), iso(7.2, 0, 22, 8, 28, 0.95)], 1.4, FLECHA)
+    return f
+
+
 def armar_cimentacion():
     # La zapata gris con su parrilla roja y el dado encima.
     gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
@@ -266,6 +274,7 @@ ICONOS = {
     "armar-muros": armar_muros,
     "armar-cimentacion": armar_cimentacion,
     "conexiones-libro": conexiones_libro,
+    "soltar-piezas": soltar_piezas,
 }
 
 

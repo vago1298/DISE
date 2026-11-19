@@ -33,6 +33,12 @@ public sealed class ResultadoModelado
 
     /// <summary>Las vigas creadas o actualizadas, para dejarlas en su nivel al final.</summary>
     internal List<(FamilyInstance Viga, BarraJson Barra)> Vigas { get; } = new();
+
+    /// <summary>Todo lo que se creo, para soltarlo al final: que se pueda mover libre.</summary>
+    internal List<Element> Hechos { get; } = new();
+
+    /// <summary>Lo que se solto al final. Null si no se pidio.</summary>
+    public ResultadoDesunir? Desunido { get; set; }
 }
 
 /// <summary>
@@ -52,7 +58,11 @@ public sealed class ResultadoModelado
 /// </remarks>
 internal static class Modelador
 {
-    public static ResultadoModelado Ejecutar(Document doc, Plan plan)
+    /// <param name="desunir">
+    /// Al final, soltar todo lo creado -puntas de vigas y muros, y Join Geometry- para poder moverlo
+    /// libre. Va en la misma transaccion: el mismo Ctrl+Z lo deshace con la importacion.
+    /// </param>
+    public static ResultadoModelado Ejecutar(Document doc, Plan plan, bool desunir = true)
     {
         var r = new ResultadoModelado();
 
@@ -195,6 +205,18 @@ internal static class Modelador
             {
                 r.Avisos.Add($"{r.MurosAPano} muro(s) se llevaron al paño de las columnas modeladas"
                              + (r.PuntasSinColumna > 0 ? $"; {r.PuntasSinColumna} punta(s) de muro no tienen columna y se quedaron en su sitio" : string.Empty));
+            }
+
+            // ---- Todo suelto, para moverlo libre ----
+            //
+            // AL FINAL, despues de nivelar las vigas y llevar los muros a su cota: esas dos cosas
+            // necesitan a Revit uniendo y recortando. Desunir antes las dejaria con el largo de
+            // centro a centro.
+            if (desunir && r.Hechos.Count > 0)
+            {
+                doc.Regenerate();
+                r.Desunido = Desunir.Piezas(doc, r.Hechos);
+                r.Avisos.AddRange(r.Desunido.Avisos);
             }
 
             t.Commit();
@@ -611,6 +633,7 @@ internal static class Modelador
                 r.Muros.Add((hecho, pano.Vertices.Min(v => v.Z)));
             }
 
+            r.Hechos.Add(hecho);
             r.Creadas++;
         }
         catch (Exception e)

@@ -379,6 +379,10 @@
 
             <!-- ===== Secciones de concreto ===== -->
             <TabItem Header="Secciones Concreto">
+              <!-- Dos subpestañas: las secciones de siempre -rectangulares y circulares- y las de
+                   forma especial, en L, en T o irregulares. -->
+              <TabControl x:Name="SeccionesConcretoTabs" Margin="4,4,4,0">
+                <TabItem Header="Rectangulares y circulares">
                 <Grid Margin="14">
                     <!-- ===== REPARTO DE LA HOJA =====
 
@@ -1134,6 +1138,95 @@
                         </Expander>
                     </Border>
                 </Grid>
+                </TabItem>
+
+                <!-- ===== Formas especiales: castillos, columnas, cabezales y dados en L, T o irregulares ===== -->
+                <TabItem Header="Formas especiales">
+                    <Grid Margin="14">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="140" />
+                            <RowDefinition Height="1.3*" MinHeight="200" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0">
+                            <TextBlock Text="Castillos, columnas, cabezales y dados especiales"
+                                       Style="{StaticResource ModuleTitleStyle}"
+                                       ToolTip="Para los que no son rectangulares ni circulares. L: B y H son el total, T1 el ala de abajo y T2 la de la izquierda. T: T1 es el patin de arriba y T2 el alma, centrada. IRREGULAR: escribe sus vertices en cm, «x,y; x,y; …». Va una varilla en cada esquina -tambien en las de dentro- y, en cada cara, las intermedias para no pasar de la separacion maxima." />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <Button Content="Agregar forma" Style="{StaticResource SecondaryButtonStyle}"
+                                        Click="OnAgregarEspecial"
+                                        ToolTip="Agrega un renglon copiando el elegido, con un ID libre." />
+                                <Button Content="Quitar forma" Style="{StaticResource SecondaryButtonStyle}"
+                                        Click="OnQuitarEspecial" Margin="8,0,0,0" />
+                                <Button Content="Revisar formas" Style="{StaticResource SecondaryButtonStyle}"
+                                        Click="OnRevisarEspeciales" Margin="8,0,0,0" />
+                                <CheckBox x:Name="RedibujarEspecialesChk" VerticalAlignment="Center" Margin="16,0,8,0"
+                                          Content="Redibujar las que ya existen" />
+                                <Button x:Name="DibujarEspecialesButton" Content="Dibujar en AutoCAD"
+                                        Style="{StaticResource PrimaryButtonStyle}" Click="OnDibujarEspeciales"
+                                        ToolTip="Dibuja cada forma en el AutoCAD abierto, con su estribo, sus varillas, sus cotas y su rotulo, en un bloque con su ID.&#10;El estilo relleno o no relleno es el de la subpestaña de secciones rectangulares." />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <DataGrid x:Name="EspecialesGrid" Grid.Row="1"
+                                  Style="{StaticResource SheetGridStyle}"
+                                  SelectionMode="Single" SelectionUnit="FullRow" CanUserAddRows="False">
+                            <DataGrid.Columns>
+                                <DataGridComboBoxColumn x:Name="ColEspElemento" Header="Elemento"
+                                                        SelectedItemBinding="{Binding Elemento}" Width="95"
+                                                        ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                        EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                                <DataGridTextColumn Header="ID" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}" Width="70" />
+                                <DataGridComboBoxColumn x:Name="ColEspForma" Header="Forma"
+                                                        SelectedItemBinding="{Binding Forma}" Width="95"
+                                                        ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                        EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                                <DataGridTextColumn Header="B cm" Binding="{Binding BCm, StringFormat=N1}" Width="60" />
+                                <DataGridTextColumn Header="H cm" Binding="{Binding HCm, StringFormat=N1}" Width="60" />
+                                <DataGridTextColumn Header="T1 cm" Binding="{Binding T1Cm, StringFormat=N1}" Width="60" />
+                                <DataGridTextColumn Header="T2 cm" Binding="{Binding T2Cm, StringFormat=N1}" Width="60" />
+                                <DataGridTextColumn Header="Vertices (irregular)" Binding="{Binding Vertices}" Width="190" />
+                                <DataGridTextColumn Header="Rec cm" Binding="{Binding RecubrimientoCm, StringFormat=N1}" Width="60" />
+                                <DataGridComboBoxColumn x:Name="ColEspEsquina" Header="Var esquina"
+                                                        SelectedItemBinding="{Binding VarEsquina}" Width="85"
+                                                        ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                        EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                                <DataGridComboBoxColumn x:Name="ColEspIntermedia" Header="Var intermedia"
+                                                        SelectedItemBinding="{Binding VarIntermedia}" Width="95"
+                                                        ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                        EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                                <DataGridTextColumn Header="Sep max cm" Binding="{Binding SepMaxCm, StringFormat=N1}" Width="80" />
+                                <DataGridComboBoxColumn x:Name="ColEspEstribo" Header="Estribo"
+                                                        SelectedItemBinding="{Binding Estribo}" Width="75"
+                                                        ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                        EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                                <DataGridTextColumn Header="Sep estribo" Binding="{Binding SepEstribo}" Width="85" />
+                                <DataGridTextColumn Header="f'c" Binding="{Binding Fc}" Width="55" />
+                                <DataGridTextColumn Header="Escala" Binding="{Binding Escala}" Width="55" />
+                                <DataGridTextColumn Header="Total vars." Binding="{Binding TotalVarillas}" IsReadOnly="True" Width="75" />
+                                <DataGridTextColumn Header="As cm2" Binding="{Binding AreaAceroCm2, StringFormat=N2}" IsReadOnly="True" Width="70" />
+                                <DataGridTextColumn Header="Cuantia %" Binding="{Binding CuantiaPorcentaje, StringFormat=N3}" IsReadOnly="True" Width="75" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <Grid Grid.Row="2" Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="300" />
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Background="White" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                                <Canvas x:Name="EspecialPreviewCanvas" Background="White" ClipToBounds="True" />
+                            </Border>
+                            <Border Grid.Column="1" Margin="10,0,0,0" Padding="10"
+                                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                                <TextBlock x:Name="EspecialRotuloText" TextWrapping="Wrap" FontSize="12" />
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </TabItem>
+              </TabControl>
             </TabItem>
 
             <!-- ===== Secciones de acero ===== -->

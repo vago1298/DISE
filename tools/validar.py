@@ -15800,7 +15800,7 @@ def v29_paquete_oficina() -> None:
 ICONOS_CINTA = ("importar-etabs", "armar-modelo", "columna-acero", "columna-corte",
                 "viga-acero", "viga-corte", "armar-tipo", "corte-seccion",
                 "placa-base", "cimentacion", "soldar-viga", "soldar-columna", "encamisar", "armar-muros", "armar-cimentacion",
-                "conexiones-libro")
+                "conexiones-libro", "soltar-piezas")
 
 def v30_armado_por_tipo() -> None:
     print("\n[30] Revit: armar por tipo, todas las piezas de un jalon")
@@ -17254,6 +17254,14 @@ def v31_detalles_revit() -> None:
           "MasCercanoEnfrente(cajasMuros, marco)" in det and "public static double? Enfrente(" in nuc)
     check("la placa embebida lleva sus anclas a la vista: barreno, tuerca por fuera y rosca, solo en el perimetro",
           "tuerca del ancla de la placa embebida" in det and "if (i > 0 && i < columnas - 1 && j > 0 && j < filas - 1)" in nuc)
+    check("al importar de ETABS se sueltan las piezas creadas, en la misma transaccion",
+          "r.Desunido = Desunir.Piezas(doc, r.Hechos);" in leer(ruta("client/src/CadLink.Revit/Modelador.cs"))
+          and "StructuralFramingUtils.DisallowJoinAtEnd(e, 0);" in leer(ruta("client/src/CadLink.Revit/Desunir.cs"))
+          and "typeof(ComandoDesunir).FullName" in apl)
+    check("formas especiales: subpestaña en Secciones Concreto, guardada en el .clk y dibujada en AutoCAD",
+          'Header="Formas especiales"' in leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+          and "p.SeccionesEspeciales.Add(FilaSerializable.Leer(se));" in leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+          and "public int DibujarEspecial(" in leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Especial.cs")))
     check("la placa vertical de Placas base usa la placa de la hoja con SUS anclas",
           "public static (CajaLocal Placa, List<PernoLocal> Pernos) PlacaEnMuroDeArchivo(" in nuc
           and "PlacaDeArchivo = placa," in com and "Conexion.PlacaEnMuroDeArchivo(deArchivo, o.Girar)" in det)

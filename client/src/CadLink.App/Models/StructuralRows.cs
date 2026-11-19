@@ -1302,6 +1302,9 @@ public sealed class DatosProyecto
     /// <summary>Los muros de contencion de concreto ciclopeo.</summary>
     public ObservableCollection<MuroCiclopeoRow> MurosCiclopeos { get; } = new();
 
+    /// <summary>Castillos, columnas, cabezales y dados en L, en T o de forma irregular.</summary>
+    public ObservableCollection<SeccionEspecialRow> SeccionesEspeciales { get; } = new();
+
     /// <summary>Las placas base, con sus anclas, sus cartabones y su dado.</summary>
     /// <remarks>
     /// Una sola tabla para las diez familias de perfil, por lo mismo que la hoja de acero: la

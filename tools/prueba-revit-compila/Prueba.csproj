@@ -58,6 +58,7 @@
     <Compile Include="..\..\client\src\CadLink.Revit\Despiece.cs" />
     <Compile Include="..\..\client\src\CadLink.Revit\CreadorDeTipos.cs" />
     <Compile Include="..\..\client\src\CadLink.Revit\Geometria.cs" />
+    <Compile Include="..\..\client\src\CadLink.Revit\Desunir.cs" />
     <Compile Include="..\..\client\src\CadLink.Revit\Solidos.cs" />
     <Compile Include="..\..\client\src\CadLink.Revit\Detallador.cs" />
     <Compile Include="..\..\client\src\CadLink.Revit\Detallador.Conexiones.cs" />

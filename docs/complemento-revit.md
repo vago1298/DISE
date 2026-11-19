@@ -703,6 +703,14 @@ la anterior; no se encima.
 
 ---
 
+## Piezas sueltas: sin uniones
+
+Al importar desde ETABS, **todo lo que se crea queda suelto** al final, en la misma transacción
+(el mismo Ctrl+Z lo deshace): las puntas de vigas y muros sin unión (*Disallow Join*) y los
+*Join Geometry* separados. Antes de soltar cada viga se le deja la línea del largo que mide de cara a
+cara, para que no crezca hasta el centro de la columna. Para modelos de antes está el botón
+**Entrada → Soltar piezas**: con piezas elegidas suelta esas; sin elegir, todo el modelo.
+
 ## Cómo está construido, y por qué
 
 El complemento es el único proyecto de este repositorio que **no se puede compilar sin Revit

@@ -317,6 +317,11 @@ public sealed class ComandoImportar : IExternalCommand
           .AppendLine(", asi que la proxima vez no hay que volver a elegir.");
 
         sb.AppendLine();
+        if (r.Desunido is { } d)
+        {
+            sb.AppendLine(Desunir.Texto(d) + " Ya se pueden mover sueltas.");
+        }
+
         sb.Append("Un solo Ctrl+Z deshace toda la importacion.");
 
         return sb.ToString();

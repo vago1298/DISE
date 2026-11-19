@@ -209,6 +209,9 @@ public abstract class Element
 {
     public ElementId Id => new(0L);
 
+    /// <summary>Revit API 2022+: Element.Category y Category.BuiltInCategory.</summary>
+    public Category? Category => null;
+
     public string? Name { get; set; }
 
     public Location? Location => null;
@@ -599,4 +602,28 @@ public sealed class FailuresAccessor
 public interface IFailuresPreprocessor
 {
     FailureProcessingResult PreprocessFailures(FailuresAccessor acceso);
+}
+
+
+// SOLTAR LAS PIEZAS. SIN COMPROBAR contra la DLL: de la documentacion de la API.
+//   WallUtils.IsWallJoinAllowedAtEnd(Wall, int) y DisallowWallJoinAtEnd(Wall, int)
+//   JoinGeometryUtils.GetJoinedElements(Document, Element) y UnjoinGeometry(Document, Element, Element)
+//   StructuralFramingUtils.IsJoinAllowedAtEnd / DisallowJoinAtEnd(FamilyInstance, int), en Recortes.Structure.cs
+public static class WallUtils
+{
+    public static bool IsWallJoinAllowedAtEnd(Wall muro, int punta) => true;
+
+    public static void DisallowWallJoinAtEnd(Wall muro, int punta) { }
+}
+
+public static class JoinGeometryUtils
+{
+    public static ICollection<ElementId> GetJoinedElements(Document doc, Element e) => new List<ElementId>();
+
+    public static void UnjoinGeometry(Document doc, Element a, Element b) { }
+}
+
+public sealed class Category
+{
+    public BuiltInCategory BuiltInCategory => BuiltInCategory.OST_GenericModel;
 }

@@ -106,6 +106,9 @@ public sealed class ProyectoGuardado
 
     public List<FilaGuardada> MurosCiclopeos { get; set; } = new();
 
+    /// <summary>La hoja «Formas especiales». Un .clk de antes no la trae y queda vacia.</summary>
+    public List<FilaGuardada> SeccionesEspeciales { get; set; } = new();
+
     /// <summary>Las filas de la hoja de <b>placas base</b>.</summary>
     /// <remarks>
     /// Con el mismo mecanismo genérico que las dos hojas de zapatas, y por el mismo motivo: una

@@ -207,6 +207,10 @@ public partial class MainWindow : Window
     {
         SeccionesGrid.ItemsSource = _datos.SeccionesConcreto;
 
+        // La hoja de formas especiales, que vive en MainWindow.SeccionesEspeciales.cs. Aqui y no en
+        // su propio arranque porque _datos se cambia entero al abrir un trabajo o cargar el ejemplo.
+        EnlazarEspeciales();
+
         // TIEMPO REAL. La colección solo avisa cuando se agrega o se quita una fila,
         // no cuando se EDITA una celda. Sin esto, cambiar el gancho o la separación no
         // movía la vista previa hasta que se seleccionaba otra sección: el usuario
@@ -2226,7 +2230,7 @@ public partial class MainWindow : Window
         DataGrid?[] hojas =
         {
             SeccionesGrid, AceroGrid, ZapatasCorridasGrid, ZapatasGrid, PlacasGrid, PlanosGrid,
-            MurosArmadosGrid, MurosCiclopeosGrid,
+            MurosArmadosGrid, MurosCiclopeosGrid, EspecialesGrid,
         };
 
         foreach (var hoja in hojas)
@@ -2488,6 +2492,11 @@ public partial class MainWindow : Window
             p.MurosCiclopeos.Add(FilaSerializable.Leer(mu));
         }
 
+        foreach (var se in _datos.SeccionesEspeciales)
+        {
+            p.SeccionesEspeciales.Add(FilaSerializable.Leer(se));
+        }
+
         // Y las placas base. Va aquí y no solo en el guardado del archivo porque la instantánea
         // del DESHACER serializa este mismo objeto: sin esta línea, un Ctrl+Z después de capturar
         // una placa habría borrado la hoja de placas entera.
@@ -2701,6 +2710,15 @@ public partial class MainWindow : Window
                 var nueva = new MuroCiclopeoRow();
                 FilaSerializable.Aplicar(nueva, fila);
                 _datos.MurosCiclopeos.Add(nueva);
+            }
+
+            _datos.SeccionesEspeciales.Clear();
+
+            foreach (var fila in p.SeccionesEspeciales ?? new List<FilaGuardada>())
+            {
+                var nueva = new SeccionEspecialRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.SeccionesEspeciales.Add(nueva);
             }
 
             // ---- Placas Base ----

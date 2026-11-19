@@ -1036,6 +1036,73 @@ public sealed class ComandoArmarCimentacion : IExternalCommand
     }
 }
 
+/// <summary>
+/// El boton <b>Soltar piezas</b>: quita las uniones de las piezas elegidas -o de todo el modelo-
+/// para moverlas libremente. La importacion desde ETABS ya lo hace sola con lo que crea.
+/// </summary>
+[Transaction(TransactionMode.Manual)]
+public sealed class ComandoDesunir : IExternalCommand
+{
+    public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+    {
+        var uidoc = commandData?.Application?.ActiveUIDocument;
+        var doc = uidoc?.Document;
+
+        if (uidoc is null || doc is null || doc.IsFamilyDocument)
+        {
+            message = "Abre un proyecto de Revit antes de soltar piezas.";
+            return Result.Failed;
+        }
+
+        var categorias = new[]
+        {
+            BuiltInCategory.OST_StructuralFraming, BuiltInCategory.OST_StructuralColumns,
+            BuiltInCategory.OST_Walls, BuiltInCategory.OST_Floors, BuiltInCategory.OST_StructuralFoundation
+        };
+
+        // Lo ya elegido; si no hay nada elegido, TODO el modelo de esas categorias.
+        var elegidas = uidoc.Selection.GetElementIds()
+            .Select(id => doc.GetElement(id)).OfType<Element>()
+            .Where(e => e.Category is { } c && categorias.Contains(c.BuiltInCategory))
+            .ToList();
+
+        var piezas = elegidas.Count > 0
+            ? elegidas
+            : categorias.SelectMany(c => DetallesEnRevit.Todas(doc, c)).ToList();
+
+        if (piezas.Count == 0)
+        {
+            TaskDialog.Show("CadLink", "No hay vigas, columnas, muros ni losas que soltar.");
+            return Result.Cancelled;
+        }
+
+        var pregunta = new TaskDialog("CadLink")
+        {
+            MainInstruction = elegidas.Count > 0
+                ? $"Soltar las {piezas.Count} pieza(s) elegidas"
+                : $"Soltar TODO el modelo: {piezas.Count} pieza(s)",
+            MainContent = "Se quitan las uniones de las puntas de vigas y muros y las de Join Geometry, para "
+                          + "que se puedan mover sueltas. Cada viga conserva su largo de cara a cara.",
+            CommonButtons = TaskDialogCommonButtons.Ok | TaskDialogCommonButtons.Cancel
+        };
+
+        if (pregunta.Show() != TaskDialogResult.Ok)
+        {
+            return Result.Cancelled;
+        }
+
+        using var t = new Transaction(doc, "Soltar piezas de CadLink");
+        t.Start();
+        var r = Desunir.Piezas(doc, piezas);
+        t.Commit();
+
+        TaskDialog.Show("CadLink", Desunir.Texto(r) + "\n\nUn solo Ctrl+Z lo deshace."
+            + (r.Avisos.Count > 0 ? "\n\n" + Agrupador.Texto(r.Avisos, 6, "Hay algo que decir de") : string.Empty));
+
+        return Result.Succeeded;
+    }
+}
+
 /// <summary>Lo comun a los botones: elegir las piezas, abrir el archivo y el informe.</summary>
 internal static class DetallesEnRevit
 {

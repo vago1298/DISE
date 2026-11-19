@@ -34,3 +34,10 @@ public sealed class StructuralSection
 public enum YJustification { Left, Origin, Center, Right }
 
 public enum ZJustification { Bottom, Origin, Center, Top }
+
+public static class StructuralFramingUtils
+{
+    public static bool IsJoinAllowedAtEnd(FamilyInstance viga, int punta) => true;
+
+    public static void DisallowJoinAtEnd(FamilyInstance viga, int punta) { }
+}

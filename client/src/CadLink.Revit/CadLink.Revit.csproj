@@ -200,6 +200,14 @@
     <EmbeddedResource Include="Assets\armar-cimentacion-16.png">
       <LogicalName>CadLink.Revit.armar-cimentacion-16.png</LogicalName>
     </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\soltar-piezas-32.png">
+      <LogicalName>CadLink.Revit.soltar-piezas-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\soltar-piezas-16.png">
+      <LogicalName>CadLink.Revit.soltar-piezas-16.png</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <PropertyGroup>
