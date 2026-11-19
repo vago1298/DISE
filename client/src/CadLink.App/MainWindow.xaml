@@ -1229,6 +1229,104 @@
               </TabControl>
             </TabItem>
 
+            <!-- ===== Losas: armado de losa de entrepiso y de cimentacion ===== -->
+            <TabItem Header="Losas">
+                <Grid Margin="14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="140" />
+                        <RowDefinition Height="1.3*" MinHeight="200" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Armado de losas de entrepiso y de cimentacion"
+                                   Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Un renglon por tablero. Los claros son de EJE a EJE de los apoyos; el L/4 es del claro LIBRE (de paño a paño) y se mide desde el paño. La separacion es la de la parrilla: corridas y bayonetas se alternan, asi que cada una va al doble, y sobre los apoyos van bayoneta y baston alternados. Cada orilla es BORDE (ahi se acaba la losa: gancho de 90 al paño exterior) o CONTINUO (sigue otro tablero: la bayoneta y el baston pasan L/4 al vecino). En CIMENTACION todo va al reves: corridas arriba, bastones abajo sobre las contratrabes." />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <Button Content="Agregar tablero" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnAgregarLosa"
+                                    ToolTip="Agrega un renglon copiando el elegido, con un ID libre." />
+                            <Button Content="Quitar tablero" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnQuitarLosa" Margin="8,0,0,0" />
+                            <Button Content="Revisar losas" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnRevisarLosas" Margin="8,0,0,0" />
+                            <CheckBox x:Name="RedibujarLosasChk" VerticalAlignment="Center" Margin="16,0,8,0"
+                                      Content="Redibujar las que ya existen" />
+                            <Button x:Name="DibujarLosasButton" Content="Dibujar en AutoCAD"
+                                    Style="{StaticResource PrimaryButtonStyle}" Click="OnDibujarLosas"
+                                    ToolTip="Dibuja cada tablero en el AutoCAD abierto: la planta con las varillas abatidas y los cortes A-A y B-B con corridas, bayonetas y bastones, sus cotas de L/4 y sus notas, en un bloque LOSA-ID." />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <DataGrid x:Name="LosasGrid" Grid.Row="1"
+                              Style="{StaticResource SheetGridStyle}"
+                              SelectionMode="Single" SelectionUnit="FullRow" CanUserAddRows="False">
+                        <DataGrid.Columns>
+                        <DataGridComboBoxColumn x:Name="ColLosaTipo" Header="Tipo"
+                                                SelectedItemBinding="{Binding Tipo}" Width="105"
+                                                ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                        <DataGridTextColumn Header="ID" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}" Width="70" />
+                        <DataGridTextColumn Header="Claro X m" Binding="{Binding ClaroXM, StringFormat=N2}" Width="70" />
+                        <DataGridTextColumn Header="Claro Y m" Binding="{Binding ClaroYM, StringFormat=N2}" Width="70" />
+                        <DataGridTextColumn Header="h cm" Binding="{Binding EspesorCm, StringFormat=N1}" Width="55" />
+                        <DataGridTextColumn Header="Rec cm" Binding="{Binding RecubrimientoCm, StringFormat=N1}" Width="55" />
+                        <DataGridTextColumn Header="Apoyo b cm" Binding="{Binding ApoyoAnchoCm, StringFormat=N1}" Width="75" />
+                        <DataGridTextColumn Header="Apoyo h cm" Binding="{Binding ApoyoPeralteCm, StringFormat=N1}" Width="75" />
+                        <DataGridComboBoxColumn x:Name="ColLosaVarX" Header="Var X"
+                                                SelectedItemBinding="{Binding VarX}" Width="70"
+                                                ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                        <DataGridTextColumn Header="Sep X cm" Binding="{Binding SepXCm, StringFormat=N1}" Width="65" />
+                        <DataGridComboBoxColumn x:Name="ColLosaVarY" Header="Var Y"
+                                                SelectedItemBinding="{Binding VarY}" Width="70"
+                                                ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                        <DataGridTextColumn Header="Sep Y cm" Binding="{Binding SepYCm, StringFormat=N1}" Width="65" />
+                        <DataGridComboBoxColumn x:Name="ColLosaBaston" Header="Baston"
+                                                SelectedItemBinding="{Binding VarBaston}" Width="70"
+                                                ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                        <DataGridComboBoxColumn x:Name="ColLosaIzq" Header="Izquierda"
+                                                SelectedItemBinding="{Binding BordeIzquierdo}" Width="95"
+                                                ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                        <DataGridComboBoxColumn x:Name="ColLosaDer" Header="Derecha"
+                                                SelectedItemBinding="{Binding BordeDerecho}" Width="95"
+                                                ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                        <DataGridComboBoxColumn x:Name="ColLosaAbajo" Header="Abajo"
+                                                SelectedItemBinding="{Binding BordeAbajo}" Width="95"
+                                                ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                        <DataGridComboBoxColumn x:Name="ColLosaArriba" Header="Arriba"
+                                                SelectedItemBinding="{Binding BordeArriba}" Width="95"
+                                                ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                        <DataGridTextColumn Header="f'c" Binding="{Binding Fc}" Width="50" />
+                        <DataGridTextColumn Header="Escala" Binding="{Binding Escala}" Width="55" />
+                        <DataGridTextColumn Header="L/4 X m" Binding="{Binding BastonXM, StringFormat=N2}" IsReadOnly="True" Width="65" />
+                        <DataGridTextColumn Header="L/4 Y m" Binding="{Binding BastonYM, StringFormat=N2}" IsReadOnly="True" Width="65" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Grid Grid.Row="2" Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="300" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Background="White" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                            <Canvas x:Name="LosaPreviewCanvas" Background="White" ClipToBounds="True" />
+                        </Border>
+                        <Border Grid.Column="1" Margin="10,0,0,0" Padding="10"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                            <TextBlock x:Name="LosaRotuloText" TextWrapping="Wrap" FontSize="12" />
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
             <!-- ===== Secciones de acero ===== -->
             <TabItem Header="Secciones Acero">
                 <Grid Margin="14">

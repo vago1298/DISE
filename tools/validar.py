@@ -17288,6 +17288,13 @@ def v31_detalles_revit() -> None:
           "r.Desunido = Desunir.Piezas(doc, r.Hechos, vigas: false);" in leer(ruta("client/src/CadLink.Revit/Modelador.cs"))
           and "StructuralFramingUtils.DisallowJoinAtEnd(e, 0);" in leer(ruta("client/src/CadLink.Revit/Desunir.cs"))
           and "typeof(ComandoDesunir).FullName" in apl)
+    check("losas de entrepiso y cimentacion: pestaña, guardada en el .clk y dibujada con corridas, bayonetas y bastones a L/4",
+          'Header="Losas"' in leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+          and "p.Losas.Add(FilaSerializable.Leer(lo));" in leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+          and "_datos.Losas.Add(nueva);" in leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+          and "public int DibujarLosa(" in leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Losa.cs"))
+          and "var cuarto = ln / 4;" in leer(ruta("client/src/CadLink.Cad/ArmadoLosaCad.cs"))
+          and os.path.exists(ruta("tools/prueba-armado-losa/Program.cs")))
     check("formas especiales: subpestaña en Secciones Concreto, guardada en el .clk y dibujada en AutoCAD",
           'Header="Formas especiales"' in leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
           and "p.SeccionesEspeciales.Add(FilaSerializable.Leer(se));" in leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))

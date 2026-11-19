@@ -1305,6 +1305,9 @@ public sealed class DatosProyecto
     /// <summary>Castillos, columnas, cabezales y dados en L, en T o de forma irregular.</summary>
     public ObservableCollection<SeccionEspecialRow> SeccionesEspeciales { get; } = new();
 
+    /// <summary>Los tableros de losa de entrepiso y de cimentacion, con su armado.</summary>
+    public ObservableCollection<ArmadoLosaRow> Losas { get; } = new();
+
     /// <summary>Las placas base, con sus anclas, sus cartabones y su dado.</summary>
     /// <remarks>
     /// Una sola tabla para las diez familias de perfil, por lo mismo que la hoja de acero: la

@@ -211,6 +211,9 @@ public partial class MainWindow : Window
         // su propio arranque porque _datos se cambia entero al abrir un trabajo o cargar el ejemplo.
         EnlazarEspeciales();
 
+        // La hoja de losas, en MainWindow.Losas.cs, por lo mismo.
+        EnlazarLosas();
+
         // TIEMPO REAL. La colección solo avisa cuando se agrega o se quita una fila,
         // no cuando se EDITA una celda. Sin esto, cambiar el gancho o la separación no
         // movía la vista previa hasta que se seleccionaba otra sección: el usuario
@@ -2497,6 +2500,11 @@ public partial class MainWindow : Window
             p.SeccionesEspeciales.Add(FilaSerializable.Leer(se));
         }
 
+        foreach (var lo in _datos.Losas)
+        {
+            p.Losas.Add(FilaSerializable.Leer(lo));
+        }
+
         // Y las placas base. Va aquí y no solo en el guardado del archivo porque la instantánea
         // del DESHACER serializa este mismo objeto: sin esta línea, un Ctrl+Z después de capturar
         // una placa habría borrado la hoja de placas entera.
@@ -2719,6 +2727,15 @@ public partial class MainWindow : Window
                 var nueva = new SeccionEspecialRow();
                 FilaSerializable.Aplicar(nueva, fila);
                 _datos.SeccionesEspeciales.Add(nueva);
+            }
+
+            _datos.Losas.Clear();
+
+            foreach (var fila in p.Losas ?? new List<FilaGuardada>())
+            {
+                var nueva = new ArmadoLosaRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.Losas.Add(nueva);
             }
 
             // ---- Placas Base ----

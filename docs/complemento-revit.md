@@ -454,6 +454,13 @@ elegirla cien veces. El botón **CadLink → Armar por tipo** lo hace **una vez 
    las trabes y columnas o dados para las columnas.
 5. Marca los tipos que quieras (**Marcar todas** / **Desmarcar todas**) y pulsa **Armar**.
 
+**Lo que ya está armado no se toca.** Un tipo que ya tiene piezas armadas sale **sin marcar**
+("ya armadas: se dejan como están"); para rehacerlo, márcalo. Cada pieza rehace solo las varillas
+que **ella** aloja (su marca de CadLink y ella como anfitrión), así que armar una cadena de desplante
+no borra el armado de una contratrabe aunque las dos tengan el mismo comentario. Y el armado viejo
+de una pieza se quita solo si salió el nuevo: si Revit no acepta ninguna varilla, se queda el que
+tenía y el informe lo dice.
+
 ### Qué tipo de armadura de Revit lleva cada varilla
 
 Abajo del cuadro hay una segunda tabla, **"Tipo de armadura de Revit con que se pone cada
