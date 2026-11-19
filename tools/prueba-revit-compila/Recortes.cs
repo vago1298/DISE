@@ -432,6 +432,9 @@ public enum BuiltInParameter
 {
     ALL_MODEL_INSTANCE_COMMENTS,
     STRUCTURAL_BEND_DIR_ANGLE,
+
+    // El espesor de un Floor (Thickness, de solo lectura). Revit API: BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM.
+    FLOOR_ATTR_THICKNESS_PARAM,
     FAMILY_BASE_LEVEL_PARAM,
     FAMILY_BASE_LEVEL_OFFSET_PARAM,
     FAMILY_TOP_LEVEL_PARAM,

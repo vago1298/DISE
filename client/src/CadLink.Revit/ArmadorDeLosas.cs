@@ -80,6 +80,11 @@ internal static class ArmadorDeLosas
                         continue;
                     }
 
+                    // EL ESPESOR, DEL PARAMETRO DE LA LOSA. Medido de las aristas del solido salia 0 en
+                    // las losas del usuario («con 0 cm de espesor no caben las dos camas»): la planta se
+                    // lee bien de ahi, pero la altura no. Se toma «Thickness» y, si no lo trae, la caja.
+                    m = ConSuEspesor(losa, m);
+
                     var cimentacion = armado.Cimentacion
                                       ?? losa.Category?.BuiltInCategory == BuiltInCategory.OST_StructuralFoundation;
                     var llave = LlaveDetalle.De(ClaseDetalle.ArmadoLosa, losa.Id.Value);
@@ -118,7 +123,8 @@ internal static class ArmadorDeLosas
 
                         if (zSup - zInf < d)
                         {
-                            r.Errores.Add($"«{nombre}»: con {h * 100:0.#} cm de espesor no caben las dos camas.");
+                            r.Errores.Add($"«{nombre}»: con {h * 100:0.#} cm de espesor y {armado.RecInfM * 100:0.#} + "
+                                          + $"{armado.RecSupM * 100:0.#} cm de recubrimiento no caben las dos camas.");
                             continue;
                         }
 
@@ -259,6 +265,44 @@ internal static class ArmadorDeLosas
         }
 
         return r;
+    }
+
+    /// <summary>
+    /// La planta con el espesor de verdad: el parametro Thickness del Floor; si no, la altura de su caja;
+    /// si no, lo medido. La cara de abajo se pone a ese espesor bajo la cara de arriba, que es la del nivel.
+    /// </summary>
+    private static ArmadorDeZapatas.PlantaZapata ConSuEspesor(Element losa, ArmadorDeZapatas.PlantaZapata m)
+    {
+        var minimo = Unidades.AInternas(0.03);
+        var bb = losa.get_BoundingBox(null);
+        var arriba = bb is not null ? bb.Max.Z : m.Esquina.Z + m.Alto;
+        double espesor;
+
+        try
+        {
+            espesor = losa.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)?.AsDouble() ?? 0;
+        }
+        catch (Exception)
+        {
+            espesor = 0;
+        }
+
+        if (espesor < minimo && m.Alto >= minimo)
+        {
+            espesor = m.Alto;
+        }
+
+        if (espesor < minimo && bb is not null)
+        {
+            espesor = bb.Max.Z - bb.Min.Z;
+        }
+
+        if (espesor < minimo)
+        {
+            return m;
+        }
+
+        return m with { Alto = espesor, Esquina = new XYZ(m.Esquina.X, m.Esquina.Y, arriba - espesor) };
     }
 
     /// <summary>Las varillas que CadLink ya le habia puesto a ESTA losa.</summary>
