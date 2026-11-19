@@ -35,7 +35,7 @@ public partial class MainWindow
 
         foreach (var s in _datos.SeccionesConcreto)
         {
-            var tipo = TipoDe(s.Elemento, s.Id);
+            var tipo = TipoParaRevit(s.Elemento, s.Id);
             var id = (s.Id ?? string.Empty).Trim();
 
             if (tipo is null || s.EsCircular || id.Length == 0 || filas.ContainsKey(id))
@@ -137,6 +137,40 @@ public partial class MainWindow
         return a;
     }
 
+    /// <summary>
+    /// Como se arma la seccion en Revit. Es <see cref="TipoDe"/> mas los elementos que en AutoCAD no
+    /// llevan alzado pero en Revit SI se arman: el CASTILLO como columna (vertical) y las CADENAS y el
+    /// CABEZAL como trabe (horizontal).
+    /// </summary>
+    /// <remarks>
+    /// Sin esto los castillos no iban en el .cadlink-armado.json, y en «Armar por tipo» los tipos
+    /// «K 15X15» salian sin ninguna seccion que elegir: no se podian marcar.
+    /// </remarks>
+    private static TipoElemento? TipoParaRevit(string? elemento, string? id)
+    {
+        if (TipoDe(elemento, id) is { } t)
+        {
+            return t;
+        }
+
+        var e = (elemento ?? string.Empty).Trim().ToUpperInvariant();
+        var i = (id ?? string.Empty).Trim().ToUpperInvariant();
+
+        if (e.StartsWith("CASTILLO", StringComparison.Ordinal) || i.StartsWith("K-", StringComparison.Ordinal))
+        {
+            return TipoElemento.Columna;
+        }
+
+        if (e.StartsWith("CADENA", StringComparison.Ordinal) || e == SeccionConcretoRow.ElementoCabezal
+            || i.StartsWith("CC-", StringComparison.Ordinal) || i.StartsWith("CD-", StringComparison.Ordinal)
+            || i.StartsWith("CI-", StringComparison.Ordinal))
+        {
+            return TipoElemento.Trabe;
+        }
+
+        return null;
+    }
+
     /// <summary>Lo que si depende de la longitud: estribos y bastones de UNA barra.</summary>
     private ArmadoBarraJson ArmadoDeBarra(
         SeccionConcretoRow s, ArmadoJson a, double largoM, string por)
@@ -145,7 +179,7 @@ public partial class MainWindow
         Varilla.TryDiametroCm(s.Estribo, out var de);
 
         var sep = Separaciones(s.SeparacionCm);
-        var tipo = TipoDe(s.Elemento, s.Id);
+        var tipo = TipoParaRevit(s.Elemento, s.Id);
 
         // LOS MISMOS ESTRIBOS QUE EL ALZADO: CentrosDeAlzado, con la longitud de ESTA pieza.
         var centros = Estribos.CentrosDeAlzado(
@@ -268,7 +302,7 @@ public partial class MainWindow
 
         foreach (var s in _datos.SeccionesConcreto)
         {
-            var tipo = TipoDe(s.Elemento, s.Id);
+            var tipo = TipoParaRevit(s.Elemento, s.Id);
             var id = (s.Id ?? string.Empty).Trim();
 
             if (id.Length == 0)
@@ -294,8 +328,8 @@ public partial class MainWindow
         if (armados.Count == 0)
         {
             MessageBox.Show(this,
-                "No hay secciones que mandar: el armado para Revit lleva las trabes, contratrabes, "
-                + "columnas y dados RECTANGULARES de la hoja de secciones de concreto.",
+                "No hay secciones que mandar: el armado para Revit lleva las trabes, contratrabes, cadenas, "
+                + "columnas, castillos y dados RECTANGULARES de la hoja de secciones de concreto.",
                 AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }

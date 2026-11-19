@@ -15837,6 +15837,10 @@ def v30_armado_por_tipo() -> None:
           and 'new Transaction(doc, "Armado por tipo de CadLink")' in arm)
     check("y volver a armar rehace, tambien en piezas que no puso CadLink",
           '"Revit|" + inst.Id.Value' in arm and "viejo.Remove(suyo);" in arm)
+    check("los castillos (como columna) y las cadenas (como trabe) van en el armado para Revit",
+          "private static TipoElemento? TipoParaRevit(" in leer(ruta("client/src/CadLink.App/MainWindow.ArmadoRevit.cs"))
+          and leer(ruta("client/src/CadLink.App/MainWindow.ArmadoRevit.cs")).count("TipoParaRevit(s.Elemento, s.Id)") == 3,
+          "sin ellos, en Armar por tipo los tipos K 15X15 no tenian seccion que elegir")
     check("cada pieza rehace SOLO el armado que aloja: armar la cadena no borra el de la contratrabe",
           "rb.GetHostId().Value" in arm and "var suyo = DeLaPieza(llave, inst.Id.Value);" in arm
           and "(!_sinAvisar || YaArmadas == 0)" in leer(ruta("client/src/CadLink.Revit.Nucleo/ArmadoPorTipo.cs")),
