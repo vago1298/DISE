@@ -325,7 +325,12 @@ fachada pasa por el centro del muro; en un plano lo que se acota por fuera es la
 exterior, de modo que el primer y el último eje de cada dirección se corren hacia fuera medio
 espesor de la pieza más gruesa que corre a lo largo de ellos, con preferencia **muro, trabe,
 apoyo**. Los ejes interiores no se mueven. Un eje cuyo nombre ya existe no se vuelve a crear,
-para que reimportar no deje seis rejillas llamadas `1` una encima de otra.
+para que reimportar no deje seis rejillas llamadas `1` una encima de otra, **pero solo si va
+por la misma línea** (misma dirección, a menos de 1 cm). Si ya había un eje con ese nombre en
+otra dirección u otra ordenada (de otra importación o de la plantilla), se rehace donde dice el
+modelo: antes se saltaba y las letras viejas se quedaban horizontales, con lo que salían todos
+los ejes en Y. El informe dice qué ejes van en X (verticales) y cuáles en Y (horizontales), los
+que se rehicieron y los del proyecto que no vienen en el modelo, que no se tocan.
 
 **Las burbujas en los dos extremos** se encienden en el **tipo** de eje (*Símbolos de vista
 de plano en extremo 1 y 2*), que vale en todas las vistas, y además en cada vista de planta.

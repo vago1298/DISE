@@ -16828,6 +16828,17 @@ def v26_plugin_revit() -> None:
     check("el informe dice cuantos ejes se crearon",
           "EjesCreados" in ci)
 
+    check("un eje que ya estaba con el mismo nombre solo se respeta si va por su linea",
+          "EnSuLinea(ya, a, z)" in modelador
+          and "LineasDeEje.MismaLinea(" in modelador
+          and "doc.Delete(new List<ElementId> { viejo.Id })" in modelador
+          and "EjesCorregidos" in ci and "EjesAjenos" in ci,
+          "se saltaba sin mirar donde estaba: las letras de otra importacion se quedaban "
+          "horizontales y salian TODOS los ejes en Y")
+
+    check("y el informe dice que ejes van en X y cuales en Y",
+          "Ejes del modelo: en X (verticales) " in ci)
+
     check("las burbujas de los ejes van en los DOS extremos, o sea los cuatro lados del plano",
           "BurbujasEnLosCuatroLados(" in modelador
           and "DatumEnds.End0" in modelador and "DatumEnds.End1" in modelador,

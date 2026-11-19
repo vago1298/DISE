@@ -227,6 +227,10 @@ public sealed class ComandoImportar : IExternalCommand
 
     /// <param name="completo">Con los avisos. En pantalla va sin ellos: solo los errores.</param>
     /// <param name="rutaInforme">Donde quedo el informe completo, para decirlo.</param>
+    /// <summary>Los nombres de los ejes de una direccion, o «ninguno».</summary>
+    private static string Nombres(List<EjeJson> ejes) =>
+        ejes.Count == 0 ? "ninguno" : string.Join(", ", ejes.Select(e => e.Id));
+
     private static string Informe(
         Modo modo, Plan plan, ResultadoModelado r, string rutaMapeo, bool completo, string rutaInforme = "")
     {
@@ -248,6 +252,29 @@ public sealed class ComandoImportar : IExternalCommand
         if (r.EjesCreados > 0)
         {
             sb.Append("Ejes creados: ").Append(r.EjesCreados).AppendLine();
+        }
+
+        if (plan.Cuadricula is { Hay: true } cuad)
+        {
+            sb.Append("Ejes del modelo: en X (verticales) ")
+              .Append(Nombres(cuad.X))
+              .Append("; en Y (horizontales) ")
+              .Append(Nombres(cuad.Y))
+              .AppendLine();
+        }
+
+        if (r.EjesCorregidos.Count > 0)
+        {
+            sb.Append("Ejes que ya estaban con ese nombre en otro lugar y se rehicieron: ")
+              .Append(string.Join(", ", r.EjesCorregidos))
+              .AppendLine();
+        }
+
+        if (r.EjesAjenos.Count > 0)
+        {
+            sb.Append("Ejes del proyecto que no vienen en el modelo (no se tocaron): ")
+              .Append(string.Join(", ", r.EjesAjenos))
+              .AppendLine();
         }
 
         if (plan.SinMapeo > 0)

@@ -2189,6 +2189,21 @@ internal static partial class Programa
         Casi("un eje sin pieza a lo largo se queda en su sitio", Y("A"), 0, 1e-9);
         Casi("el otro tambien", Y("B"), 8, 1e-9);
 
+        // Un eje que ya estaba en el proyecto con el mismo nombre solo se respeta si va por la
+        // misma linea. El caso del usuario: la letra A estaba horizontal de otra importacion y el
+        // modelo nuevo la trae vertical; se saltaba y salian todos los ejes en Y.
+        Check("eje viejo horizontal NO es el vertical que pide el modelo",
+              !LineasDeEje.MismaLinea((0, 5), (10, 5), (3, -2), (3, 12), 0.03));
+        Check("eje viejo en su linea, aunque mas corto, se respeta",
+              LineasDeEje.MismaLinea((3, 0), (3, 4), (3, -2), (3, 12), 0.03));
+        Check("eje viejo paralelo pero corrido 10 cm no es el mismo",
+              !LineasDeEje.MismaLinea((3.1, 0), (3.1, 4), (3, -2), (3, 12), 0.03));
+        Check("sentido al reves es la misma linea",
+              LineasDeEje.MismaLinea((0, 5), (10, 5), (12, 5), (-2, 5), 0.03));
+        Check("direccion para el informe",
+              LineasDeEje.Direccion((3, -2), (3, 12)) == "vertical"
+              && LineasDeEje.Direccion((-2, 5), (12, 5)) == "horizontal");
+
         // Ejes repetidos: se quedan con el primero, que trae el nombre bueno.
         var repe = new CuadriculaJson();
         repe.X.Add(new EjeJson { Id = "1", Ordenada = 0 });

@@ -16,6 +16,15 @@ public sealed class ResultadoModelado
     /// <summary>Rejillas de eje creadas.</summary>
     public int EjesCreados { get; set; }
 
+    /// <summary>
+    /// Ejes que ya estaban con el mismo nombre pero en otro lugar o en otra direccion, y se
+    /// rehicieron donde dice el modelo.
+    /// </summary>
+    public List<string> EjesCorregidos { get; } = new();
+
+    /// <summary>Ejes del proyecto que no vienen en el modelo. No se tocan; solo se avisan.</summary>
+    public List<string> EjesAjenos { get; } = new();
+
     public int NivelesCreados { get; set; }
 
     /// <summary>Lo que fallo, pieza por pieza y con el motivo.</summary>
@@ -335,14 +344,34 @@ internal static class Modelador
             return;
         }
 
-        var yaEstan = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+        // Los ejes que ya tiene el proyecto, por nombre.
+        //
+        // ANTES, un eje que ya existia con ese nombre se saltaba sin mirar DONDE estaba. Si el
+        // proyecto traia los ejes de otra importacion -o de la plantilla- con las letras en Y,
+        // y el modelo nuevo trae las letras en X, las letras se quedaban horizontales y solo se
+        // creaban los numeros: en la planta salian TODOS los ejes en Y. Ahora un eje con el mismo
+        // nombre solo se respeta si esta donde dice el modelo.
+        var existentes = new Dictionary<string, Grid>(StringComparer.CurrentCultureIgnoreCase);
 
         foreach (var g in new FilteredElementCollector(doc).OfClass(typeof(Grid)).Cast<Grid>())
         {
             if (!string.IsNullOrWhiteSpace(g.Name))
             {
-                yaEstan.Add(g.Name!);
+                existentes[g.Name!.Trim()] = g;
             }
+        }
+
+        // Los nombres que ya se pusieron en esta importacion: un id repetido en el modelo sale
+        // una sola vez.
+        var yaEstan = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+
+        var delModelo = new HashSet<string>(
+            c.X.Concat(c.Y).Select(e => (e.Id ?? string.Empty).Trim()).Where(n => n.Length > 0),
+            StringComparer.CurrentCultureIgnoreCase);
+
+        foreach (var nombre in existentes.Keys.Where(n => !delModelo.Contains(n)).OrderBy(n => n))
+        {
+            r.EjesAjenos.Add(nombre);
         }
 
         // Hasta donde llega cada linea. Se mira la geometria del modelo y tambien los propios
@@ -405,11 +434,45 @@ internal static class Modelador
                 return;
             }
 
+            // El que ya estaba con este nombre: si esta en su linea se deja, con sus cotas y
+            // todo lo que tenga pegado. Si esta en otra direccion o en otra ordenada, se rehace.
+            Grid? viejo = null;
+
+            if (id.Length > 0 && existentes.TryGetValue(id, out var ya) && ya.IsValidObject)
+            {
+                if (EnSuLinea(ya, a, z))
+                {
+                    yaEstan.Add(id);
+                    return;
+                }
+
+                viejo = ya;
+            }
+
             try
             {
+                // Primero el nuevo y despues se borra el viejo: si Revit no deja crear el eje,
+                // el proyecto no se queda sin el.
                 var rejilla = Grid.Create(doc, Line.CreateBound(a, z));
 
                 nuevas.Add(rejilla);
+
+                if (viejo is not null)
+                {
+                    var antes = Direccion(viejo);
+
+                    try
+                    {
+                        doc.Delete(new List<ElementId> { viejo.Id });
+                        existentes.Remove(id);
+                        r.EjesCorregidos.Add($"{id} (estaba {antes}, ahora {DireccionDe(a, z)})");
+                    }
+                    catch (Exception ex)
+                    {
+                        r.Errores.Add($"«eje {id}»: ya habia uno con ese nombre en otro lugar y no se "
+                                      + $"pudo quitar: {ex.Message}");
+                    }
+                }
 
                 if (id.Length > 0)
                 {
@@ -447,6 +510,37 @@ internal static class Modelador
 
         BurbujasEnLosCuatroLados(doc, nuevas, r);
     }
+
+    /// <summary>
+    /// ¿El eje que ya estaba va por la misma linea que pide el modelo? Misma direccion y a menos
+    /// de 1 cm. El largo no cuenta: el usuario pudo acortarlo o alargarlo a mano.
+    /// </summary>
+    private static bool EnSuLinea(Grid g, XYZ a, XYZ z)
+    {
+        if (g.Curve is not Line l)
+        {
+            return false;
+        }
+
+        var p0 = l.GetEndPoint(0);
+        var p1 = l.GetEndPoint(1);
+
+        return LineasDeEje.MismaLinea(
+            (p0.X, p0.Y), (p1.X, p1.Y), (a.X, a.Y), (z.X, z.Y), Unidades.AInternas(0.01));
+    }
+
+    private static string Direccion(Grid g)
+    {
+        if (g.Curve is not Line l)
+        {
+            return "curvo";
+        }
+
+        return DireccionDe(l.GetEndPoint(0), l.GetEndPoint(1));
+    }
+
+    private static string DireccionDe(XYZ a, XYZ z) =>
+        LineasDeEje.Direccion((a.X, a.Y), (z.X, z.Y));
 
     /// <summary>Pone la burbuja de cada eje en SUS DOS EXTREMOS.</summary>
     /// <remarks>

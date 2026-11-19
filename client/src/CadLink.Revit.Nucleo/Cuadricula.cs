@@ -272,3 +272,48 @@ public static class Cuadriculas
             : (an / 2 * s) + (pe / 2 * c);
     }
 }
+
+/// <summary>
+/// Cuentas en planta sobre la linea de un eje, sin Revit: para saber si un eje que ya estaba en el
+/// proyecto va por donde dice el modelo.
+/// </summary>
+public static class LineasDeEje
+{
+    /// <summary>
+    /// ¿Las dos lineas van por la misma recta? Paralelas y con los dos puntos de la segunda a menos
+    /// de <paramref name="tol"/> de la primera. El largo y el sentido no cuentan.
+    /// </summary>
+    public static bool MismaLinea(
+        (double X, double Y) a0, (double X, double Y) a1,
+        (double X, double Y) b0, (double X, double Y) b1, double tol)
+    {
+        var dx = a1.X - a0.X;
+        var dy = a1.Y - a0.Y;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (largo < 1e-9)
+        {
+            return false;
+        }
+
+        // Distancia de un punto a la recta de la primera.
+        double Dist((double X, double Y) p) =>
+            Math.Abs(((p.X - a0.X) * dy) - ((p.Y - a0.Y) * dx)) / largo;
+
+        return Dist(b0) <= tol && Dist(b1) <= tol;
+    }
+
+    /// <summary>«vertical», «horizontal» o «inclinado», para el informe.</summary>
+    public static string Direccion((double X, double Y) a, (double X, double Y) z)
+    {
+        var dx = Math.Abs(z.X - a.X);
+        var dy = Math.Abs(z.Y - a.Y);
+
+        if (dx <= dy * 1e-3)
+        {
+            return "vertical";
+        }
+
+        return dy <= dx * 1e-3 ? "horizontal" : "inclinado";
+    }
+}

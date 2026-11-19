@@ -505,6 +505,9 @@ public static class ElementTransformUtils
 public sealed class Grid : DatumPlane
 {
     public static Grid Create(Document doc, Line linea) => new();
+
+    /// <summary>Revit API: Grid.Curve, la linea del eje (solo lectura).</summary>
+    public Curve Curve => new Line();
 }
 
 /// <summary>
