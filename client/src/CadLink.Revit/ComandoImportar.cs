@@ -179,12 +179,9 @@ public sealed class ComandoImportar : IExternalCommand
             $"«medidas»: {conMedidas} de {modelo.Barras.Count} barra(s) se ajustaron con las "
             + "medidas del tipo de Revit elegido; el resto, con las de la seccion del calculo");
 
-        // Los tableros que se tocan -mismo nivel, cota y seccion-, en UNA losa continua: sin
-        // junta en el eje de las trabes interiores, como se cuela y como la dibuja AutoCAD.
-        avisosMuros.AddRange(UnirLosas.AplicarATodos(modelo));
-
-        // Las losas A PAÑO: su orilla en la cara exterior de los muros y trabes de fachada, no
-        // en su eje. Con los espesores de los tipos elegidos, igual que los muros.
+        // Las losas A PAÑO, CADA TABLERO COMO VIENE DE ETABS (no se unen): su orilla en la cara
+        // exterior de los muros y trabes de fachada, y entre dos tableros, cada uno en SU paño de
+        // la trabe o el muro que los separa. Con los espesores de los tipos elegidos.
         avisosMuros.AddRange(LosasAPano.AplicarATodos(
             modelo, medidor, Orientacion.MedidorDeMuros(modelo, mapeo, catalogo)));
 

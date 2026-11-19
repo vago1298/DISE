@@ -14,9 +14,10 @@ public delegate double? EspesorModelado(PanoJson muro);
 /// los ejes de orilla, que ya se corren medio espesor hacia fuera (<see cref="Cuadricula"/>).
 /// </para>
 /// <para>
-/// Va DESPUES de <see cref="UnirLosas"/>: los tableros que se tocan ya son una sola losa, asi que
-/// no queda ningun lado en el eje de una trabe interior. Los huecos de la losa (una escalera
-/// rodeada de tableros) tambien se llevan al paño de lo que los rodea.
+/// <b>Cada tablero se queda como viene de ETABS</b>: no se unen. Entre dos tableros con una trabe o
+/// un muro debajo, cada uno llega a SU paño de esa pieza (se mete medio ancho), igual que el
+/// achurado del plano de AutoCAD llega al paño de la cadena. Ninguno se queda en el eje. Si una
+/// losa trae huecos, sus orillas tambien van al paño de lo que los rodea.
 /// </para>
 /// <para>
 /// <b>Por tramos, como el plano de AutoCAD</b> (<c>PanoDeLosa.AlPano</c>): cada lado se parte donde
@@ -25,8 +26,8 @@ public delegate double? EspesorModelado(PanoJson muro);
 /// donde dice el modelo en el volado.
 /// </para>
 /// <para>
-/// Un lado que comparte con otra losa que no se unio (otro tipo, otra cota) se queda en el eje:
-/// las dos se siguen tocando ahi. Las losas inclinadas se dejan como estan.
+/// Un lado que comparte con otro tablero SIN nada debajo se queda en el eje: los dos se siguen
+/// tocando ahi. Las losas inclinadas se dejan como estan.
 /// </para>
 /// </remarks>
 public static class LosasAPano
@@ -87,7 +88,7 @@ public static class LosasAPano
 
         return movidas == 0
             ? new List<string>()
-            : new List<string> { $"{movidas} losa(s) se dibujaron a paño de sus muros y trabes de orilla." };
+            : new List<string> { $"{movidas} losa(s) se dibujaron a paño de sus muros y trabes." };
     }
 
     /// <summary>Los muros y trabes que pueden ser orilla de una losa.</summary>
@@ -208,26 +209,25 @@ public static class LosasAPano
             var (ux, uy) = ((b.X - a.X) / largo, (b.Y - a.Y) / largo);
             normales[i] = (uy * signo, -ux * signo);
 
-            if (Compartido(losa, a, b, z, todas))
-            {
-                continue;
-            }
-
-            corrimiento[i] = deEstaLosa
+            var medio = deEstaLosa
                 .Where(o => Cubre(o, a, b))
                 .Select(o => o.MedioM)
                 .DefaultIfEmpty(0)
                 .Max();
+
+            // Orilla: hacia fuera, a la cara exterior. Entre dos tableros: hacia DENTRO, a su paño
+            // de la trabe o el muro que los separa; el vecino hace lo mismo del otro lado.
+            corrimiento[i] = Compartido(losa, a, b, z, todas) ? -medio : medio;
         }
 
-        if (corrimiento.All(d => d < 1e-6))
+        if (corrimiento.All(d => Math.Abs(d) < 1e-6))
         {
             return null;
         }
 
-        // Cada vertice nuevo es el cruce de sus dos lados ya corridos. Si los dos lados siguen
-        // la misma recta -donde empieza un muro a media orilla-, el cruce no existe: se corre el
-        // punto, y si los dos corrimientos son distintos queda un escalon.
+        // Cada vertice nuevo es el cruce de sus dos lados ya corridos (hacia fuera o hacia dentro).
+        // Si los dos lados siguen la misma recta -donde empieza un muro a media orilla-, el cruce
+        // no existe: se corre el punto, y si los dos corrimientos son distintos queda un escalon.
         var res = new List<PuntoJson>();
 
         for (var i = 0; i < n; i++)

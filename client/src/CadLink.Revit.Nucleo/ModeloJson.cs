@@ -135,11 +135,11 @@ public sealed class PanoJson
     public List<PuntoJson> Vertices { get; set; } = new();
 
     /// <summary>
-    /// Los huecos de una losa: contornos interiores, como el de una escalera rodeada de tableros.
+    /// Los huecos de una losa: contornos interiores, como el de una escalera.
     /// </summary>
     /// <remarks>
-    /// CadLink no los manda: salen en el complemento al unir en una sola losa los tableros que se
-    /// tocan (<see cref="UnirLosas"/>). Un archivo viejo los trae nulos y es lo mismo que ninguno.
+    /// Opcional: un archivo que no los trae, o los trae nulos, es lo mismo que ninguno. Si vienen,
+    /// Revit crea la losa con ellos y <see cref="LosasAPano"/> los lleva al paño.
     /// </remarks>
     public List<List<PuntoJson>> Huecos { get; set; } = new();
 }

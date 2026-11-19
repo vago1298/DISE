@@ -34,14 +34,20 @@ public sealed class ResultadoDesunir
 /// </remarks>
 internal static class Desunir
 {
-    public static ResultadoDesunir Piezas(Document doc, IEnumerable<Element> piezas)
+    /// <param name="vigas">
+    /// Soltar tambien las PUNTAS de las vigas. Al importar va en <c>false</c>: sin la union de sus
+    /// puntas las vigas que se encuentran en una esquina o un cruce acaban cada una en el eje y la
+    /// esquina queda mocha (se pidio que las esquinas de las vigas se unan). El boton Soltar piezas
+    /// si las suelta, porque ahi se pide a proposito.
+    /// </param>
+    public static ResultadoDesunir Piezas(Document doc, IEnumerable<Element> piezas, bool vigas = true)
     {
         var r = new ResultadoDesunir();
         var lista = piezas.Where(e => e is not null && e.IsValidObject).ToList();
         var ids = lista.Select(e => e.Id).ToHashSet();
 
         // ---- 1. Las vigas: su largo de cara a cara, y despues sus puntas sueltas ----
-        foreach (var e in lista.OfType<FamilyInstance>())
+        foreach (var e in vigas ? lista.OfType<FamilyInstance>() : Enumerable.Empty<FamilyInstance>())
         {
             if (e.Category?.BuiltInCategory != BuiltInCategory.OST_StructuralFraming
                 || e.Location is not LocationCurve lc || lc.Curve is not Line linea)

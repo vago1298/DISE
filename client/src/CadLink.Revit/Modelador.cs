@@ -221,10 +221,13 @@ internal static class Modelador
             // AL FINAL, despues de nivelar las vigas y llevar los muros a su cota: esas dos cosas
             // necesitan a Revit uniendo y recortando. Desunir antes las dejaria con el largo de
             // centro a centro.
+            //
+            // LAS PUNTAS DE LAS VIGAS NO: sueltas, en una esquina o un cruce cada viga acaba en el
+            // eje y la esquina queda mocha. Se quedan unidas como las une Revit.
             if (desunir && r.Hechos.Count > 0)
             {
                 doc.Regenerate();
-                r.Desunido = Desunir.Piezas(doc, r.Hechos);
+                r.Desunido = Desunir.Piezas(doc, r.Hechos, vigas: false);
                 r.Avisos.AddRange(r.Desunido.Avisos);
             }
 

@@ -288,22 +288,18 @@ Un muro junto a una puerta trae, de la malla de ETABS, un vértice de más en su
 altura del dintel. Esos vértices en medio de un lado recto se quitan antes de ver si el muro es
 un rectángulo; si no, no se llevaba al paño de sus columnas y se metía en ellas.
 
-**Las losas, a paño, todas.** ETABS modela losas, muros y trabes por su eje y parte la losa en
-tableros, así que cada tablero llegaba como un suelo aparte con su orilla en el eje de la trabe.
-Ahora, igual que el plano de AutoCAD:
+**Las losas, a paño, todas, y cada tablero como viene de ETABS.** ETABS modela losas, muros y
+trabes por su eje, así que cada tablero llegaba con su orilla en el eje de la trabe. Ahora, igual
+que el achurado del plano de AutoCAD, y **sin unir los tableros**:
 
-1. Los tableros que se tocan (mismo nivel, misma cota y misma sección) se **unen en una sola
-   losa** continua sobre las trabes interiores (`UnirLosas`). Si rodean un vacío, como una
-   escalera, la losa lleva ese hueco. Tableros encimados o que solo se tocan por una esquina no
-   se unen.
-2. Cada orilla que tiene debajo un muro o una trabe se corre hacia fuera medio espesor (el del
-   tipo de Revit elegido), **por tramos**: donde el muro llega solo a media orilla, la losa
-   escalona y el resto se queda donde dice el modelo. Los huecos se llevan al paño de las trabes
-   que los rodean. El muro del piso de arriba que arranca en la losa no cuenta.
-3. Los volados sin nada debajo no se mueven, y las losas inclinadas se dejan como están.
-
-Al reimportar sobre un proyecto que ya tenía los tableros sueltos, esos suelos viejos salen en el
-informe como «ya no está en el modelo» y no se borran: hay que borrarlos a mano.
+1. La orilla de fachada que tiene debajo un muro o una trabe se corre hacia fuera medio espesor
+   (el del tipo de Revit elegido), hasta su cara exterior.
+2. Entre dos tableros con una trabe o un muro debajo, cada tablero se mete medio ancho hasta
+   **su** paño de esa pieza. Ninguno se queda en el eje. Si no hay nada debajo, los dos siguen
+   tocándose en el eje.
+3. Por **tramos**: donde el muro llega solo a media orilla, la losa escalona. El muro del piso de
+   arriba que arranca en la losa no cuenta. Los volados sin nada debajo no se mueven, y las
+   losas inclinadas se dejan como están.
 
 #### Por qué la trabe se mide y no solo se justifica
 
@@ -721,10 +717,11 @@ la anterior; no se encima.
 
 ## Piezas sueltas: sin uniones
 
-Al importar desde ETABS, **todo lo que se crea queda suelto** al final, en la misma transacción
-(el mismo Ctrl+Z lo deshace): las puntas de vigas y muros sin unión (*Disallow Join*) y los
-*Join Geometry* separados. Antes de soltar cada viga se le deja la línea del largo que mide de cara a
-cara, para que no crezca hasta el centro de la columna. Para modelos de antes está el botón
+Al importar desde ETABS, lo que se crea queda suelto al final, en la misma transacción
+(el mismo Ctrl+Z lo deshace): las puntas de los muros sin unión (*Disallow Join*) y los
+*Join Geometry* separados. **Las puntas de las vigas se quedan unidas**: sueltas, en una esquina o
+un cruce cada viga acaba en el eje y la esquina queda mocha. Antes de soltar cada viga se le deja la línea del largo que mide de cara a
+cara, para que no crezca hasta el centro de la columna (solo con el botón). Para modelos de antes está el botón
 **Entrada → Soltar piezas**: con piezas elegidas suelta esas; sin elegir, todo el modelo.
 
 ## Cómo está construido, y por qué

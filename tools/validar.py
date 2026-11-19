@@ -15979,15 +15979,14 @@ def v30_armado_por_tipo() -> None:
           and "LosasAPano.AplicarATodos(" in imp and "Orientacion.MedidorDeMuros(modelo, mapeo, catalogo)" in imp
           and "LosasAPanoDeOrilla();" in leer(ruta("tools/prueba-revit/Program.cs")))
 
-    # Se pidio: TODAS las losas a paño, como en AutoCAD. Los tableros que se tocan se unen en una
-    # losa continua (sin junta en el eje de las trabes interiores) ANTES de llevarla a paño, por
-    # tramos, y con los huecos que deje la union (escaleras).
-    unir = leer(ruta("client/src/CadLink.Revit.Nucleo/UnirLosas.cs"))
+    # Se pidio: TODOS los tableros a paño, como en AutoCAD, pero CADA UNO COMO VIENE DE ETABS:
+    # no se unen. Entre dos tableros con trabe o muro debajo, cada uno se mete a su paño.
     pano = leer(ruta("client/src/CadLink.Revit.Nucleo/LosasAPano.cs"))
-    check("los tableros que se tocan se unen en una sola losa antes de llevarla a paño",
-          "public static PanoJson? Unir(" in unir
-          and 0 <= imp.find("UnirLosas.AplicarATodos(modelo)") < imp.find("LosasAPano.AplicarATodos("),
-          "si se lleva a paño primero, los lados compartidos se quedan en el eje")
+    check("los tableros de ETABS no se unen: cada uno a su paño de la trabe que los separa",
+          "UnirLosas" not in imp
+          and not os.path.exists(ruta("client/src/CadLink.Revit.Nucleo/UnirLosas.cs"))
+          and "corrimiento[i] = Compartido(losa, a, b, z, todas) ? -medio : medio;" in pano,
+          "se pidio que los tableros se queden separados, como en el modelo de ETABS")
     check("la losa a paño por tramos y con sus huecos, como PanoDeLosa.AlPano de AutoCAD",
           "PorTramos(original, deEstaLosa, z)" in pano and "AjustarHuecos(" in pano
           and "o.ZMin < z - ToleranciaZM" in pano)
@@ -17280,8 +17279,8 @@ def v31_detalles_revit() -> None:
           "MasCercanoEnfrente(cajasMuros, marco)" in det and "public static double? Enfrente(" in nuc)
     check("la placa embebida lleva sus anclas a la vista: barreno, tuerca por fuera y rosca, solo en el perimetro",
           "tuerca del ancla de la placa embebida" in det and "if (i > 0 && i < columnas - 1 && j > 0 && j < filas - 1)" in nuc)
-    check("al importar de ETABS se sueltan las piezas creadas, en la misma transaccion",
-          "r.Desunido = Desunir.Piezas(doc, r.Hechos);" in leer(ruta("client/src/CadLink.Revit/Modelador.cs"))
+    check("al importar de ETABS se sueltan las piezas creadas, en la misma transaccion, menos las puntas de las vigas",
+          "r.Desunido = Desunir.Piezas(doc, r.Hechos, vigas: false);" in leer(ruta("client/src/CadLink.Revit/Modelador.cs"))
           and "StructuralFramingUtils.DisallowJoinAtEnd(e, 0);" in leer(ruta("client/src/CadLink.Revit/Desunir.cs"))
           and "typeof(ComandoDesunir).FullName" in apl)
     check("formas especiales: subpestaña en Secciones Concreto, guardada en el .clk y dibujada en AutoCAD",
