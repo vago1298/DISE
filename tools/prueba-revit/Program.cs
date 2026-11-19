@@ -2672,7 +2672,8 @@ internal static partial class Programa
         var f3060 = vista.Filas.Single(f => f.Tipo.Id == 2);
         Check("el que no se llama como ninguna, por sus medidas",
             f3060.Seccion == "T-02" && f3060.Sugerencia.Contains("medidas"));
-        Check("y avisa que ya tiene armado y se rehace", f3060.Diagnostico.Contains("se rehacen"));
+        Check("un tipo YA ARMADO no se marca solo: armar otro no le borra el suyo",
+            !f3060.Armar && f3060.Diagnostico.Contains("se dejan como estan"));
 
         var fCol = vista.Filas.Single(f => f.Tipo.Id == 3);
         Check("la columna girada tambien se reconoce por medidas", fCol.Seccion == "C-01" && fCol.Coherente);
@@ -2686,7 +2687,10 @@ internal static partial class Programa
         fT01.Seccion = "T-02";
         Check("elegir una seccion que no mide lo mismo avisa", !fT01.Coherente && fT01.Diagnostico.Contains("OJO"));
 
-        Igual("se arman las piezas de concreto de los tipos marcados", vista.PiezasAArmar, 40 + 12 + 20);
+        Igual("se arman las piezas de concreto de los tipos marcados", vista.PiezasAArmar, 40 + 20);
+        f3060.Armar = true;
+        Check("si se marca a mano, se rehace y lo dice", f3060.Armar && f3060.Diagnostico.Contains("se rehacen"));
+        Igual("y entonces entra", vista.PiezasAArmar, 40 + 12 + 20);
 
         fT01.Seccion = FilaArmadoTipo.SinArmar;
         Check("con «no armar» la fila se desmarca", !fT01.Armar && fT01.Armado is null);

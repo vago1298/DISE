@@ -15836,7 +15836,12 @@ def v30_armado_por_tipo() -> None:
           "RecetaArmado.ParaLargo(w.Armado, largo)" in arm
           and 'new Transaction(doc, "Armado por tipo de CadLink")' in arm)
     check("y volver a armar rehace, tambien en piezas que no puso CadLink",
-          '"Revit|" + inst.Id.Value' in arm and "viejo.Remove(llave);" in arm)
+          '"Revit|" + inst.Id.Value' in arm and "viejo.Remove(suyo);" in arm)
+    check("cada pieza rehace SOLO el armado que aloja: armar la cadena no borra el de la contratrabe",
+          "rb.GetHostId().Value" in arm and "var suyo = DeLaPieza(llave, inst.Id.Value);" in arm
+          and "(!_sinAvisar || YaArmadas == 0)" in leer(ruta("client/src/CadLink.Revit.Nucleo/ArmadoPorTipo.cs")),
+          "con la llave sola, dos piezas con el mismo comentario compartian armado, y un tipo ya "
+          "armado se volvia a armar sin pedirlo")
     check("hay boton en la cinta y comando con su cuadro",
           "typeof(ComandoArmarPorTipo).FullName" in apl and "new VentanaArmadoPorTipo(vista)" in cmd
           and os.path.exists(ruta("client/src/CadLink.Revit/VentanaArmadoPorTipo.xaml")))

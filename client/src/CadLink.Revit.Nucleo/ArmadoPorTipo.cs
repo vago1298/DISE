@@ -264,7 +264,10 @@ public sealed class FilaArmadoTipo : Avisador
 
             _seccion = v;
             Sugerencia = string.Empty;
-            _armar = v != SinArmar && DeConcreto > 0;
+            // Un tipo YA ARMADO no se marca solo: al armar la cadena de desplante se volvia a
+            // armar la contratrabe que ya estaba, con lo que el complemento le sugeria. Se rehace
+            // solo si la persona lo pide (eligiendo la seccion o marcando Armar).
+            _armar = v != SinArmar && DeConcreto > 0 && (!_sinAvisar || YaArmadas == 0);
 
             if (!_sinAvisar)
             {
@@ -326,6 +329,7 @@ public sealed class FilaArmadoTipo : Avisador
 
             _armar = v;
             Aviso();
+            Aviso(nameof(Diagnostico));
         }
     }
 
@@ -360,7 +364,9 @@ public sealed class FilaArmadoTipo : Avisador
 
                 if (YaArmadas > 0)
                 {
-                    partes.Add($"{YaArmadas} ya armadas: se rehacen");
+                    partes.Add(Armar
+                        ? $"{YaArmadas} ya armadas: se rehacen"
+                        : $"{YaArmadas} ya armadas: se dejan como estan (marca Armar para rehacerlas)");
                 }
             }
 

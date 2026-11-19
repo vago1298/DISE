@@ -61,6 +61,9 @@ public sealed class Rebar : Element
 
     public RebarShapeDrivenAccessor GetShapeDrivenAccessor() => new();
 
+    /// <summary>Revit API: Rebar.GetHostId(), la pieza que la aloja.</summary>
+    public ElementId GetHostId() => new(0L);
+
     // Los ganchos por punta y el eje, para el armado de muros con ganchos distintos. SIN COMPROBAR:
     //   Rebar.SetHookTypeId(int, ElementId), GetHookOrientation(int), SetHookOrientation(int, ...)
     //   Rebar.GetCenterlineCurves(bool, bool, bool, MultiplanarOption, int)

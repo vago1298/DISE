@@ -169,7 +169,22 @@ internal static class Armador
                 continue;
             }
 
-            var llave = marca.Substring(MarcaArmado.Length);
+            // POR LLAVE Y POR ANFITRION. Solo con la llave, dos piezas con el mismo comentario -una
+            // copiada de otra en Revit, que copia el comentario- compartian armado: armar la
+            // cadena de desplante borraba las varillas de la contratrabe. Ahora cada pieza solo
+            // rehace lo que esta EN ELLA.
+            long anfitrion;
+
+            try
+            {
+                anfitrion = e is Rebar rb ? rb.GetHostId().Value : -1;
+            }
+            catch (Exception)
+            {
+                anfitrion = -1;
+            }
+
+            var llave = DeLaPieza(marca.Substring(MarcaArmado.Length), anfitrion);
 
             if (!res.TryGetValue(llave, out var lista))
             {
@@ -259,7 +274,7 @@ internal static class Armador
                     t.DeConcreto++;
                 }
 
-                if (viejo.ContainsKey(LlaveDe(fi)))
+                if (viejo.ContainsKey(DeLaPieza(LlaveDe(fi), fi.Id.Value)))
                 {
                     t.YaArmadas++;
                 }
@@ -421,6 +436,8 @@ internal static class Armador
     /// La llave con la que se marca el armado de una pieza: la de CadLink si la modelo CadLink,
     /// y si no, la de su Id de Revit. Con ella, volver a armar REHACE en vez de duplicar.
     /// </summary>
+    private static string DeLaPieza(string llave, long anfitrion) => llave + "#" + anfitrion;
+
     private static string LlaveDe(FamilyInstance inst)
     {
         var comentario = inst.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.AsString();
@@ -454,12 +471,11 @@ internal static class Armador
             return null;
         }
 
-        // Lo de la vez anterior, fuera: volver a armar REHACE, no duplica.
-        if (viejo.TryGetValue(llave, out var ids) && ids.Count > 0)
-        {
-            doc.Delete(ids);
-            viejo.Remove(llave);
-        }
+        // Lo de la vez anterior de ESTA pieza -su llave y ella como anfitrion-. Se quita al
+        // final y solo si salio armado nuevo: si Revit no acepta ninguna varilla, la pieza se queda
+        // con el que tenia en vez de quedarse sin nada.
+        var suyo = DeLaPieza(llave, inst.Id.Value);
+        viejo.TryGetValue(suyo, out var ids);
 
         // El doblez del estribo lo pone su tipo de armadura de Revit: con el se asientan las
         // varillas de esquina, para que el estribo las abrace como en el plano de AutoCAD.
@@ -502,6 +518,16 @@ internal static class Armador
         {
             r.Piezas++;
             r.Varillas += hechas;
+
+            if (ids is { Count: > 0 })
+            {
+                doc.Delete(ids);
+                viejo.Remove(suyo);
+            }
+        }
+        else if (ids is { Count: > 0 })
+        {
+            r.Errores.Add($"«sin armado nuevo»: {etiqueta}: no salio ninguna varilla; se dejo el armado que tenia");
         }
 
         return hechas > 0 ? marco : null;
