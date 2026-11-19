@@ -197,6 +197,15 @@ public sealed class Aplicacion : IExternalApplication
             + "En las zapatas de Revit van varillas nativas, que se cuantifican. En las de CadLink -DirectShape, "
             + "que Revit no acepta como anfitrion de armado- van como solidos que se ven pero no se cuantifican.",
             "armar-cimentacion");
+
+        Boton(detalles, dll, "CadLinkArmarLosas", "Armar\nlosas", typeof(ComandoArmarLosas).FullName,
+            "Arma cada tablero de losa elegido, de entrepiso o de cimentacion, con corridas, bayonetas y bastones a L/4.",
+            "Varillas nativas en los dos sentidos. L/4 es del claro libre, de paño a paño. Cada orilla se mira "
+            + "sola: con otra losa del otro lado de la trabe es CONTINUA y la bayoneta y el baston pasan L/4 al "
+            + "vecino; si no, es BORDE y se anclan con pata. En cimentacion todo va al reves.\n\n"
+            + "El armado se escribe en el cuadro o se lee de la pestaña Losas de CadLink (.cadlink-detalles.json): "
+            + "la losa con el ID del tablero en su Marca toma su fila. Volver a armar reemplaza el armado de CadLink.",
+            "armar-losas");
     }
 
     private static string TextoAcero(string elemento) =>
@@ -261,6 +270,7 @@ public sealed class Aplicacion : IExternalApplication
         "encamisar" => (Imagen("CadLink.Revit.encamisar-32.png"), Imagen("CadLink.Revit.encamisar-16.png")),
         "armar-muros" => (Imagen("CadLink.Revit.armar-muros-32.png"), Imagen("CadLink.Revit.armar-muros-16.png")),
         "armar-cimentacion" => (Imagen("CadLink.Revit.armar-cimentacion-32.png"), Imagen("CadLink.Revit.armar-cimentacion-16.png")),
+        "armar-losas" => (Imagen("CadLink.Revit.armar-losas-32.png"), Imagen("CadLink.Revit.armar-losas-16.png")),
         "soltar-piezas" => (Imagen("CadLink.Revit.soltar-piezas-32.png"), Imagen("CadLink.Revit.soltar-piezas-16.png")),
         "conexiones-libro" => (Imagen("CadLink.Revit.conexiones-libro-32.png"), Imagen("CadLink.Revit.conexiones-libro-16.png")),
         _ => (null, null)

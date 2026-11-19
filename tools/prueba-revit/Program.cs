@@ -218,6 +218,7 @@ internal static partial class Programa
         NombresBonitosDeNivel();
         MallaDeEjes();
         LosasAPanoDeOrilla();
+        ArmadoDeLosasEnRevit();
         Armado();
         ArmadoPorTipo();
         DespieceEnRevit();
@@ -2025,6 +2026,46 @@ internal static partial class Programa
 
         Check("un modelo sin niveles no revienta", NombresDeNivel.Aplicar(new ModeloJson()).Count == 0);
         Check("ni uno nulo", NombresDeNivel.Aplicar(null).Count == 0);
+    }
+
+    // ------------------------------------------------------------------
+    private static void ArmadoDeLosasEnRevit()
+    {
+        Console.WriteLine();
+        Console.WriteLine("[13c] Armar losas: corridas, bayonetas y bastones a L/4");
+
+        // Tablero de Ln = 4.00, borde con trabe de 20 al inicio y continuo (trabe de 25) al final.
+        var ini = new ApoyoLosa(false, 0.20);
+        var fin = new ApoyoLosa(true, 0.25, 6.0);
+        var f = ArmadoDeLosas.Franja(4.0, ini, fin, 0.025, 0.095, 0.0095, 0, 0.02);
+        var bay = f.Single(v => v.Que == "bayonetas");
+        Casi("la bayoneta llega abajo a L/4 del paño", bay.Eje.First(p => p.Z == 0.025).S, 1.0, 1e-9);
+        Casi("y sube a L/4 del otro paño", bay.Eje.Last(p => p.Z == 0.025).S, 3.0, 1e-9);
+        Casi("en el borde se ancla en la orilla menos el recubrimiento", bay.Eje[0].S, -0.18, 1e-9);
+        Check("con pata hacia la otra cama", bay.Eje[0].Z < bay.Eje[1].Z);
+        Casi("en el continuo pasa la trabe y L/4 del VECINO", bay.Eje[^1].S, 4.0 + 0.25 + 1.5, 1e-9);
+        Casi("el baston del inicio entra L/4", f.Single(v => v.Que == "baston inicio").Eje.Max(p => p.S), 1.0, 1e-9);
+        Igual("la bayoneta va entre las corridas", bay.Desfase, 1);
+        Check("la corrida en el continuo llega al eje de la trabe", Math.Abs(f.Single(v => v.Que == "corridas").Eje[^1].S - 4.125) < 1e-9);
+
+        var sinBaston = ArmadoDeLosas.Franja(4.0, new ApoyoLosa(true, 0.25, 0, false), fin, 0.025, 0.095, 0.0095, 0, 0.02);
+        Check("entre dos que se arman juntas, el baston lo pone una sola", !sinBaston.Any(v => v.Que == "baston inicio"));
+
+        var cim = ArmadoDeLosas.Franja(4.0, ini, fin, 0.095, 0.025, 0.0095, 0, 0.05);
+        Check("en cimentacion el baston va abajo y la bayoneta arriba al centro",
+            cim.Single(v => v.Que == "baston inicio").Eje[^1].Z == 0.025
+            && cim.Single(v => v.Que == "bayonetas").Eje.Any(p => p.Z == 0.095 && p.S >= 1 && p.S <= 3));
+
+        var yo = new CajaPlanta(0, 4.2, 0, 5, 0, 0.12);
+        var vecina = new CajaPlanta(4.45, 9.0, 0, 5, 0, 0.12);
+        var otraCota = new CajaPlanta(4.45, 9.0, 0, 5, -1, -0.5);
+        Check("la losa del otro lado de una trabe de 25 es vecina", ArmadoDeLosas.Vecino(yo, new[] { vecina }, false) is { Holgura: var g } && Math.Abs(g - 0.25) < 1e-9);
+        Check("una losa a otra cota no", ArmadoDeLosas.Vecino(yo, new[] { otraCota }, false) is null);
+        Check("y del otro lado no hay nada: borde", ArmadoDeLosas.Vecino(yo, new[] { vecina }, true) is null);
+        var trabe = new CajaPlanta(-0.0, 0.20, 0, 5, -0.28, 0.12);
+        Casi("en el borde se mide lo que cubre de su trabe", ArmadoDeLosas.ApoyoDeBorde(yo, new[] { trabe }, true) ?? -1, 0.20, 1e-9);
+        var (primera, cuantas) = ArmadoDeLosas.Reparto(5.0, 0.02, 0.0095, 0.20, 1);
+        Check("las bayonetas se reparten a 2s, empezando una separacion despues", Math.Abs(primera - 0.22475) < 1e-9 && cuantas == 12);
     }
 
     // ------------------------------------------------------------------

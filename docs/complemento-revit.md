@@ -434,6 +434,30 @@ En la primera prueba:
 
 ---
 
+## Armar losas: corridas, bayonetas y bastones a L/4
+
+Botón **CadLink → Detalles → Armar losas**. Elige las losas (Floor o Foundation Slab); **cada
+losa es un tablero** y se arma por separado, con varillas nativas en los dos sentidos.
+
+- **L/4 es del claro libre**, de paño a paño, y se mide desde el paño. Cada sentido usa su claro.
+- **Corridas** de lado a lado; **bayonetas** arriba sobre el apoyo, doblan a 45° y llegan abajo a
+  L/4 del paño; **bastones** arriba sobre el apoyo, L/4 hacia el claro. La separación es la de la
+  parrilla: corrida y bayoneta se alternan (cada una a 2s) y sobre los apoyos bayoneta y bastón.
+- **Cada orilla se mira sola.** Si del otro lado de la trabe hay otra losa a la misma cota, es
+  **continua**: la bayoneta y el bastón pasan la trabe y L/4 del claro del vecino, y la corrida llega
+  al eje de la trabe. Si no, es **borde**: se mide la trabe o el muro que la losa cubre (su paño
+  interior da el claro libre) y las varillas se anclan con pata de 90° en la orilla menos el
+  recubrimiento.
+- Entre dos losas que se arman juntas, el bastón del apoyo común lo pone **una** sola, para que no
+  salga doble. Si las armas por separado, ese bastón sale de los dos lados.
+- **Cimentación**: todo al revés (corridas arriba, bayonetas abajo sobre las contratrabes y arriba
+  al centro, bastones abajo). Se elige en el cuadro o según la pieza (Foundation Slab = cimentación).
+- Las varillas del sentido corto van por fuera; las del largo, por dentro.
+- **De dónde sale el armado:** escrito en el cuadro (varilla y separación en X y en Y, bastón,
+  recubrimientos) o de la pestaña **Losas** de CadLink: pulsa **Para Revit…** en esa pestaña y,
+  en Revit, la losa que lleve el ID del tablero en su **Marca** toma su fila.
+- Volver a armar reemplaza el armado de CadLink de esa losa, solo si salió el nuevo.
+
 ## Armar por tipo: todas las piezas de un tipo, de un jalón
 
 En Revit el armado se pone eligiendo una pieza ya dibujada. Con cien trabes iguales eso es

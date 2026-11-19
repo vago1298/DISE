@@ -74,10 +74,44 @@ public partial class MainWindow
             }
         }
 
-        if (archivo.Placas.Count + archivo.Zapatas.Count + archivo.Corridas.Count == 0)
+        // Los tableros de la pestaña Losas: en Revit, «Armar losas» los toma por la Marca de cada losa.
+        foreach (var fila in _datos.Losas)
+        {
+            var falta = fila.Falta();
+
+            if (fila.Id.Trim().Length == 0)
+            {
+                continue;
+            }
+
+            if (falta.Count > 0)
+            {
+                archivo.Avisos.Add($"Losa {fila.Id}: falta {string.Join(", ", falta)}. No va.");
+                continue;
+            }
+
+            var l = fila.AFormatoCad();
+
+            archivo.Losas.Add(new ArmadoLosaJson
+            {
+                Id = l.Id,
+                Cimentacion = l.Tipo == TipoLosa.Cimentacion,
+                RecubrimientoM = l.RecubrimientoCm / 100,
+                VarX = l.VarX.Clave,
+                DiamXM = l.VarX.Cm / 100,
+                SepXM = l.SepXCm / 100,
+                VarY = l.VarY.Clave,
+                DiamYM = l.VarY.Cm / 100,
+                SepYM = l.SepYCm / 100,
+                VarBaston = l.Baston.Clave,
+                DiamBastonM = l.Baston.Cm / 100
+            });
+        }
+
+        if (archivo.Placas.Count + archivo.Zapatas.Count + archivo.Corridas.Count + archivo.Losas.Count == 0)
         {
             MessageBox.Show(this,
-                "No hay nada que mandar: llena la hoja Placa Base, Zapatas Aisladas o Zapatas Corridas.",
+                "No hay nada que mandar: llena la hoja Placa Base, Zapatas Aisladas, Zapatas Corridas o Losas.",
                 AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -112,15 +146,16 @@ public partial class MainWindow
 
         StatusText.Text =
             $"Para Revit: {archivo.Placas.Count} placa(s), {archivo.Zapatas.Count} zapata(s) y "
-            + $"{archivo.Corridas.Count} zapata(s) corrida(s) en {Path.GetFileName(dialogo.FileName)}";
+            + $"{archivo.Corridas.Count} zapata(s) corrida(s) y {archivo.Losas.Count} losa(s) en {Path.GetFileName(dialogo.FileName)}";
 
         MessageBox.Show(this,
             $"Se guardaron {archivo.Placas.Count} placa(s) base, {archivo.Zapatas.Count} zapata(s) "
-            + $"aislada(s) y {archivo.Corridas.Count} zapata(s) corrida(s).\n\n"
+            + $"aislada(s), {archivo.Corridas.Count} zapata(s) corrida(s) y {archivo.Losas.Count} losa(s).\n\n"
             + "En Revit, pestaña CadLink, panel Detalles:\n"
             + "  - «Placas base»: elige las columnas, abre este archivo y escoge la placa.\n"
             + "  - «Cimentación»: elige columnas y muros, abre este archivo y escoge la zapata.\n"
-            + "  - «Soldar vigas»: elige las vigas; no necesita archivo."
+            + "  - «Soldar vigas»: elige las vigas; no necesita archivo.\n"
+            + "  - «Armar losas»: elige los tableros, abre este archivo; la losa con el ID en su Marca toma su fila."
             + (archivo.Avisos.Count == 0 ? string.Empty
                 : "\n\nNo van o van con aviso:\n  - " + string.Join("\n  - ", archivo.Avisos.Take(10))),
             AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);

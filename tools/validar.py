@@ -15800,7 +15800,7 @@ def v29_paquete_oficina() -> None:
 ICONOS_CINTA = ("importar-etabs", "armar-modelo", "columna-acero", "columna-corte",
                 "viga-acero", "viga-corte", "armar-tipo", "corte-seccion",
                 "placa-base", "cimentacion", "soldar-viga", "soldar-columna", "encamisar", "armar-muros", "armar-cimentacion",
-                "conexiones-libro", "soltar-piezas")
+                "conexiones-libro", "soltar-piezas", "armar-losas")
 
 def v30_armado_por_tipo() -> None:
     print("\n[30] Revit: armar por tipo, todas las piezas de un jalon")
@@ -17229,8 +17229,8 @@ def v31_detalles_revit() -> None:
           "ElevacionPlacaBase.AnclasDeCanto(" in app)
     check("la contratrabe toma sus medidas de la hoja de secciones de concreto",
           "_datos.SeccionesConcreto.FirstOrDefault(" in app)
-    check("las tres hojas tienen su boton «Para Revit…»",
-          xaml.count('Click="OnDetallesParaRevit"') == 3)
+    check("las cuatro hojas (placa base, aisladas, corridas y losas) tienen su boton «Para Revit…»",
+          xaml.count('Click="OnDetallesParaRevit"') == 4)
 
     # Reponer reemplaza: la llave en ApplicationDataId.
     check("volver a poner un detalle reemplaza el anterior (llave en ApplicationDataId)",
@@ -17288,6 +17288,13 @@ def v31_detalles_revit() -> None:
           "r.Desunido = Desunir.Piezas(doc, r.Hechos, vigas: false);" in leer(ruta("client/src/CadLink.Revit/Modelador.cs"))
           and "StructuralFramingUtils.DisallowJoinAtEnd(e, 0);" in leer(ruta("client/src/CadLink.Revit/Desunir.cs"))
           and "typeof(ComandoDesunir).FullName" in apl)
+    check("Revit: boton Armar losas, cada tablero con corridas, bayonetas y bastones a L/4, escrito o de la pestaña Losas",
+          "typeof(ComandoArmarLosas).FullName" in apl
+          and "ArmadoDeLosas.Franja(ln, ini, fin, zCentro, zApoyo, d, dBaston," in leer(ruta("client/src/CadLink.Revit/ArmadorDeLosas.cs"))
+          and "ArmadoDeLosas.Vecino(yo, listaLosas, inicio)" in leer(ruta("client/src/CadLink.Revit/ArmadorDeLosas.cs"))
+          and "archivo.Losas.Add(new ArmadoLosaJson" in leer(ruta("client/src/CadLink.App/MainWindow.DetallesRevit.cs"))
+          and "ArmadoDeLosasEnRevit();" in leer(ruta("tools/prueba-revit/Program.cs")),
+          "se pidio el armado de losas EN REVIT, no solo el dibujo de AutoCAD")
     check("losas de entrepiso y cimentacion: pestaña, guardada en el .clk y dibujada con corridas, bayonetas y bastones a L/4",
           'Header="Losas"' in leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
           and "p.Losas.Add(FilaSerializable.Leer(lo));" in leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))

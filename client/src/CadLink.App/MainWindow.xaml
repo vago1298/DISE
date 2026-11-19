@@ -1251,6 +1251,9 @@
                                     Click="OnQuitarLosa" Margin="8,0,0,0" />
                             <Button Content="Revisar losas" Style="{StaticResource SecondaryButtonStyle}"
                                     Click="OnRevisarLosas" Margin="8,0,0,0" />
+                            <Button Content="Para Revit…" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnDetallesParaRevit" Margin="8,0,0,0"
+                                    ToolTip="Guarda los tableros (con las placas y las zapatas) en un .cadlink-detalles.json. En Revit, CadLink, Detalles, «Armar losas» lo lee: la losa que lleva el ID del tablero en su Marca toma su fila." />
                             <CheckBox x:Name="RedibujarLosasChk" VerticalAlignment="Center" Margin="16,0,8,0"
                                       Content="Redibujar las que ya existen" />
                             <Button x:Name="DibujarLosasButton" Content="Dibujar en AutoCAD"

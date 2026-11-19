@@ -64,6 +64,7 @@
     <Compile Include="..\..\client\src\CadLink.Revit\Detallador.Conexiones.cs" />
     <Compile Include="..\..\client\src\CadLink.Revit\ArmadorDeMuros.cs" />
     <Compile Include="..\..\client\src\CadLink.Revit\ArmadorDeZapatas.cs" />
+    <Compile Include="..\..\client\src\CadLink.Revit\ArmadorDeLosas.cs" />
   </ItemGroup>
 
 </Project>

@@ -1037,6 +1037,215 @@ public sealed class ComandoArmarCimentacion : IExternalCommand
 }
 
 /// <summary>
+/// El boton <b>Armar losas</b>: corridas, bayonetas y bastones a L/4 en cada tablero elegido, de entrepiso
+/// o de cimentacion, escrito aqui o leido de la pestaña Losas de CadLink.
+/// </summary>
+[Transaction(TransactionMode.Manual)]
+public sealed class ComandoArmarLosas : IExternalCommand
+{
+    public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+    {
+        var uidoc = commandData?.Application?.ActiveUIDocument;
+        var doc = uidoc?.Document;
+
+        if (uidoc is null || doc is null || doc.IsFamilyDocument)
+        {
+            message = "Abre un proyecto de Revit antes de armar las losas.";
+            return Result.Failed;
+        }
+
+        var losas = DetallesEnRevit.Piezas(uidoc, "Elige las losas (cada tablero) que se arman y pulsa Terminar.",
+                BuiltInCategory.OST_Floors, BuiltInCategory.OST_StructuralFoundation)
+            .Where(e => e is Floor)
+            .ToList();
+
+        if (losas.Count == 0)
+        {
+            TaskDialog.Show("CadLink", "No se eligio ninguna losa (Floor o Foundation Slab).");
+            return Result.Cancelled;
+        }
+
+        var tipos = ArmadorDeZapatas.TiposDeVarilla(doc)
+            .GroupBy(t => t.Tipo.Name ?? string.Empty)
+            .Select(g => g.First())
+            .OrderBy(t => t.DiametroM).ThenBy(t => t.Tipo.Name)
+            .ToList();
+
+        if (tipos.Count == 0)
+        {
+            TaskDialog.Show("CadLink", "El proyecto no tiene tipos de varilla (Rebar Bar). Crea o carga alguno.");
+            return Result.Cancelled;
+        }
+
+        var dueno = commandData!.Application?.MainWindowHandle;
+
+        var fuente = new VentanaDetalle("CadLink - Armar losas",
+            $"Se arman {losas.Count} tablero(s), cada uno por separado. ¿De donde sale el armado?\n\n"
+            + "Corridas, bayonetas y bastones a L/4 del claro libre (de paño a paño). Cada orilla se mira sola: "
+            + "si del otro lado de la trabe hay otra losa es CONTINUA y la bayoneta y el baston pasan L/4 al vecino; "
+            + "si no, es BORDE y se anclan con pata hasta la orilla.");
+        var deDonde = fuente.Lista("Armado:", new[]
+        {
+            "Escribirlo aqui",
+            "De la pestaña Losas de CadLink (.cadlink-detalles.json)"
+        });
+
+        if (!fuente.Mostrar(dueno, "Siguiente"))
+        {
+            return Result.Cancelled;
+        }
+
+        var elegidas = deDonde.SelectedIndex == 1
+            ? DeArchivo(losas, tipos, dueno)
+            : Escrito(losas, tipos, dueno);
+
+        if (elegidas is null)
+        {
+            return Result.Cancelled;
+        }
+
+        var r = ArmadorDeLosas.Armar(doc, elegidas);
+
+        TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "losa(s) armada(s)", null));
+
+        return Result.Succeeded;
+    }
+
+    private static string[] Tipo() => new[]
+    {
+        "Segun la pieza: Foundation Slab = cimentacion, Floor = entrepiso",
+        "Entrepiso: corridas abajo, bastones arriba",
+        "Cimentacion: todo al reves, corridas arriba y bastones abajo"
+    };
+
+    private static bool? Cimentacion(int indice) => indice switch
+    {
+        1 => false,
+        2 => true,
+        _ => null
+    };
+
+    private static List<(Element, ArmadoDeTablero?)>? Escrito(
+        List<Element> losas, List<(Autodesk.Revit.DB.Structure.RebarBarType Tipo, double DiametroM)> tipos, IntPtr? dueno)
+    {
+        var nombres = tipos.Select(t => $"{t.Tipo.Name}  (Ø{t.DiametroM * 1000:0.#} mm)").ToList();
+        int Cercano(double mm)
+        {
+            var mejor = 0;
+
+            for (var i = 1; i < tipos.Count; i++)
+            {
+                if (Math.Abs((tipos[i].DiametroM * 1000) - mm) < Math.Abs((tipos[mejor].DiametroM * 1000) - mm))
+                {
+                    mejor = i;
+                }
+            }
+
+            return mejor;
+        }
+
+        var ventana = new VentanaDetalle("CadLink - Armar losas",
+            "X y Y son los ejes del proyecto. La separacion es la de la parrilla: corridas y bayonetas se "
+            + "alternan, cada una al doble, y sobre los apoyos bayoneta y baston. Las cortas van por fuera.");
+
+        var tipo = ventana.Lista("(A) Tipo de losa:", Tipo());
+        var varX = ventana.Lista("(B) Varillas en X:", nombres);
+        var sepX = ventana.Numero("(B) Separacion de la parrilla en X, cm:", 20);
+        var varY = ventana.Lista("(C) Varillas en Y:", nombres);
+        var sepY = ventana.Numero("(C) Separacion de la parrilla en Y, cm:", 20);
+        var baston = ventana.Lista("(D) Bastones:", new[] { "La misma varilla de cada sentido" }.Concat(nombres));
+        var recInf = ventana.Numero("(E) Recubrimiento abajo, cm (cimentacion: 5):", 2);
+        var recSup = ventana.Numero("(F) Recubrimiento arriba, cm:", 2);
+
+        varX.SelectedIndex = Cercano(9.5);
+        varY.SelectedIndex = Cercano(9.5);
+
+        if (!ventana.Mostrar(dueno, "Armar") || varX.SelectedIndex < 0 || varY.SelectedIndex < 0)
+        {
+            return null;
+        }
+
+        var armado = new ArmadoDeTablero(
+            Cimentacion(tipo.SelectedIndex),
+            VentanaDetalle.Leer(recInf, 2) / 100, VentanaDetalle.Leer(recSup, 2) / 100,
+            tipos[varX.SelectedIndex].Tipo, VentanaDetalle.Leer(sepX, 20) / 100,
+            tipos[varY.SelectedIndex].Tipo, VentanaDetalle.Leer(sepY, 20) / 100,
+            baston.SelectedIndex > 0 ? tipos[baston.SelectedIndex - 1].Tipo : null,
+            "escrito en Revit");
+
+        return losas.Select(l => (l, (ArmadoDeTablero?)armado)).ToList();
+    }
+
+    /// <summary>
+    /// De la pestaña Losas de CadLink: la losa cuya Marca es el ID de un tablero toma esa fila; las demas,
+    /// la que se elija.
+    /// </summary>
+    private static List<(Element, ArmadoDeTablero?)>? DeArchivo(
+        List<Element> losas, List<(Autodesk.Revit.DB.Structure.RebarBarType Tipo, double DiametroM)> tipos, IntPtr? dueno)
+    {
+        var archivo = DetallesEnRevit.Archivo();
+
+        if (archivo is null)
+        {
+            return null;
+        }
+
+        if (archivo.Losas.Count == 0)
+        {
+            TaskDialog.Show("CadLink",
+                "El archivo no trae losas. En CadLink, llena la pestaña Losas y pulsa «Para Revit…» en ella.");
+            return null;
+        }
+
+        string Marca(Element e) => e.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)?.AsString()?.Trim() ?? string.Empty;
+        ArmadoLosaJson? PorMarca(Element e) =>
+            archivo.Losas.FirstOrDefault(f => Marca(e).Length > 0 && string.Equals(f.Id, Marca(e), StringComparison.OrdinalIgnoreCase));
+
+        var sinFila = losas.Count(l => PorMarca(l) is null);
+
+        var ventana = new VentanaDetalle("CadLink - Armar losas",
+            sinFila == 0
+                ? "Todas las losas elegidas llevan en su Marca el ID de un tablero y toman esa fila."
+                : $"{losas.Count - sinFila} losa(s) toman su fila por su Marca. Para las otras {sinFila}, elige la fila.");
+        var tipo = ventana.Lista("Tipo de losa:", new[] { "Como dice la fila de CadLink" }.Concat(Tipo().Skip(1)));
+        var lista = sinFila > 0
+            ? ventana.Lista("Fila:", archivo.Losas.Select(f =>
+                $"{f.Id} ({(f.Cimentacion ? "cimentacion" : "entrepiso")}): X {f.VarX} @ {f.SepXM * 100:0.#}, Y {f.VarY} @ {f.SepYM * 100:0.#} cm"))
+            : null;
+
+        if (!ventana.Mostrar(dueno, "Armar") || (lista is not null && lista.SelectedIndex < 0))
+        {
+            return null;
+        }
+
+        Autodesk.Revit.DB.Structure.RebarBarType? Varilla(double diamM) =>
+            diamM <= 0 ? null : tipos.OrderBy(t => Math.Abs(t.DiametroM - diamM)).First().Tipo;
+
+        ArmadoDeTablero? De(ArmadoLosaJson f, string origen)
+        {
+            if (Varilla(f.DiamXM) is not { } vx || Varilla(f.DiamYM) is not { } vy)
+            {
+                return null;
+            }
+
+            var cim = tipo.SelectedIndex switch { 1 => false, 2 => true, _ => f.Cimentacion };
+            var rec = f.RecubrimientoM > 0 ? f.RecubrimientoM : 0.02;
+
+            return new ArmadoDeTablero(cim, rec, cim ? Math.Min(rec, 0.03) : rec,
+                vx, f.SepXM, vy, f.SepYM, Varilla(f.DiamBastonM), origen + " " + f.Id);
+        }
+
+        var general = lista is null ? null : archivo.Losas[lista.SelectedIndex];
+
+        return losas
+            .Select(l => PorMarca(l) is { } propia
+                ? (l, De(propia, "su Marca:"))
+                : (l, general is null ? null : De(general, "la fila elegida:")))
+            .ToList();
+    }
+}
+
+/// <summary>
 /// El boton <b>Soltar piezas</b>: quita las uniones de las piezas elegidas -o de todo el modelo-
 /// para moverlas libremente. La importacion desde ETABS ya lo hace sola con lo que crea.
 /// </summary>

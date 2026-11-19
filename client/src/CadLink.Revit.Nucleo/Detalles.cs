@@ -40,6 +40,9 @@ public sealed class ArchivoDetallesJson
 
     public List<ZapataCorridaJson> Corridas { get; set; } = new();
 
+    /// <summary>Los tableros de la pestaña Losas, con su armado. Un archivo de antes no los trae.</summary>
+    public List<ArmadoLosaJson> Losas { get; set; } = new();
+
     /// <summary>Lo que CadLink no pudo mandar, para decirlo tambien en Revit.</summary>
     public List<string> Avisos { get; set; } = new();
 }
@@ -190,6 +193,36 @@ public sealed class CapaZapataJson
 /// Las parrillas de una zapata. «Largas» corren a lo largo del lado MAYOR de la zapata y «Cortas» a
 /// lo largo del menor: asi no importa como este girada en Revit ni como se llamen sus lados.
 /// </summary>
+/// <summary>
+/// Un tablero de la pestaña Losas de CadLink: corridas, bayonetas y bastones a L/4. En Revit, la losa
+/// que lleva su ID en la Marca toma esta fila; X y Y son las del proyecto.
+/// </summary>
+public sealed class ArmadoLosaJson
+{
+    public string Id { get; set; } = string.Empty;
+
+    public bool Cimentacion { get; set; }
+
+    public double RecubrimientoM { get; set; } = 0.02;
+
+    public string VarX { get; set; } = string.Empty;
+
+    public double DiamXM { get; set; }
+
+    public double SepXM { get; set; }
+
+    public string VarY { get; set; } = string.Empty;
+
+    public double DiamYM { get; set; }
+
+    public double SepYM { get; set; }
+
+    /// <summary>Cero = la misma de cada sentido.</summary>
+    public double DiamBastonM { get; set; }
+
+    public string VarBaston { get; set; } = string.Empty;
+}
+
 public sealed class ArmadoZapataJson
 {
     public CapaZapataJson? InfLargas { get; set; }
@@ -289,6 +322,7 @@ public static class ArchivoDetalles
         a.Placas ??= new List<PlacaBaseJson>();
         a.Zapatas ??= new List<ZapataAisladaJson>();
         a.Corridas ??= new List<ZapataCorridaJson>();
+        a.Losas ??= new List<ArmadoLosaJson>();
         a.Avisos ??= new List<string>();
 
         foreach (var p in a.Placas)
@@ -348,7 +382,7 @@ public static class ArchivoDetalles
 /// momento o la placa embebida en el muro-, para que cambiar de una a otra quite la anterior.
 /// <c>SoldaduraColumna</c> es el filete de la base o de la cabeza de una columna.
 /// </remarks>
-public enum ClaseDetalle { Placa, Zapata, Corrida, Soldadura, SoldaduraColumna, Encamisado, PlacaViga, ArmadoZapata, ConexionDelLibro }
+public enum ClaseDetalle { Placa, Zapata, Corrida, Soldadura, SoldaduraColumna, Encamisado, PlacaViga, ArmadoZapata, ConexionDelLibro, ArmadoLosa }
 
 /// <summary>
 /// La llave de lo que CadLink pone sobre una pieza del modelo: <c>CadLink|Placa|123456</c>.

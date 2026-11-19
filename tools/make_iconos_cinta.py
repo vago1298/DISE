@@ -213,6 +213,16 @@ def armar_cimentacion():
     return f + caja(6, 6, 5, 6, 6, 8, cx=16, cy=17, s=0.95, colores=gris)
 
 
+def armar_losas():
+    # La losa gris delgada con sus bayonetas rojas: arriba en las orillas y abajo al centro.
+    gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
+    f = caja(0, 0, 0, 18, 18, 4, cx=16, cy=17, s=0.95, colores=gris)
+    for y in (4, 9, 14):
+        f += lineas([iso(1, y, 7.0, 16, 17, 0.95), iso(4, y, 7.0, 16, 17, 0.95), iso(6, y, 4.6, 16, 17, 0.95),
+                     iso(12, y, 4.6, 16, 17, 0.95), iso(14, y, 7.0, 16, 17, 0.95), iso(17, y, 7.0, 16, 17, 0.95)], 1.1, ROJO)
+    return f
+
+
 def armar_muros():
     # El muro gris con su malla clara: verticales y horizontales.
     gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
@@ -273,6 +283,7 @@ ICONOS = {
     "encamisar": encamisar,
     "armar-muros": armar_muros,
     "armar-cimentacion": armar_cimentacion,
+    "armar-losas": armar_losas,
     "conexiones-libro": conexiones_libro,
     "soltar-piezas": soltar_piezas,
 }
