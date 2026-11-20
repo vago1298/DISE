@@ -344,7 +344,8 @@ internal static class Armador
 
             if (despiece)
             {
-                Despiece.Crear(doc, cortes, r);
+                // Todas en UNA vista de dibujo: un corte por seccion llenaba el navegador.
+                Despiece.Crear(doc, cortes, r, unaVista: true);
             }
 
             t.Commit();

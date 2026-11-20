@@ -434,6 +434,17 @@ En la primera prueba:
 
 ---
 
+## El despiece: todas las secciones en una vista
+
+Al armar por tipo con **Crear el despiece**, ya no se crea un corte por sección: todas van en **una
+sola vista de dibujo** («CadLink - Secciones»), en renglones como la fila de secciones de AutoCAD, y
+esa vista va en una hoja. Cada sección lleva el concreto, el estribo, las varillas rellenas, las
+llamadas («2 vars. #4C») con su flecha, las cotas de base y peralte y su ID con la medida debajo.
+
+Es dibujo 2D (líneas, rellenos, textos y cotas), así que una plantilla de vista de cortes no le apaga
+nada. Las flechas de las llamadas se rellenan con líneas de detalle, también en los cortes que hace
+**Corte de sección**: ahí, si la plantilla apaga los *Detail Items*, la flecha se sigue viendo.
+
 ## Armar losas: corridas, bayonetas y bastones a L/4
 
 Botón **CadLink → Detalles → Armar losas**. Elige las losas (Floor o Foundation Slab); **cada

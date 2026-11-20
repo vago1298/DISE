@@ -42,6 +42,28 @@ public readonly record struct FlechaDeCorte(double X, double Y, bool DesdeAbajo)
         var yBase = DesdeAbajo ? Y - alto : Y + alto;
         return new[] { (X, Y), (X + (lado / 2), yBase), (X - (lado / 2), yBase) };
     }
+
+    /// <summary>
+    /// La flecha RELLENA con lineas: de la punta a puntos repartidos en su base. Son lineas de
+    /// detalle, que se siguen viendo cuando una plantilla de vista apaga las regiones rellenas
+    /// (Detail Items) y la flecha desaparecia.
+    /// </summary>
+    public List<TramoDeCorte> Relleno(int lineas = 9)
+    {
+        var t = Triangulo();
+        var res = new List<TramoDeCorte>();
+
+        for (var i = 0; i <= lineas; i++)
+        {
+            var k = (double)i / lineas;
+            var bx = t[2].X + ((t[1].X - t[2].X) * k);
+            var by = t[2].Y + ((t[1].Y - t[2].Y) * k);
+            res.Add(new TramoDeCorte(t[0].X, t[0].Y, bx, by));
+        }
+
+        res.Add(new TramoDeCorte(t[1].X, t[1].Y, t[2].X, t[2].Y));
+        return res;
+    }
 }
 
 /// <summary>
@@ -271,6 +293,26 @@ public static class PlanDespiece
         }
 
         return res;
+    }
+
+    /// <summary>
+    /// Todas las secciones en UNA vista de dibujo: el centro de cada una, en metros del modelo, en
+    /// renglones de izquierda a derecha y de arriba abajo, como la fila de secciones de AutoCAD.
+    /// </summary>
+    /// <remarks>
+    /// Se pidio asi: un corte por seccion llenaba el navegador de vistas. Cada una ocupa su seccion
+    /// mas el aire de las llamadas, las cotas y la etiqueta; el renglon mide lo que cabe en un A1 a 1:10.
+    /// </remarks>
+    public static List<(double X, double Y)> EnUnaVista(IReadOnlyList<ArmadoJson> armados, double anchoRenglonM = 7.5)
+    {
+        var tam = armados.Select(a => ((a.BaseCm / 100) + AireIzquierda + AireDerecha, (a.AlturaCm / 100) + AireArriba + AireAbajo)).ToList();
+        var lugar = Acomodo(tam, anchoRenglonM, 1e6, 0, 0.10);
+
+        // El centro de la CAJA de cada una pasado al centro de su SECCION, que tiene mas aire a la
+        // izquierda y abajo.
+        return armados.Select((a, i) => (
+            lugar[i].X - (tam[i].Item1 / 2) + AireIzquierda + (a.BaseCm / 200),
+            lugar[i].Y - 1e6 + (tam[i].Item2 / 2) - AireArriba - (a.AlturaCm / 200))).ToList();
     }
 
     /// <summary>Lo que mide el corte en el papel, a su escala.</summary>

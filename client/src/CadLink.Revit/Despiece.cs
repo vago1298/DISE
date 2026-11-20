@@ -119,12 +119,23 @@ internal static class Despiece
     /// <returns>Las vistas creadas.</returns>
     public static List<View> Crear(
         Document doc, IReadOnlyList<(ArmadoJson Armado, FamilyInstance Pieza, MarcoPieza Marco)> cortes,
-        ResultadoArmado r, IReadOnlyList<string>? nombres = null, bool enHoja = true)
+        ResultadoArmado r, IReadOnlyList<string>? nombres = null, bool enHoja = true, bool unaVista = false)
     {
         var creadas = new List<View>();
 
         if (cortes.Count == 0)
         {
+            return creadas;
+        }
+
+        // Se pidio: todas las secciones en UNA vista, no un corte por cada una.
+        if (unaVista)
+        {
+            if (Juntas(doc, cortes.Select(c => c.Armado).ToList(), r, enHoja) is { } junta)
+            {
+                creadas.Add(junta);
+            }
+
             return creadas;
         }
 
@@ -457,6 +468,12 @@ internal static class Despiece
 
             foreach (var f in l.Flechas)
             {
+                // Rellena con LINEAS, que no apaga la plantilla de vista; la region va encima.
+                foreach (var t in f.Relleno())
+                {
+                    Linea(doc, vista, En(t.X1, t.Y1), En(t.X2, t.Y2));
+                }
+
                 var v = f.Triangulo().Select(p => En(p.X, p.Y)).ToList();
                 var lados = new List<Curve>
                 {
@@ -723,6 +740,240 @@ internal static class Despiece
                 new XYZ(Unidades.AInternas(x), Unidades.AInternas(y), 0));
         }
     }
+
+    /// <summary>Una linea de detalle, si Revit la acepta (no muy corta).</summary>
+    private static DetailCurve? Linea(Document doc, View vista, XYZ a, XYZ b)
+    {
+        if (a.DistanceTo(b) < Unidades.AInternas(0.0008))
+        {
+            return null;
+        }
+
+        try
+        {
+            return doc.Create.NewDetailCurve(vista, Line.CreateBound(a, b));
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// TODAS las secciones en una sola VISTA DE DIBUJO, en renglones, como la fila de secciones de
+    /// AutoCAD: el concreto, el estribo, las varillas rellenas, las llamadas con su flecha, las cotas
+    /// de base y peralte y el nombre debajo. Se pidio asi porque un corte por seccion llenaba el
+    /// navegador de vistas.
+    /// </summary>
+    /// <remarks>
+    /// Todo es dibujo 2D -lineas de detalle, regiones rellenas, textos y cotas entre lineas-, asi que
+    /// una plantilla de vista de cortes no le apaga las flechas ni las varillas. Es la foto del
+    /// armado: si cambia la seccion, se vuelve a armar y la vista se rehace.
+    /// </remarks>
+    private static View? Juntas(Document doc, IReadOnlyList<ArmadoJson> armados, ResultadoArmado r, bool enHoja)
+    {
+        var tipo = new FilteredElementCollector(doc)
+            .OfClass(typeof(ViewFamilyType))
+            .OfType<ViewFamilyType>()
+            .FirstOrDefault(v => v.ViewFamily == ViewFamily.Drafting);
+
+        if (tipo is null)
+        {
+            r.Errores.Add("«despiece»: el proyecto no tiene ningún tipo de vista de dibujo (Drafting View)");
+            return null;
+        }
+
+        var enUso = new HashSet<string>(
+            new FilteredElementCollector(doc).OfClass(typeof(View)).Select(v => v.Name ?? string.Empty),
+            StringComparer.OrdinalIgnoreCase);
+
+        var vista = ViewDrafting.Create(doc, tipo.Id);
+        vista.Scale = PlanDespiece.Escala;
+        vista.Name = PlanDespiece.NombreLibre("CadLink - Secciones", enUso);
+
+        var tipoDeTexto = doc.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType);
+        var relleno = TipoDeRellenoSolido(doc);
+        var centros = PlanDespiece.EnUnaVista(armados);
+        var textos = new List<(TextNote Nota, double XDer, double YCentro)>();
+        var etiquetas = new List<(TextNote Nota, double XCentro, double YArriba)>();
+
+        for (var i = 0; i < armados.Count; i++)
+        {
+            var a = armados[i];
+            var (cx, cy) = centros[i];
+            var b = a.BaseCm / 100;
+            var h = a.AlturaCm / 100;
+
+            XYZ P(double x, double y) => new(Unidades.AInternas(cx + x), Unidades.AInternas(cy + y), 0);
+
+            try
+            {
+                // ---- Concreto ----
+                var izq = Linea(doc, vista, P(-b / 2, -h / 2), P(-b / 2, h / 2));
+                var der = Linea(doc, vista, P(b / 2, -h / 2), P(b / 2, h / 2));
+                var abajo = Linea(doc, vista, P(-b / 2, -h / 2), P(b / 2, -h / 2));
+                var arriba = Linea(doc, vista, P(-b / 2, h / 2), P(b / 2, h / 2));
+
+                // ---- Estribo: sus dos caras ----
+                if (a.DiamEstriboCm > 0)
+                {
+                    foreach (var d in new[] { a.RecubrimientoCm / 100, (a.RecubrimientoCm + a.DiamEstriboCm) / 100 })
+                    {
+                        var (x0, x1, y0, y1) = ((-b / 2) + d, (b / 2) - d, (-h / 2) + d, (h / 2) - d);
+
+                        if (x1 > x0 && y1 > y0)
+                        {
+                            Linea(doc, vista, P(x0, y0), P(x1, y0));
+                            Linea(doc, vista, P(x1, y0), P(x1, y1));
+                            Linea(doc, vista, P(x1, y1), P(x0, y1));
+                            Linea(doc, vista, P(x0, y1), P(x0, y0));
+                        }
+                    }
+                }
+
+                // ---- Varillas, rellenas ----
+                foreach (var v in a.Varillas)
+                {
+                    var c = P((v.XCm / 100) - (b / 2), (v.YCm / 100) - (h / 2));
+                    var rad = Unidades.AInternas(v.DiamCm / 200);
+
+                    if (rad <= 0)
+                    {
+                        continue;
+                    }
+
+                    var medio1 = Arc.Create(c, rad, 0, Math.PI, XYZ.BasisX, XYZ.BasisY);
+                    var medio2 = Arc.Create(c, rad, Math.PI, 2 * Math.PI, XYZ.BasisX, XYZ.BasisY);
+
+                    try
+                    {
+                        if (relleno is not null)
+                        {
+                            FilledRegion.Create(doc, relleno, vista.Id, new List<CurveLoop> { CurveLoop.Create(new List<Curve> { medio1, medio2 }) });
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Queda el contorno.
+                    }
+
+                    foreach (var arco in new Curve[] { medio1, medio2 })
+                    {
+                        try
+                        {
+                            doc.Create.NewDetailCurve(vista, arco);
+                        }
+                        catch (Exception)
+                        {
+                            // Nada.
+                        }
+                    }
+                }
+
+                // ---- Llamadas, con la flecha rellena de lineas ----
+                foreach (var l in PlanDespiece.Llamadas(a))
+                {
+                    foreach (var t in l.Lineas)
+                    {
+                        Linea(doc, vista, P(t.X1, t.Y1), P(t.X2, t.Y2));
+                    }
+
+                    foreach (var f in l.Flechas)
+                    {
+                        foreach (var t in f.Relleno())
+                        {
+                            Linea(doc, vista, P(t.X1, t.Y1), P(t.X2, t.Y2));
+                        }
+                    }
+
+                    textos.Add((TextNote.Create(doc, vista.Id, P(l.X, l.Y), l.Texto, tipoDeTexto),
+                        cx + l.X - PlanDespiece.HuecoTexto, cy + l.Y));
+                }
+
+                // ---- Nombre y medida, debajo ----
+                var nombre = $"{a.Id.Trim()}\r{Cm(a.BaseCm)} X {Cm(a.AlturaCm)} CM";
+                etiquetas.Add((TextNote.Create(doc, vista.Id, P(0, -(h / 2) - PlanDespiece.AireEtiqueta), nombre, tipoDeTexto),
+                    cx, cy - (h / 2) - PlanDespiece.AireEtiqueta));
+
+                // ---- Cotas entre las lineas del concreto ----
+                var sinCota = false;
+
+                if (izq is not null && der is not null)
+                {
+                    var y = (h / 2) + 0.06;
+                    sinCota |= !Acotar(doc, vista, Line.CreateBound(P(-b / 2, y), P(b / 2, y)),
+                        izq.GeometryCurve.Reference, der.GeometryCurve.Reference, null);
+                }
+
+                if (abajo is not null && arriba is not null)
+                {
+                    var x = (b / 2) + 0.06;
+                    sinCota |= !Acotar(doc, vista, Line.CreateBound(P(x, -h / 2), P(x, h / 2)),
+                        abajo.GeometryCurve.Reference, arriba.GeometryCurve.Reference, null);
+                }
+
+                if (sinCota)
+                {
+                    r.Avisos.Add($"«sin cotas»: {a.Id} en la vista de secciones; acótala a mano");
+                }
+            }
+            catch (Exception ex)
+            {
+                r.Errores.Add($"«despiece»: {a.Id}: {ex.Message}");
+            }
+        }
+
+        // Los textos, ya medidos: el de la llamada con su borde derecho en la espina y centrado en
+        // ella; el nombre centrado y colgado de su borde de arriba.
+        doc.Regenerate();
+
+        void Acomodar(TextNote nota, Func<(double XMin, double XMax, double YMin, double YMax), (double Dx, double Dy)> cuanto)
+        {
+            try
+            {
+                if (nota.get_BoundingBox(vista) is not { } c)
+                {
+                    return;
+                }
+
+                var (dx, dy) = cuanto((Unidades.AMetros(c.Min.X), Unidades.AMetros(c.Max.X), Unidades.AMetros(c.Min.Y), Unidades.AMetros(c.Max.Y)));
+
+                if (Math.Abs(dx) + Math.Abs(dy) > 1e-4)
+                {
+                    ElementTransformUtils.MoveElement(doc, nota.Id, new XYZ(Unidades.AInternas(dx), Unidades.AInternas(dy), 0));
+                }
+            }
+            catch (Exception)
+            {
+                // Se queda donde quedo.
+            }
+        }
+
+        foreach (var (nota, xDer, yCentro) in textos)
+        {
+            Acomodar(nota, c => (xDer - c.XMax, yCentro - ((c.YMin + c.YMax) / 2)));
+        }
+
+        foreach (var (nota, xCentro, yArriba) in etiquetas)
+        {
+            Acomodar(nota, c => (xCentro - ((c.XMin + c.XMax) / 2), yArriba - c.YMax));
+        }
+
+        if (enHoja)
+        {
+            var xs = centros.Select((c, i) => (c.X - (armados[i].BaseCm / 200) - PlanDespiece.AireIzquierda, c.X + (armados[i].BaseCm / 200) + PlanDespiece.AireDerecha)).ToList();
+            var ys = centros.Select((c, i) => (c.Y - (armados[i].AlturaCm / 200) - PlanDespiece.AireAbajo, c.Y + (armados[i].AlturaCm / 200) + PlanDespiece.AireArriba)).ToList();
+            var todo = new CorteDeSeccion(vista.Name ?? "CadLink - Secciones", new V3(0, 0, 0), new V3(1, 0, 0), new V3(0, 1, 0), new V3(0, 0, 1),
+                new V3(xs.Min(x => x.Item1), ys.Min(y => y.Item1), 0), new V3(xs.Max(x => x.Item2), ys.Max(y => y.Item2), 0),
+                new List<LlamadaDeCorte>(), new V3(0, 0, 0));
+            Hoja(doc, new List<(View, CorteDeSeccion)> { (vista, todo) }, r);
+        }
+
+        r.Avisos.Add($"«despiece»: {armados.Count} seccion(es) en una sola vista, «{vista.Name}».");
+        return vista;
+    }
+
+    private static string Cm(double cm) => cm.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
 
     private static XYZ Punto(V3 p) =>
         new(Unidades.AInternas(p.X), Unidades.AInternas(p.Y), Unidades.AInternas(p.Z));

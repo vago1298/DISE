@@ -2738,6 +2738,27 @@ internal static partial class Programa
         var recto = MarcoPieza.DeColumnaMedida(pts, cen, lx, ly, 0, 2.5, 25, 15);
         Check("si la fila ya cuadra, no se gira", Math.Abs(recto.Ex.Punto(lx)) > 0.999);
 
+        // Todas las secciones en una vista: en renglones, sin encimarse, y la flecha rellena de lineas.
+        var juntas = Enumerable.Range(0, 12).Select(i => new ArmadoJson { Id = "K-" + i, BaseCm = 15, AlturaCm = 15 + (i * 5) }).ToList();
+        var lug = PlanDespiece.EnUnaVista(juntas);
+        Igual("una posicion por seccion", lug.Count, 12);
+        var cajas = juntas.Select((a, i) => (X0: lug[i].X - (a.BaseCm / 200) - PlanDespiece.AireIzquierda, X1: lug[i].X + (a.BaseCm / 200) + PlanDespiece.AireDerecha,
+            Y0: lug[i].Y - (a.AlturaCm / 200) - PlanDespiece.AireAbajo, Y1: lug[i].Y + (a.AlturaCm / 200) + PlanDespiece.AireArriba)).ToList();
+        var encimadas = false;
+        for (var i = 0; i < cajas.Count; i++)
+        {
+            for (var j = i + 1; j < cajas.Count; j++)
+            {
+                encimadas |= cajas[i].X0 < cajas[j].X1 - 1e-9 && cajas[j].X0 < cajas[i].X1 - 1e-9 && cajas[i].Y0 < cajas[j].Y1 - 1e-9 && cajas[j].Y0 < cajas[i].Y1 - 1e-9;
+            }
+        }
+        Check("todas en una vista, sin encimarse", !encimadas);
+        Check("en mas de un renglon cuando no caben", lug.Select(p => Math.Round(p.Y, 3)).Distinct().Count() > 1
+            || cajas.Max(c => c.X1) - cajas.Min(c => c.X0) <= 7.5 + 1e-9);
+        Check("y ningun renglon pasa de 7.5 m (75 cm de papel a 1:10)", cajas.GroupBy(c => Math.Round(c.Y1, 3)).All(g => g.Max(c => c.X1) - g.Min(c => c.X0) <= 7.5 + 1e-9));
+        var fl = new FlechaDeCorte(0, 0, true).Relleno();
+        Check("la flecha se rellena con lineas desde la punta", fl.Count >= 10 && fl.Take(fl.Count - 1).All(t => t.X1 == 0 && t.Y1 == 0));
+
         var vacia = new VistaArmadoPorTipo(tipos, new List<ArmadoJson> { t01 });
         Check("sin columnas en el archivo, la fila de columna dice por que no se puede armar",
             vacia.Filas.Single(f => f.Tipo.Id == 3).Diagnostico.Contains("no trae ninguna columna, castillo"));

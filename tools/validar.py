@@ -15841,6 +15841,11 @@ def v30_armado_por_tipo() -> None:
           "private static TipoElemento? TipoParaRevit(" in leer(ruta("client/src/CadLink.App/MainWindow.ArmadoRevit.cs"))
           and leer(ruta("client/src/CadLink.App/MainWindow.ArmadoRevit.cs")).count("TipoParaRevit(s.Elemento, s.Id)") == 3,
           "sin ellos, en Armar por tipo los tipos K 15X15 no tenian seccion que elegir")
+    check("el despiece pone TODAS las secciones en una vista de dibujo, y las flechas van con lineas",
+          "Despiece.Crear(doc, cortes, r, unaVista: true);" in arm
+          and "ViewDrafting.Create(doc, tipo.Id)" in leer(ruta("client/src/CadLink.Revit/Despiece.cs"))
+          and leer(ruta("client/src/CadLink.Revit/Despiece.cs")).count("foreach (var t in f.Relleno())") == 2,
+          "un corte por seccion llenaba el navegador, y la plantilla de vista apagaba las flechas")
     check("la jaula de la columna se orienta por su solido: su giro y cual lado es la base",
           "MarcoPieza.DeColumnaMedida(" in arm
           and "public static MarcoPieza DeColumnaMedida(" in leer(ruta("client/src/CadLink.Revit.Nucleo/PlanDeArmado.cs")),
@@ -15888,7 +15893,7 @@ def v30_armado_por_tipo() -> None:
           and "IndependentTag.Create(" in des and "ViewSheet.Create(doc, cajetin)" in des
           and "Viewport.Create(" in des and "public static List<(int Hoja, double X, double Y)> Acomodo(" in pld)
     check("el despiece va en la misma transaccion que el armado",
-          "Despiece.Crear(doc, cortes, r);" in arm and arm.index("Despiece.Crear(doc, cortes, r);") < arm.index("t.Commit();", arm.index("Armado por tipo de CadLink")))
+          "Despiece.Crear(doc, cortes, r, unaVista: true);" in arm and arm.index("Despiece.Crear(doc, cortes, r, unaVista: true);") < arm.index("t.Commit();", arm.index("Armado por tipo de CadLink")))
     check("la misma seccion para todas las de su medida",
           "private void AlasDeSuMedida(FilaArmadoTipo elegida)" in nuc and "public bool MismaMedida(" in nuc)
     check("las varillas de esquina se asientan en el doblez del estribo de Revit, como en AutoCAD",

@@ -11,7 +11,13 @@
 
 namespace Autodesk.Revit.DB;
 
-public enum ViewFamily { Section, Detail, FloorPlan, Elevation }
+public enum ViewFamily { Section, Detail, FloorPlan, Elevation, Drafting }
+
+/// <summary>Revit API: ViewDrafting.Create(Document, ElementId). Una vista de dibujo 2D.</summary>
+public sealed class ViewDrafting : View
+{
+    public static ViewDrafting Create(Document doc, ElementId tipo) => new();
+}
 
 public enum ViewDetailLevel { Coarse, Medium, Fine }
 
@@ -114,7 +120,11 @@ public sealed class Dimension : Element
     public XYZ TextPosition { get; set; } = new(0, 0, 0);
 }
 
-public sealed class DetailCurve : Element { }
+/// <summary>Revit API: CurveElement.GeometryCurve, la curva de la linea de detalle (con su Reference).</summary>
+public sealed class DetailCurve : Element
+{
+    public Curve GeometryCurve => new Line();
+}
 
 /// <summary>Revit API: FilledRegion.Create(Document, ElementId tipo, ElementId vista, IList&lt;CurveLoop&gt;).</summary>
 public sealed class FilledRegion : Element

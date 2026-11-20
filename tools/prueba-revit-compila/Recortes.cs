@@ -82,6 +82,8 @@ public sealed class XYZ
     // operadores - y *, Normalize, Negate, GetLength y CrossProduct.
     public static XYZ BasisX => new(1, 0, 0);
 
+    public static XYZ BasisY => new(0, 1, 0);
+
     public static XYZ operator -(XYZ a, XYZ b) => new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
 
     public static XYZ operator *(XYZ a, double k) => new(a.X * k, a.Y * k, a.Z * k);
@@ -111,6 +113,9 @@ public abstract class Curve
 
     /// <summary>Revit API: Curve.GetEndParameter(int). Donde se cuelga el perfil del barrido.</summary>
     public double GetEndParameter(int i) => 0;
+
+    /// <summary>Revit API: Curve.Reference. Con la de una linea de detalle se acota en una vista de dibujo.</summary>
+    public Reference Reference => new(null!);
 }
 
 /// <summary>Revit API: Arc.Create(XYZ centro, double radio, double inicio, double fin, XYZ ejeX, XYZ ejeY).</summary>
