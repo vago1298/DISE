@@ -121,6 +121,50 @@ public static class MallaDeMuro
         return res;
     }
 
+    /// <summary>
+    /// Como <see cref="DentroDeLaCara"/>, pero la malla sigue tambien por encima de los castillos y las
+    /// cadenas que confinan el muro (<paramref name="apoyos"/>, rectangulos en S y Z): asi se pega a
+    /// ellos en vez de acabar en la orilla del tabique.
+    /// </summary>
+    public static List<(double Desde, double Hasta)> DentroDeLaCaraYSusApoyos(
+        IReadOnlyList<IReadOnlyList<(double S, double Z)>> lazos,
+        IReadOnlyList<(double S0, double S1, double Z0, double Z1)> apoyos,
+        double pos, bool vertical, double libre)
+    {
+        var tramos = DentroDeLaCara(lazos, pos, vertical, 0);
+
+        foreach (var (s0, s1, z0, z1) in apoyos)
+        {
+            if (vertical && s0 <= pos && pos <= s1)
+            {
+                tramos.Add((z0, z1));
+            }
+            else if (!vertical && z0 <= pos && pos <= z1)
+            {
+                tramos.Add((s0, s1));
+            }
+        }
+
+        var juntos = new List<(double Desde, double Hasta)>();
+
+        foreach (var t in tramos.OrderBy(t => t.Desde))
+        {
+            if (juntos.Count > 0 && t.Desde <= juntos[^1].Hasta + 0.01)
+            {
+                juntos[^1] = (juntos[^1].Desde, Math.Max(juntos[^1].Hasta, t.Hasta));
+            }
+            else
+            {
+                juntos.Add(t);
+            }
+        }
+
+        return juntos
+            .Select(t => (t.Desde + libre, t.Hasta - libre))
+            .Where(t => t.Item2 - t.Item1 > 0.02)
+            .ToList();
+    }
+
     /// <summary>El aplanado completo: todo el muro.</summary>
     public static List<(double S, double Z)> AplanadoCompleto(double largoM, double altoM) =>
         new() { (0, 0), (largoM, 0), (largoM, altoM), (0, altoM) };

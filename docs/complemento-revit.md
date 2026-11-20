@@ -458,7 +458,7 @@ Botón **CadLink → Detalles → Muro con malla**. Elige uno o varios muros de 
 
 La malla y el aplanado siguen la **forma de la cara del muro** (remate inclinado, perfil editado,
 puertas y ventanas), y la malla va dentro del aplanado. En el isométrico salen también los
-**castillos y cadenas** que tocan el muro.
+**castillos y cadenas** que tocan el muro. La malla **pasa por encima de los castillos y las cadenas** que confinan el muro (sin cortarse en la orilla del tabique) y **da la vuelta a los castillos de las puntas**: dobla por su cara de fuera y regresa por la de atrás hasta el muro. El aplanado también los cubre.
 
 La malla va como sólidos (un cilindro por alambre), medida del
 sólido del muro: se ve en 3D y en cortes, pero **no se cuantifica** como armado. Volver a ponerla en

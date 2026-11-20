@@ -2791,6 +2791,13 @@ internal static partial class Programa
         Check("y el que cruza la ventana se parte en dos", enX15.Count == 2 && Math.Abs(enX15[0].Hasta - 0.95) < 1e-9 && Math.Abs(enX15[1].Desde - 1.55) < 1e-9);
         var enZ25 = MallaDeMuro.DentroDeLaCara(cara, 2.5, false, 0.05);
         Check("el horizontal arriba del muro bajo arranca donde el remate lo deja", enZ25.Count == 1 && Math.Abs(enZ25[0].Desde - 2.05) < 1e-9);
+        // Pegada a castillos y cadenas: el tabique de 0 a 4 x 0 a 2.4, castillos de 15 a los lados y cadena arriba.
+        var tab = new List<IReadOnlyList<(double S, double Z)>> { new List<(double, double)> { (0, 0), (4, 0), (4, 2.4), (0, 2.4) } };
+        var conf = new List<(double, double, double, double)> { (-0.15, 0, 0, 2.6), (4, 4.15, 0, 2.6), (-0.15, 4.15, 2.4, 2.6) };
+        var hz = MallaDeMuro.DentroDeLaCaraYSusApoyos(tab, conf, 1.0, false, 0.05);
+        Check("el horizontal pasa por encima de los dos castillos, sin cortarse", hz.Count == 1 && Math.Abs(hz[0].Desde + 0.10) < 1e-9 && Math.Abs(hz[0].Hasta - 4.10) < 1e-9);
+        var vt = MallaDeMuro.DentroDeLaCaraYSusApoyos(tab, conf, 2.0, true, 0.05);
+        Check("y el vertical sube hasta la cadena", vt.Count == 1 && Math.Abs(vt[0].Hasta - 2.55) < 1e-9);
         var fl = new FlechaDeCorte(0, 0, true).Relleno();
         Check("la flecha se rellena con lineas desde la punta", fl.Count >= 10 && fl.Take(fl.Count - 1).All(t => t.X1 == 0 && t.Y1 == 0));
 

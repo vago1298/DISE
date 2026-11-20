@@ -15853,8 +15853,9 @@ def v30_armado_por_tipo() -> None:
           "typeof(ComandoMuroConMalla).FullName" in leer(ruta("client/src/CadLink.Revit/Aplicacion.cs"))
           and "View3D.CreateIsometric(doc, tipo.Id)" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs"))
           and "MallaDeMuro.Alambres(" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs"))
-          and "MallaDeMuro.DentroDeLaCara(" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs"))
-          and "Confinamiento(doc, bb)" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs")),
+          and "Confinamiento(doc, bb)" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs"))
+          and "MallaDeMuro.DentroDeLaCaraYSusApoyos(" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs"))
+          and "LA VUELTA A LOS CASTILLOS" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs")),
           "se pidio poner la malla en un muro cualquiera (tabique) y su isometrico solo")
     check("el Area Reinforcement del muro va en el plano medio de su solido, no en la linea de ubicacion",
           "var normal = XYZ.BasisZ.CrossProduct(dir).Normalize();" in leer(ruta("client/src/CadLink.Revit/ArmadorDeMuros.cs"))
