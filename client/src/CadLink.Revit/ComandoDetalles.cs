@@ -1080,6 +1080,7 @@ public sealed class ComandoMuroConMalla : IExternalCommand
         });
         aplanado.SelectedIndex = 0;
         var espesor = ventana.Numero("Espesor del aplanado, en cm:", 3);
+        var grueso = ventana.Numero("Grueso con que se DIBUJA el alambre, en mm (0 = el real, 3 a 6 mm, que casi no se ve):", 12);
         var iso = ventana.Casilla("Hacer el isometrico de solo este muro y abrirlo", true);
 
         if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Poner"))
@@ -1092,7 +1093,8 @@ public sealed class ComandoMuroConMalla : IExternalCommand
             caras.SelectedIndex == 1,
             aplanado.SelectedIndex switch { 1 => AplanadoDeMalla.Completo, 2 => AplanadoDeMalla.Ninguno, _ => AplanadoDeMalla.Roto },
             VentanaDetalle.Leer(espesor, 3) / 100,
-            iso.IsChecked == true);
+            iso.IsChecked == true,
+            Math.Max(0, VentanaDetalle.Leer(grueso, 12)) / 1000);
 
         ResultadoDetalles r;
         View3D? vista;

@@ -4,7 +4,12 @@ using CadLink.Revit.Nucleo;
 namespace CadLink.Revit;
 
 /// <summary>Lo que se pidio para el muro con malla.</summary>
-public sealed record OpcionesMalla(TipoDeMalla Malla, bool DosCaras, AplanadoDeMalla Aplanado, double AplanadoM, bool Isometrico);
+/// <param name="GruesoDibujoM">
+/// Con que grueso se DIBUJA el alambre. El real (3 a 6 mm) no se ve en un isometrico de un muro entero:
+/// sale como una raya de un pixel. Para el detalle se dibuja mas grueso; cero = el real.
+/// </param>
+public sealed record OpcionesMalla(TipoDeMalla Malla, bool DosCaras, AplanadoDeMalla Aplanado, double AplanadoM, bool Isometrico,
+    double GruesoDibujoM = 0.012);
 
 /// <summary>
 /// Pone la MALLA ELECTROSOLDADA y su aplanado en cualquier muro -tambien de tabique, que Revit no
@@ -41,7 +46,8 @@ internal static class MuroConMalla
             // DENTRO de la transaccion: si el material no existe se crea, y crear algo fuera de una
             // transaccion es una excepcion que tumbaba el comando entero («Command Failure»).
             var categoria = Solidos.Categoria(doc, BuiltInCategory.OST_GenericModel);
-            var acero = Solidos.Anclas(doc);
+            // Gris claro galvanizado: sobre el tabique rojo y el aplanado gris se distingue.
+            var acero = Solidos.MaterialDe(doc, "CadLink - Malla", 225, 228, 232, "galvaniz", "malla");
             var mortero = Solidos.MaterialDe(doc, "CadLink - Aplanado", 186, 184, 176, "aplanado", "mortero", "plaster", "repello");
 
             foreach (var muro in muros)
@@ -87,7 +93,7 @@ internal static class MuroConMalla
                     var solidosMalla = new List<GeometryObject>();
                     var solidosAplanado = new List<GeometryObject>();
                     var (vs, hs) = MallaDeMuro.Alambres(Unidades.AMetros(largo), Unidades.AMetros(alto), o.Malla);
-                    var d = Unidades.AInternas(o.Malla.AlambreM);
+                    var d = Unidades.AInternas(Math.Max(o.Malla.AlambreM, o.GruesoDibujoM));
                     var radio = d / 2;
                     var aplanado = Unidades.AInternas(Math.Max(0.005, o.AplanadoM));
 
@@ -162,6 +168,7 @@ internal static class MuroConMalla
 
                     r.Avisos.Add($"«{nombre}»: malla {o.Malla.Nombre} ({vs.Count} verticales y {hs.Count} horizontales"
                                  + (o.DosCaras ? " por cara, en las dos caras" : "") + ")"
+                                 + (o.GruesoDibujoM > o.Malla.AlambreM ? $", alambre dibujado de {o.GruesoDibujoM * 1000:0.#} mm (real {o.Malla.AlambreM * 1000:0.##} mm)" : string.Empty)
                                  + (o.Aplanado == AplanadoDeMalla.Ninguno ? "." : $" con aplanado de {o.AplanadoM * 100:0.#} cm."));
                     r.Hechas++;
                 }
