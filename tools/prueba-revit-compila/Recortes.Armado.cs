@@ -61,6 +61,11 @@ public sealed class Rebar : Element
 
     public RebarShapeDrivenAccessor GetShapeDrivenAccessor() => new();
 
+    /// <summary>Revit API: Rebar.SetSolidInView(View3D, bool) y SetUnobscuredInView(View, bool).</summary>
+    public void SetSolidInView(View3D vista, bool solido) { }
+
+    public void SetUnobscuredInView(View vista, bool sinTapar) { }
+
     /// <summary>Revit API: Rebar.GetHostId(), la pieza que la aloja.</summary>
     public ElementId GetHostId() => new(0L);
 

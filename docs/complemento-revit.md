@@ -434,16 +434,15 @@ En la primera prueba:
 
 ---
 
-## El despiece: todas las secciones en una vista
+## El despiece: un corte por sección, con el armado a la vista
 
-Al armar por tipo con **Crear el despiece**, ya no se crea un corte por sección: todas van en **una
-sola vista de dibujo** («CadLink - Secciones»), en renglones como la fila de secciones de AutoCAD, y
-esa vista va en una hoja. Cada sección lleva el concreto, el estribo, las varillas rellenas, las
-llamadas («2 vars. #4C») con su flecha, las cotas de base y peralte y su ID con la medida debajo.
+Al armar por tipo con **Crear el despiece** se crea **un corte del modelo por sección** («Corte
+K-05»…), con sus llamadas, cotas y etiqueta, todos en una hoja. Se ve el armado de verdad de la pieza.
 
-Es dibujo 2D (líneas, rellenos, textos y cotas), así que una plantilla de vista de cortes no le apaga
-nada. Las flechas de las llamadas se rellenan con líneas de detalle, también en los cortes que hace
-**Corte de sección**: ahí, si la plantilla apaga los *Detail Items*, la flecha se sigue viendo.
+El armado que se crea queda **a la vista**: en cada vista 3D se ve sólido (*View as Solid*) y sin que
+lo tape el concreto (*View Unobscured*), y en los cortes sin taparse. Las flechas de las llamadas se
+rellenan con líneas de detalle, así que una plantilla de vista que apague los *Detail Items* ya no las
+borra. Si la plantilla apaga **Structural Rebar**, enciéndelo en ella para ver las varillas.
 
 ## Armar losas: corridas, bayonetas y bastones a L/4
 

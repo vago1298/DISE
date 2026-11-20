@@ -53,6 +53,9 @@ public sealed class Transform
     public static Transform CreateTranslation(XYZ v) => new();
 }
 
+/// <summary>Una vista 3D.</summary>
+public sealed class View3D : View { }
+
 public sealed class ViewSection : View
 {
     public static ViewSection CreateSection(Document doc, ElementId tipo, BoundingBoxXYZ caja) => new();

@@ -53,6 +53,7 @@ internal static class Armador
     public static ResultadoArmado Ejecutar(Document doc, ModeloJson modelo)
     {
         var r = new ResultadoArmado();
+        _hechas.Clear();
 
         var armados = modelo.Armados
             .GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
@@ -105,6 +106,9 @@ internal static class Armador
 
                 ArmarPieza(doc, inst, llave, barra, armado, tipos, viejo, r);
             }
+
+            AlaVista(doc, _hechas, new List<View>());
+            _hechas.Clear();
 
             t.Commit();
 
@@ -300,6 +304,7 @@ internal static class Armador
         bool propiedades = false, bool despiece = false)
     {
         var r = new ResultadoArmado();
+        _hechas.Clear();
 
         using var t = new Transaction(doc, "Armado por tipo de CadLink");
         t.Start();
@@ -342,11 +347,13 @@ internal static class Armador
                 }
             }
 
-            if (despiece)
-            {
-                // Todas en UNA vista de dibujo: un corte por seccion llenaba el navegador.
-                Despiece.Crear(doc, cortes, r, unaVista: true);
-            }
+            // UN CORTE POR SECCION, del modelo: se ve el armado de verdad, el que lleva cada pieza.
+            // (Se probo juntarlas en una vista de dibujo 2D y se pidio volver a los cortes.)
+            var vistas = despiece ? Despiece.Crear(doc, cortes, r) : new List<View>();
+
+            // Y que el armado se VEA en 3D y en los cortes: solido y sin taparse con el concreto.
+            AlaVista(doc, _hechas, vistas);
+            _hechas.Clear();
 
             t.Commit();
 
@@ -629,6 +636,7 @@ internal static class Armador
         }
 
         rebar.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.Set(MarcaArmado + llave);
+        _hechas.Add(rebar);
 
         if (v.Cuenta > 1 && v.PasoM > 0)
         {
@@ -639,6 +647,53 @@ internal static class Armador
         }
 
         return rebar;
+    }
+
+    /// <summary>Las varillas creadas en esta corrida, para dejarlas a la vista al final.</summary>
+    private static readonly List<Rebar> _hechas = new();
+
+    /// <summary>
+    /// El armado A LA VISTA: en cada vista 3D se ve SOLIDO («View as Solid») y sin que lo tape el
+    /// concreto («View Unobscured»); en los cortes del despiece, sin taparse. Es lo que se hace a
+    /// mano en «Visibilidad de elementos de vista» de cada varilla, y por vista.
+    /// </summary>
+    private static void AlaVista(Document doc, List<Rebar> varillas, List<View> cortes)
+    {
+        if (varillas.Count == 0)
+        {
+            return;
+        }
+
+        var tres = new FilteredElementCollector(doc).OfClass(typeof(View3D))
+            .OfType<View3D>().Where(v => !v.IsTemplate).ToList();
+
+        foreach (var v in varillas.Where(v => v.IsValidObject))
+        {
+            foreach (var vista in tres)
+            {
+                try
+                {
+                    v.SetSolidInView(vista, true);
+                    v.SetUnobscuredInView(vista, true);
+                }
+                catch (Exception)
+                {
+                    // Una vista que no lo admite (perspectiva bloqueada...) se salta.
+                }
+            }
+
+            foreach (var vista in cortes)
+            {
+                try
+                {
+                    v.SetUnobscuredInView(vista, true);
+                }
+                catch (Exception)
+                {
+                    // Nada.
+                }
+            }
+        }
     }
 
     private static RebarHookOrientation Orientacion(LadoGancho lado) =>
