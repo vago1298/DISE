@@ -64,6 +64,11 @@ public sealed class ViewSection : View
 public sealed class TextNote : Element
 {
     public static TextNote Create(Document doc, ElementId vista, XYZ punto, string texto, ElementId tipo) => new();
+
+    /// <summary>Revit API: TextNote.BaseDirection y UpDirection, hacia donde se lee el texto en el modelo.</summary>
+    public XYZ BaseDirection => new(1, 0, 0);
+
+    public XYZ UpDirection => new(0, 1, 0);
 }
 
 public sealed class Reference

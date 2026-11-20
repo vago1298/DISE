@@ -176,9 +176,8 @@ internal static class Despiece
 
                 // Como quedo la vista DE VERDAD: con eso las cotas van arriba y a la derecha, las
                 // llamadas a la izquierda y la etiqueta abajo, como en AutoCAD.
-                var (enVista, aVista) = PlanDespiece.ALaVista(plan, a,
-                    new V3(vista.RightDirection.X, vista.RightDirection.Y, vista.RightDirection.Z),
-                    new V3(vista.UpDirection.X, vista.UpDirection.Y, vista.UpDirection.Z));
+                var (der, arr) = ComoSeVe(doc, vista, plan, tipoDeTexto);
+                var (enVista, aVista) = PlanDespiece.ALaVista(plan, a, der, arr);
                 plan = enVista;
 
                 Llamadas(doc, vista, plan, tipoDeTexto, r);
@@ -747,6 +746,46 @@ internal static class Despiece
             Viewport.Create(doc, hoja.Id, hechas[i].Vista.Id,
                 new XYZ(Unidades.AInternas(x), Unidades.AInternas(y), 0));
         }
+    }
+
+    /// <summary>
+    /// Hacia donde quedaron DE VERDAD la derecha y el arriba de la vista, medidos con un texto.
+    /// </summary>
+    /// <remarks>
+    /// <c>RightDirection</c> y <c>UpDirection</c> de un corte recien creado dicen lo que se pidio, no
+    /// como lo pinta Revit: en los cortes de columna la vista salia girada media vuelta y las cotas
+    /// quedaban abajo y a la izquierda aunque esas dos dijeran que estaba bien. Un texto siempre se
+    /// pinta derecho y de izquierda a derecha, asi que su direccion es la de la pantalla. Se pone uno
+    /// de prueba, se mide y se borra.
+    /// </remarks>
+    private static (V3 Derecha, V3 Arriba) ComoSeVe(Document doc, View vista, CorteDeSeccion plan, ElementId tipoDeTexto)
+    {
+        V3 De(XYZ v) => new(v.X, v.Y, v.Z);
+        var derecha = De(vista.RightDirection);
+        var arriba = De(vista.UpDirection);
+
+        try
+        {
+            doc.Regenerate();
+            var prueba = TextNote.Create(doc, vista.Id, Punto(plan.Origen), "X", tipoDeTexto);
+            doc.Regenerate();
+
+            var b = De(prueba.BaseDirection);
+            var u = De(prueba.UpDirection);
+            doc.Delete(new List<ElementId> { prueba.Id });
+
+            if (b.Largo > 0.5 && u.Largo > 0.5)
+            {
+                derecha = b;
+                arriba = u;
+            }
+        }
+        catch (Exception)
+        {
+            // Se queda lo que dice la vista.
+        }
+
+        return (derecha, arriba);
     }
 
     /// <summary>Una linea de detalle, si Revit la acepta (no muy corta).</summary>
