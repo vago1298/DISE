@@ -15843,7 +15843,7 @@ def v30_armado_por_tipo() -> None:
           "sin ellos, en Armar por tipo los tipos K 15X15 no tenian seccion que elegir")
     check("el despiece vuelve a un corte de MODELO por seccion, el armado a la vista en 3D y las flechas con lineas",
           "var vistas = despiece ? Despiece.Crear(doc, cortes, r) : new List<View>();" in arm
-          and "v.SetSolidInView(vista, true);" in arm
+          and 'Llamar(v, "SetSolidInView", vista);' in arm and ".SetSolidInView(" not in arm
           and leer(ruta("client/src/CadLink.Revit/Despiece.cs")).count("foreach (var t in f.Relleno())") >= 1,
           "se pidio volver a los cortes uno por uno, con el armado en 3D")
     check("la jaula de la columna se orienta por su solido: su giro y cual lado es la base",

@@ -671,28 +671,37 @@ internal static class Armador
         {
             foreach (var vista in tres)
             {
-                try
-                {
-                    v.SetSolidInView(vista, true);
-                    v.SetUnobscuredInView(vista, true);
-                }
-                catch (Exception)
-                {
-                    // Una vista que no lo admite (perspectiva bloqueada...) se salta.
-                }
+                // POR NOMBRE: SetSolidInView ya no existe en la Revit API 2026 (no compilaba en la
+                // maquina del usuario) y SetUnobscuredInView puede cambiar igual. Si estan, se usan.
+                Llamar(v, "SetSolidInView", vista);
+                Llamar(v, "SetUnobscuredInView", vista);
             }
 
             foreach (var vista in cortes)
             {
-                try
-                {
-                    v.SetUnobscuredInView(vista, true);
-                }
-                catch (Exception)
-                {
-                    // Nada.
-                }
+                Llamar(v, "SetUnobscuredInView", vista);
             }
+        }
+    }
+
+    /// <summary>
+    /// <c>varilla.Metodo(vista, true)</c> si esta version de Revit lo tiene; si no, nada. En 3D, a
+    /// detalle Fino, Revit 2023 en adelante ya pinta la varilla solida sin pedirlo.
+    /// </summary>
+    private static void Llamar(Rebar varilla, string metodo, View vista)
+    {
+        try
+        {
+            var m = varilla.GetType().GetMethods()
+                .FirstOrDefault(x => x.Name == metodo && x.GetParameters().Length == 2
+                                     && x.GetParameters()[0].ParameterType.IsInstanceOfType(vista)
+                                     && x.GetParameters()[1].ParameterType == typeof(bool));
+
+            m?.Invoke(varilla, new object[] { vista, true });
+        }
+        catch (Exception)
+        {
+            // Una vista que no lo admite se salta.
         }
     }
 
