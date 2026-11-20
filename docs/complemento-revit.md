@@ -444,6 +444,22 @@ lo tape el concreto (*View Unobscured*), y en los cortes sin taparse. Las flecha
 rellenan con líneas de detalle, así que una plantilla de vista que apague los *Detail Items* ya no las
 borra. Si la plantilla apaga **Structural Rebar**, enciéndelo en ella para ver las varillas.
 
+## Muro con malla electrosoldada
+
+Botón **CadLink → Detalles → Muro con malla**. Elige uno o varios muros de **cualquier material**
+(también tabique, que Revit no acepta como anfitrión de una *Fabric Sheet*) y en el cuadro:
+
+- **Malla:** 6x6-10/10, 6x6-8/8, 6x6-6/6, 6x6-4/4 o 4x4-10/10 (alambre y separación de catálogo).
+- **Caras:** la exterior o las dos.
+- **Aplanado:** roto en diagonal (para el detalle: se ve el tabique, la malla y el aplanado), completo
+  o sin aplanado, con su espesor.
+- **Isométrico:** una vista 3D nueva solo de ese muro (caja de corte, Realista, detalle fino, el muro
+  aislado), mirando a la cara de la malla, y se abre.
+
+La malla va como sólidos (un cilindro por alambre) a un tercio del espesor del aplanado, medida del
+sólido del muro: se ve en 3D y en cortes, pero **no se cuantifica** como armado. Volver a ponerla en
+el mismo muro la reemplaza.
+
 ## Armar losas: corridas, bayonetas y bastones a L/4
 
 Botón **CadLink → Detalles → Armar losas**. Elige las losas (Floor o Foundation Slab); **cada

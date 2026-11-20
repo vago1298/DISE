@@ -2771,6 +2771,14 @@ internal static partial class Programa
         Check("girada un cuarto: base por peralte", k90.BaseCm == 25 && k90.AlturaCm == 15 && Math.Abs(p90.XCotaAltura - 0.185) < 1e-9);
         var (igual, _) = PlanDespiece.ALaVista(pk, k, new V3(1, 0, 0), new V3(0, 1, 0));
         Check("si la vista quedo como se pidio, nada cambia", ReferenceEquals(igual, pk));
+        // La malla del muro: centrada, a su separacion, sin salirse del muro.
+        var m66 = TipoDeMalla.Catalogo[0];
+        var (mv, mh) = MallaDeMuro.Alambres(4.0, 2.4, m66);
+        Check("la malla 6x6 en un muro de 4 m lleva 26 verticales a 15.24 cm", mv.Count == 26 && Math.Abs(mv[1] - mv[0] - 0.1524) < 1e-9);
+        Check("centrada y dentro del muro", Math.Abs((mv[0] - 0) - (4.0 - mv[^1])) < 1e-9 && mv[0] >= MallaDeMuro.LibreM && mh[^1] <= 2.4 - MallaDeMuro.LibreM);
+        var roto = MallaDeMuro.AplanadoRoto(4.0, 2.4);
+        Check("el aplanado roto deja ver arriba a la izquierda", roto.All(p => p.S >= 0 && p.S <= 4 && p.Z >= 0 && p.Z <= 2.4)
+            && !roto.Any(p => p.S < 1 && p.Z > 1.5));
         var fl = new FlechaDeCorte(0, 0, true).Relleno();
         Check("la flecha se rellena con lineas desde la punta", fl.Count >= 10 && fl.Take(fl.Count - 1).All(t => t.X1 == 0 && t.Y1 == 0));
 

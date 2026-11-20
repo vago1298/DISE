@@ -206,6 +206,14 @@ public sealed class Aplicacion : IExternalApplication
             + "El armado se escribe en el cuadro o se lee de la pestaña Losas de CadLink (.cadlink-detalles.json): "
             + "la losa con el ID del tablero en su Marca toma su fila. Volver a armar reemplaza el armado de CadLink.",
             "armar-losas");
+
+        Boton(detalles, dll, "CadLinkMuroConMalla", "Muro con\nmalla", typeof(ComandoMuroConMalla).FullName,
+            "Pone malla electrosoldada y aplanado en el muro elegido, de cualquier material, y hace su isometrico.",
+            "Malla de catalogo (6x6-10/10, 8/8, 6/6, 4/4 o 4x4-10/10) en una o las dos caras, con aplanado roto en "
+            + "diagonal, completo o sin aplanado. Sirve tambien en muros de tabique, que Revit no acepta como "
+            + "anfitrion de una Fabric Sheet: la malla va como solidos, se ve pero no se cuantifica.\n\n"
+            + "El isometrico es una vista 3D con la caja de corte al muro, en Realista, con el muro aislado.",
+            "malla-muro");
     }
 
     private static string TextoAcero(string elemento) =>
@@ -271,6 +279,7 @@ public sealed class Aplicacion : IExternalApplication
         "armar-muros" => (Imagen("CadLink.Revit.armar-muros-32.png"), Imagen("CadLink.Revit.armar-muros-16.png")),
         "armar-cimentacion" => (Imagen("CadLink.Revit.armar-cimentacion-32.png"), Imagen("CadLink.Revit.armar-cimentacion-16.png")),
         "armar-losas" => (Imagen("CadLink.Revit.armar-losas-32.png"), Imagen("CadLink.Revit.armar-losas-16.png")),
+        "malla-muro" => (Imagen("CadLink.Revit.malla-muro-32.png"), Imagen("CadLink.Revit.malla-muro-16.png")),
         "soltar-piezas" => (Imagen("CadLink.Revit.soltar-piezas-32.png"), Imagen("CadLink.Revit.soltar-piezas-16.png")),
         "conexiones-libro" => (Imagen("CadLink.Revit.conexiones-libro-32.png"), Imagen("CadLink.Revit.conexiones-libro-16.png")),
         _ => (null, null)

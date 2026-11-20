@@ -11,7 +11,16 @@
 
 namespace Autodesk.Revit.DB;
 
-public enum ViewFamily { Section, Detail, FloorPlan, Elevation, Drafting }
+public enum ViewFamily { Section, Detail, FloorPlan, Elevation, Drafting, ThreeDimensional }
+
+/// <summary>Revit API: DisplayStyle (Wireframe, HLR, Shading, ShadingWithEdges, Rendering, Realistic...).</summary>
+public enum DisplayStyle { Wireframe, HLR, Shading, ShadingWithEdges, Rendering, Realistic }
+
+/// <summary>Revit API: ViewOrientation3D(XYZ eye, XYZ up, XYZ forward).</summary>
+public sealed class ViewOrientation3D
+{
+    public ViewOrientation3D(XYZ ojo, XYZ arriba, XYZ adelante) { }
+}
 
 /// <summary>Revit API: ViewDrafting.Create(Document, ElementId). Una vista de dibujo 2D.</summary>
 public sealed class ViewDrafting : View
@@ -53,8 +62,18 @@ public sealed class Transform
     public static Transform CreateTranslation(XYZ v) => new();
 }
 
-/// <summary>Una vista 3D.</summary>
-public sealed class View3D : View { }
+/// <summary>
+/// Una vista 3D. Revit API: View3D.CreateIsometric(Document, ElementId), SetSectionBox(BoundingBoxXYZ),
+/// SetOrientation(ViewOrientation3D).
+/// </summary>
+public sealed class View3D : View
+{
+    public static View3D CreateIsometric(Document doc, ElementId tipo) => new();
+
+    public void SetSectionBox(BoundingBoxXYZ caja) { }
+
+    public void SetOrientation(ViewOrientation3D o) { }
+}
 
 public sealed class ViewSection : View
 {

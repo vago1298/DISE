@@ -15800,7 +15800,7 @@ def v29_paquete_oficina() -> None:
 ICONOS_CINTA = ("importar-etabs", "armar-modelo", "columna-acero", "columna-corte",
                 "viga-acero", "viga-corte", "armar-tipo", "corte-seccion",
                 "placa-base", "cimentacion", "soldar-viga", "soldar-columna", "encamisar", "armar-muros", "armar-cimentacion",
-                "conexiones-libro", "soltar-piezas", "armar-losas")
+                "conexiones-libro", "soltar-piezas", "armar-losas", "malla-muro")
 
 def v30_armado_por_tipo() -> None:
     print("\n[30] Revit: armar por tipo, todas las piezas de un jalon")
@@ -15849,6 +15849,11 @@ def v30_armado_por_tipo() -> None:
     check("el corte se acomoda a como Revit orienta la vista: cotas arriba y a la derecha, como AutoCAD",
           "PlanDespiece.ALaVista(plan, a, der, arr);" in leer(ruta("client/src/CadLink.Revit/Despiece.cs"))
           and "prueba.BaseDirection" in leer(ruta("client/src/CadLink.Revit/Despiece.cs")))
+    check("Revit: boton Muro con malla, malla electrosoldada y aplanado en cualquier muro y su isometrico",
+          "typeof(ComandoMuroConMalla).FullName" in leer(ruta("client/src/CadLink.Revit/Aplicacion.cs"))
+          and "View3D.CreateIsometric(doc, tipo.Id)" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs"))
+          and "MallaDeMuro.Alambres(" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs")),
+          "se pidio poner la malla en un muro cualquiera (tabique) y su isometrico solo")
     check("el Area Reinforcement del muro va en el plano medio de su solido, no en la linea de ubicacion",
           "var normal = XYZ.BasisZ.CrossProduct(dir).Normalize();" in leer(ruta("client/src/CadLink.Revit/ArmadorDeMuros.cs"))
           and "Geometria.PuntosDelSolido(muro)" in leer(ruta("client/src/CadLink.Revit/ArmadorDeMuros.cs")),

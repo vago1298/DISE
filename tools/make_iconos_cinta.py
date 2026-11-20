@@ -223,6 +223,18 @@ def armar_losas():
     return f
 
 
+def malla_muro():
+    # El muro de tabique rojizo con su malla gris clara y el aplanado gris tapando la mitad de abajo.
+    tabique = ((214, 120, 90, 255), (180, 90, 64, 255), (140, 66, 46, 255))
+    gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
+    f = caja(0, 0, 0, 22, 3, 20, cx=6, cy=22, s=0.9, colores=tabique)
+    for x in (4, 8, 12, 16, 20):
+        f.append(linea(iso(x, 3.3, 1, 6, 22, 0.9), iso(x, 3.3, 19, 6, 22, 0.9), 0.8, (60, 64, 70, 255)))
+    for z in (4, 8, 12, 16):
+        f.append(linea(iso(1, 3.3, z, 6, 22, 0.9), iso(21, 3.3, z, 6, 22, 0.9), 0.8, (60, 64, 70, 255)))
+    return f + caja(8, 3.4, 0, 14, 1, 9, cx=6, cy=22, s=0.9, colores=gris)
+
+
 def armar_muros():
     # El muro gris con su malla clara: verticales y horizontales.
     gris = (GRIS, (150, 158, 168, 255), (110, 118, 130, 255))
@@ -284,6 +296,7 @@ ICONOS = {
     "armar-muros": armar_muros,
     "armar-cimentacion": armar_cimentacion,
     "armar-losas": armar_losas,
+    "malla-muro": malla_muro,
     "conexiones-libro": conexiones_libro,
     "soltar-piezas": soltar_piezas,
 }

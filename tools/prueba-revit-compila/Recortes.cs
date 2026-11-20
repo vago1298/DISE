@@ -256,6 +256,13 @@ public class View : Element
     /// <summary>Revit API: View.RightDirection, la derecha de la vista en el modelo.</summary>
     public XYZ RightDirection => new(1, 0, 0);
 
+    /// <summary>Revit API: View.DisplayStyle, IsolateElementsTemporary y ConvertTemporaryHideIsolateToPermanent.</summary>
+    public DisplayStyle DisplayStyle { get; set; }
+
+    public void IsolateElementsTemporary(ICollection<ElementId> ids) { }
+
+    public void ConvertTemporaryHideIsolateToPermanent() { }
+
     /// <summary>Revit API: View.UpDirection, el arriba de la vista en el modelo.</summary>
     public XYZ UpDirection => new(0, 1, 0);
 

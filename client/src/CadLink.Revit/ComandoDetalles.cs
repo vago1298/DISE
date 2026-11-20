@@ -1037,6 +1037,85 @@ public sealed class ComandoArmarCimentacion : IExternalCommand
 }
 
 /// <summary>
+/// El boton <b>Muro con malla</b>: malla electrosoldada y aplanado en los muros elegidos -de cualquier
+/// material, tambien de tabique- y el isometrico de ese muro solo.
+/// </summary>
+[Transaction(TransactionMode.Manual)]
+public sealed class ComandoMuroConMalla : IExternalCommand
+{
+    public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+    {
+        var uidoc = commandData?.Application?.ActiveUIDocument;
+        var doc = uidoc?.Document;
+
+        if (uidoc is null || doc is null || doc.IsFamilyDocument)
+        {
+            message = "Abre un proyecto de Revit antes de poner la malla.";
+            return Result.Failed;
+        }
+
+        var muros = DetallesEnRevit.Piezas(uidoc, "Elige el muro (o los muros) que llevan malla y pulsa Terminar.",
+            BuiltInCategory.OST_Walls).OfType<Wall>().ToList();
+
+        if (muros.Count == 0)
+        {
+            return Result.Cancelled;
+        }
+
+        var ventana = new VentanaDetalle("CadLink - Muro con malla",
+            $"Se pone la malla electrosoldada en {muros.Count} muro(s), de cualquier material (tambien tabique, que "
+            + "Revit no acepta para una Fabric Sheet). La malla va como solidos: se ve en 3D y en cortes, pero no se "
+            + "cuantifica como armado. Volver a ponerla en el mismo muro la reemplaza.");
+
+        var malla = ventana.Lista("Malla:", TipoDeMalla.Catalogo.Select(m =>
+            $"{m.Nombre}  (alambre {m.AlambreM * 1000:0.##} mm @ {m.SeparacionM * 100:0.##} cm)"));
+        malla.SelectedIndex = 0;
+        var caras = ventana.Lista("Caras:", new[] { "Una: la cara exterior del muro", "Las dos caras" });
+        caras.SelectedIndex = 0;
+        var aplanado = ventana.Lista("Aplanado:", new[]
+        {
+            "Roto en diagonal (detalle: se ve tabique, malla y aplanado)",
+            "Completo",
+            "Sin aplanado"
+        });
+        aplanado.SelectedIndex = 0;
+        var espesor = ventana.Numero("Espesor del aplanado, en cm:", 3);
+        var iso = ventana.Casilla("Hacer el isometrico de solo este muro y abrirlo", true);
+
+        if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Poner"))
+        {
+            return Result.Cancelled;
+        }
+
+        var o = new OpcionesMalla(
+            TipoDeMalla.Catalogo[Math.Max(0, malla.SelectedIndex)],
+            caras.SelectedIndex == 1,
+            aplanado.SelectedIndex switch { 1 => AplanadoDeMalla.Completo, 2 => AplanadoDeMalla.Ninguno, _ => AplanadoDeMalla.Roto },
+            VentanaDetalle.Leer(espesor, 3) / 100,
+            iso.IsChecked == true);
+
+        var (r, vista) = MuroConMalla.Poner(doc, muros, o);
+
+        if (vista is not null)
+        {
+            try
+            {
+                uidoc.ActiveView = vista;
+            }
+            catch (Exception)
+            {
+                // Queda en el navegador de proyecto.
+            }
+        }
+
+        TaskDialog.Show("CadLink", DetallesEnRevit.Informe(r, "muro(s) con malla", null)
+            + (vista is null ? string.Empty : $"\n\nIsometrico: «{vista.Name}» (3D Views)."));
+
+        return Result.Succeeded;
+    }
+}
+
+/// <summary>
 /// El boton <b>Armar losas</b>: corridas, bayonetas y bastones a L/4 en cada tablero elegido, de entrepiso
 /// o de cimentacion, escrito aqui o leido de la pestaña Losas de CadLink.
 /// </summary>
