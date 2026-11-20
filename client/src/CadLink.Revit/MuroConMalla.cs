@@ -85,13 +85,12 @@ internal static class MuroConMalla
 
                     var llave = LlaveDetalle.De(ClaseDetalle.MallaMuro, muro.Id.Value);
 
-                    if (Solidos.Borrar(doc, llave) > 0)
+                    if (Solidos.Borrar(doc, llave) + BorrarAplanados(doc, llave) > 0)
                     {
                         r.Reemplazadas++;
                     }
 
                     var solidosMalla = new List<GeometryObject>();
-                    var solidosAplanado = new List<GeometryObject>();
                     double Ms(double interno) => Unidades.AMetros(interno);
 
                     // LOS CASTILLOS Y LAS CADENAS que confinan el muro, en el marco del muro (S desde la
@@ -255,74 +254,20 @@ internal static class MuroConMalla
 
                         if (o.Aplanado != AplanadoDeMalla.Ninguno)
                         {
-                            var opciones = new SolidOptions(mortero, ElementId.InvalidElementId);
+                            // EL APLANADO ES UN MURO DE REVIT, delgado y de mortero, con su contorno por
+                            // perfil: se selecciona y con «Edit Profile» se le cambia la orilla rota a mano.
+                            // Va pegado a la cara, cubriendo tambien castillos y cadenas.
+                            var contorno = (o.Aplanado == AplanadoDeMalla.Roto
+                                    ? MallaDeMuro.AplanadoRoto(sFin - sIni, zFin - zIni)
+                                    : MallaDeMuro.AplanadoCompleto(sFin - sIni, zFin - zIni))
+                                .Select(q => En(q.S + sIni, q.Z + zIni, aplanado / 2))
+                                .ToList();
 
-                            // El aplanado con la forma de la cara (y sus huecos)...
-                            Solid? capa = null;
+                            var hecho = Aplanado(doc, muro, contorno, aplanado, mortero, llave, r, nombre);
 
-                            try
+                            if (hecho is not null)
                             {
-                                capa = GeometryCreationUtilities.CreateExtrusionGeometry(
-                                    lazos.Select(l => Solidos.Poligono(l.Select(q => En(q.S, q.Z, 0)).ToList())).ToList(),
-                                    normal * fuera, aplanado, opciones);
-                            }
-                            catch (Exception)
-                            {
-                                capa = null;
-                            }
-
-                            capa ??= GeometryCreationUtilities.CreateExtrusionGeometry(
-                                new List<CurveLoop> { Solidos.Poligono(MallaDeMuro.AplanadoCompleto(Ms(largo), Ms(alto)).Select(q => En(q.S, q.Z, 0)).ToList()) },
-                                normal * fuera, aplanado, opciones);
-
-                            // Tambien sobre los castillos y las cadenas, que la malla ya cubre.
-                            var capas = new List<Solid> { capa };
-
-                            foreach (var (s0a, s1a, z0a, z1a) in apoyos)
-                            {
-                                try
-                                {
-                                    capas.Add(GeometryCreationUtilities.CreateExtrusionGeometry(
-                                        new List<CurveLoop> { Solidos.Poligono(new[] { En(s0a, z0a, 0), En(s1a, z0a, 0), En(s1a, z1a, 0), En(s0a, z1a, 0) }) },
-                                        normal * fuera, aplanado, opciones));
-                                }
-                                catch (Exception)
-                                {
-                                    // Ese pedazo sin aplanado.
-                                }
-                            }
-
-                            // ...y roto: lo que queda dentro de la orilla quebrada, en todo lo que cubre la malla.
-                            Solid? roto = null;
-
-                            if (o.Aplanado == AplanadoDeMalla.Roto)
-                            {
-                                roto = GeometryCreationUtilities.CreateExtrusionGeometry(
-                                    new List<CurveLoop> { Solidos.Poligono(MallaDeMuro.AplanadoRoto(sFin - sIni, zFin - zIni)
-                                        .Select(q => En(q.S + sIni, q.Z + zIni, -aplanado)).ToList()) },
-                                    normal * fuera, aplanado * 3, opciones);
-                            }
-
-                            foreach (var pedazo in capas)
-                            {
-                                var queda = pedazo;
-
-                                if (roto is not null)
-                                {
-                                    try
-                                    {
-                                        queda = BooleanOperationsUtils.ExecuteBooleanOperation(pedazo, roto, BooleanOperationsType.Intersect);
-                                    }
-                                    catch (Exception)
-                                    {
-                                        queda = pedazo;
-                                    }
-                                }
-
-                                if (queda is not null && queda.Volume > 1e-9)
-                                {
-                                    solidosAplanado.Add(queda);
-                                }
+                                aislar.Add(hecho.Id);
                             }
                         }
                     }
@@ -330,13 +275,6 @@ internal static class MuroConMalla
                     var malla = Solidos.Forma(doc, categoria, solidosMalla, llave + "|malla",
                         $"CadLink: malla electrosoldada {o.Malla.Nombre}", string.Empty);
                     aislar.Add(malla.Id);
-
-                    if (solidosAplanado.Count > 0)
-                    {
-                        var ap = Solidos.Forma(doc, categoria, solidosAplanado, llave + "|aplanado",
-                            $"CadLink: aplanado de {o.AplanadoM * 100:0.#} cm sobre la malla", string.Empty);
-                        aislar.Add(ap.Id);
-                    }
 
                     aislar.Add(muro.Id);
 
@@ -396,6 +334,100 @@ internal static class MuroConMalla
         }
 
         return (r, vista);
+    }
+
+    /// <summary>
+    /// El aplanado como MURO de Revit de una sola capa de mortero, creado por su contorno: asi se edita
+    /// con «Edit Profile». Sin uniones con el muro, para que Revit no lo recorte ni lo junte.
+    /// </summary>
+    private static Wall? Aplanado(
+        Document doc, Wall muro, List<XYZ> contorno, double espesor, ElementId mortero, string llave,
+        ResultadoDetalles r, string nombre)
+    {
+        try
+        {
+            var tipo = TipoDeAplanado(doc, espesor, mortero);
+
+            if (tipo is null)
+            {
+                r.Errores.Add($"«{nombre}»: No hay ningun tipo de muro basico para hacer el aplanado.");
+                return null;
+            }
+
+            var lados = new List<Curve>();
+
+            for (var i = 0; i < contorno.Count; i++)
+            {
+                var a = contorno[i];
+                var b = contorno[(i + 1) % contorno.Count];
+
+                if (a.DistanceTo(b) > Unidades.AInternas(0.002))
+                {
+                    lados.Add(Line.CreateBound(a, b));
+                }
+            }
+
+            var ap = Wall.Create(doc, lados, tipo.Id, muro.LevelId, false);
+
+            for (var punta = 0; punta <= 1; punta++)
+            {
+                try
+                {
+                    WallUtils.DisallowWallJoinAtEnd(ap, punta);
+                }
+                catch (Exception)
+                {
+                    // Sin poder soltarlo, se queda como lo deja Revit.
+                }
+            }
+
+            ap.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.Set(llave + "|aplanado");
+            return ap;
+        }
+        catch (Exception ex)
+        {
+            r.Errores.Add($"«{nombre}»: No se pudo hacer el aplanado. {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>El tipo de muro «CadLink - Aplanado N cm»: una capa de mortero de ese espesor. Se crea si no esta.</summary>
+    private static WallType? TipoDeAplanado(Document doc, double espesor, ElementId mortero)
+    {
+        var tipos = new FilteredElementCollector(doc).OfClass(typeof(WallType)).OfType<WallType>().ToList();
+        var nombre = $"CadLink - Aplanado {Unidades.AMetros(espesor) * 100:0.#} cm";
+
+        if (tipos.FirstOrDefault(t => t.Name == nombre) is { } ya)
+        {
+            return ya;
+        }
+
+        if (tipos.FirstOrDefault(t => t.Kind == WallKind.Basic) is not { } basico
+            || basico.Duplicate(nombre) is not WallType nuevo)
+        {
+            return null;
+        }
+
+        nuevo.SetCompoundStructure(CompoundStructure.CreateSingleLayerCompoundStructure(
+            MaterialFunctionAssignment.Finish1, espesor, mortero));
+
+        return nuevo;
+    }
+
+    /// <summary>Borra los aplanados (muros) que CadLink le habia puesto a este muro.</summary>
+    private static int BorrarAplanados(Document doc, string llave)
+    {
+        var ids = new FilteredElementCollector(doc).OfClass(typeof(Wall))
+            .Where(w => w.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.AsString() == llave + "|aplanado")
+            .Select(w => w.Id)
+            .ToList();
+
+        if (ids.Count > 0)
+        {
+            doc.Delete(ids);
+        }
+
+        return ids.Count;
     }
 
     /// <summary>

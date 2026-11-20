@@ -219,6 +219,9 @@ public abstract class Element
 
     public string? Name { get; set; }
 
+    /// <summary>Revit API: Element.LevelId.</summary>
+    public ElementId LevelId => new(0L);
+
     public Location? Location => null;
 
     public Parameter? get_Parameter(BuiltInParameter p) => new();
@@ -316,6 +319,8 @@ public enum WallKind { Basic, Curtain, Stacked, Unknown }
 
 public sealed class WallType : ElementType
 {
+    public void SetCompoundStructure(CompoundStructure c) { }
+
     public WallKind Kind => WallKind.Basic;
 
     public double Width => 0;
@@ -345,10 +350,18 @@ public sealed class Wall : Element
         double desfase, bool voltear, bool estructural) => new();
 }
 
+/// <summary>
+/// Revit API: CompoundStructure.CreateSingleLayerCompoundStructure(MaterialFunctionAssignment, double, ElementId)
+/// y HostObjAttributes.SetCompoundStructure. El tipo de muro de una sola capa del aplanado.
+/// </summary>
 public sealed class CompoundStructure
 {
     public double GetWidth() => 0;
+
+    public static CompoundStructure CreateSingleLayerCompoundStructure(MaterialFunctionAssignment funcion, double ancho, ElementId material) => new();
 }
+
+public enum MaterialFunctionAssignment { None, Structure, Substrate, Insulation, Finish1, Finish2, Membrane, StructuralDeck }
 
 public sealed class FloorType : ElementType
 {
