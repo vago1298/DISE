@@ -2779,6 +2779,18 @@ internal static partial class Programa
         var roto = MallaDeMuro.AplanadoRoto(4.0, 2.4);
         Check("el aplanado roto deja ver arriba a la izquierda", roto.All(p => p.S >= 0 && p.S <= 4 && p.Z >= 0 && p.Z <= 2.4)
             && !roto.Any(p => p.S < 1 && p.Z > 1.5));
+        // La malla con la forma del muro: remate inclinado y una ventana.
+        var cara = new List<IReadOnlyList<(double S, double Z)>>
+        {
+            new List<(double, double)> { (0, 0), (4, 0), (4, 3), (0, 2) },
+            new List<(double, double)> { (1, 1), (2, 1), (2, 1.5), (1, 1.5) }
+        };
+        var enX3 = MallaDeMuro.DentroDeLaCara(cara, 3.0, true, 0.05);
+        Check("el vertical llega al remate inclinado (2.75 m en S = 3)", enX3.Count == 1 && Math.Abs(enX3[0].Hasta - 2.70) < 1e-9);
+        var enX15 = MallaDeMuro.DentroDeLaCara(cara, 1.5, true, 0.05);
+        Check("y el que cruza la ventana se parte en dos", enX15.Count == 2 && Math.Abs(enX15[0].Hasta - 0.95) < 1e-9 && Math.Abs(enX15[1].Desde - 1.55) < 1e-9);
+        var enZ25 = MallaDeMuro.DentroDeLaCara(cara, 2.5, false, 0.05);
+        Check("el horizontal arriba del muro bajo arranca donde el remate lo deja", enZ25.Count == 1 && Math.Abs(enZ25[0].Desde - 2.05) < 1e-9);
         var fl = new FlechaDeCorte(0, 0, true).Relleno();
         Check("la flecha se rellena con lineas desde la punta", fl.Count >= 10 && fl.Take(fl.Count - 1).All(t => t.X1 == 0 && t.Y1 == 0));
 

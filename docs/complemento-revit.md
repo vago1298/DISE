@@ -456,7 +456,11 @@ Botón **CadLink → Detalles → Muro con malla**. Elige uno o varios muros de 
 - **Isométrico:** una vista 3D nueva solo de ese muro (caja de corte, Realista, detalle fino, el muro
   aislado), mirando a la cara de la malla, y se abre.
 
-La malla va como sólidos (un cilindro por alambre) a un tercio del espesor del aplanado, medida del
+La malla y el aplanado siguen la **forma de la cara del muro** (remate inclinado, perfil editado,
+puertas y ventanas), y la malla va dentro del aplanado. En el isométrico salen también los
+**castillos y cadenas** que tocan el muro.
+
+La malla va como sólidos (un cilindro por alambre), medida del
 sólido del muro: se ve en 3D y en cortes, pero **no se cuantifica** como armado. Volver a ponerla en
 el mismo muro la reemplaza.
 

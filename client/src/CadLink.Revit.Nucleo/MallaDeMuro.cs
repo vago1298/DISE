@@ -75,6 +75,52 @@ public static class MallaDeMuro
         };
     }
 
+    /// <summary>
+    /// Los tramos de un alambre que caen DENTRO de la cara del muro: la malla sigue su forma (muro con
+    /// remate inclinado, perfil editado, puertas y ventanas). <paramref name="lazos"/> son los contornos
+    /// de la cara en (S, Z) -el de fuera y los de los huecos-; se cuenta par/impar, asi que el orden y el
+    /// sentido no importan. Cada tramo se recorta <paramref name="libre"/> en sus dos puntas.
+    /// </summary>
+    /// <param name="vertical">true: el alambre va en Z por la S <paramref name="pos"/>; false: en S por la Z.</param>
+    public static List<(double Desde, double Hasta)> DentroDeLaCara(
+        IReadOnlyList<IReadOnlyList<(double S, double Z)>> lazos, double pos, bool vertical, double libre)
+    {
+        var cortes = new List<double>();
+
+        foreach (var lazo in lazos)
+        {
+            for (var i = 0; i < lazo.Count; i++)
+            {
+                var a = lazo[i];
+                var b = lazo[(i + 1) % lazo.Count];
+                var (u1, v1, u2, v2) = vertical ? (a.S, a.Z, b.S, b.Z) : (a.Z, a.S, b.Z, b.S);
+
+                // Medio abierto, para no contar dos veces un vertice justo en la linea.
+                if ((u1 <= pos) == (u2 <= pos))
+                {
+                    continue;
+                }
+
+                cortes.Add(v1 + ((pos - u1) / (u2 - u1) * (v2 - v1)));
+            }
+        }
+
+        cortes.Sort();
+        var res = new List<(double, double)>();
+
+        for (var i = 0; i + 1 < cortes.Count; i += 2)
+        {
+            var (d, h) = (cortes[i] + libre, cortes[i + 1] - libre);
+
+            if (h - d > 0.02)
+            {
+                res.Add((d, h));
+            }
+        }
+
+        return res;
+    }
+
     /// <summary>El aplanado completo: todo el muro.</summary>
     public static List<(double S, double Z)> AplanadoCompleto(double largoM, double altoM) =>
         new() { (0, 0), (largoM, 0), (largoM, altoM), (0, altoM) };

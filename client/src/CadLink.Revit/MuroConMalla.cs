@@ -105,38 +105,94 @@ internal static class MuroConMalla
                         caras.Add((e.Min(), -1));
                     }
 
+                    double Ms(double interno) => Unidades.AMetros(interno);
+
+                    // La malla va DENTRO del aplanado: si el alambre dibujado no cabe en la capa (dos
+                    // alambres cruzados), se adelgaza para que no asome por fuera del aplanado.
+                    if (o.Aplanado != AplanadoDeMalla.Ninguno && 2 * d > aplanado * 0.8)
+                    {
+                        d = aplanado * 0.4;
+                        radio = d / 2;
+                    }
+
                     foreach (var (cara, fuera) in caras)
                     {
-                        // La malla a media capa de aplanado: separada de la cara un tercio del espesor.
-                        var hueco = Math.Max(d, aplanado / 3);
                         XYZ En(double sM, double zM, double sobre) =>
                             esquina + (dir * Unidades.AInternas(sM)) + new XYZ(0, 0, Unidades.AInternas(zM))
                             + (normal * (cara + (fuera * sobre)));
 
+                        // LA FORMA DE LA CARA: sus contornos en (S, Z), con los huecos. Sin ella, el
+                        // rectangulo del muro, como antes.
+                        var lazos = ContornosDeLaCara(muro, normal * fuera, p => (Ms((p - esquina).DotProduct(dir)), Ms(p.Z - esquina.Z)));
+
+                        if (lazos.Count == 0)
+                        {
+                            lazos.Add(MallaDeMuro.AplanadoCompleto(Ms(largo), Ms(alto)));
+                        }
+
+                        // A media capa de aplanado; sin aplanado, pegada a la cara.
+                        var centro = o.Aplanado == AplanadoDeMalla.Ninguno ? d : aplanado / 2;
+                        var lazosLectura = lazos.Select(l => (IReadOnlyList<(double S, double Z)>)l).ToList();
+
                         foreach (var x in vs)
                         {
-                            solidosMalla.Add(Solidos.Cilindro(En(x, MallaDeMuro.LibreM, hueco + radio), XYZ.BasisZ,
-                                alto - Unidades.AInternas(2 * MallaDeMuro.LibreM), radio, acero));
+                            foreach (var (z0m, z1m) in MallaDeMuro.DentroDeLaCara(lazosLectura, x, true, MallaDeMuro.LibreM))
+                            {
+                                solidosMalla.Add(Solidos.Cilindro(En(x, z0m, centro - radio), XYZ.BasisZ,
+                                    Unidades.AInternas(z1m - z0m), radio, acero));
+                            }
                         }
 
                         foreach (var z in hs)
                         {
                             // Los horizontales del otro lado de los verticales, tocandolos.
-                            solidosMalla.Add(Solidos.Cilindro(En(MallaDeMuro.LibreM, z, hueco + radio + d), dir,
-                                largo - Unidades.AInternas(2 * MallaDeMuro.LibreM), radio, acero));
+                            foreach (var (s0m, s1m) in MallaDeMuro.DentroDeLaCara(lazosLectura, z, false, MallaDeMuro.LibreM))
+                            {
+                                solidosMalla.Add(Solidos.Cilindro(En(s0m, z, centro + radio), dir,
+                                    Unidades.AInternas(s1m - s0m), radio, acero));
+                            }
                         }
 
                         if (o.Aplanado != AplanadoDeMalla.Ninguno)
                         {
-                            var contorno = (o.Aplanado == AplanadoDeMalla.Roto
-                                    ? MallaDeMuro.AplanadoRoto(Unidades.AMetros(largo), Unidades.AMetros(alto))
-                                    : MallaDeMuro.AplanadoCompleto(Unidades.AMetros(largo), Unidades.AMetros(alto)))
-                                .Select(p => En(p.S, p.Z, 0))
-                                .ToList();
+                            var opciones = new SolidOptions(mortero, ElementId.InvalidElementId);
 
-                            solidosAplanado.Add(GeometryCreationUtilities.CreateExtrusionGeometry(
-                                new List<CurveLoop> { Solidos.Poligono(contorno) }, normal * fuera, aplanado,
-                                new SolidOptions(mortero, ElementId.InvalidElementId)));
+                            // El aplanado con la forma de la cara (y sus huecos)...
+                            Solid? capa = null;
+
+                            try
+                            {
+                                capa = GeometryCreationUtilities.CreateExtrusionGeometry(
+                                    lazos.Select(l => Solidos.Poligono(l.Select(q => En(q.S, q.Z, 0)).ToList())).ToList(),
+                                    normal * fuera, aplanado, opciones);
+                            }
+                            catch (Exception)
+                            {
+                                capa = null;
+                            }
+
+                            capa ??= GeometryCreationUtilities.CreateExtrusionGeometry(
+                                new List<CurveLoop> { Solidos.Poligono(MallaDeMuro.AplanadoCompleto(Ms(largo), Ms(alto)).Select(q => En(q.S, q.Z, 0)).ToList()) },
+                                normal * fuera, aplanado, opciones);
+
+                            // ...y roto: lo que queda dentro de la orilla quebrada.
+                            if (o.Aplanado == AplanadoDeMalla.Roto)
+                            {
+                                var roto = GeometryCreationUtilities.CreateExtrusionGeometry(
+                                    new List<CurveLoop> { Solidos.Poligono(MallaDeMuro.AplanadoRoto(Ms(largo), Ms(alto)).Select(q => En(q.S, q.Z, -aplanado)).ToList()) },
+                                    normal * fuera, aplanado * 3, opciones);
+
+                                try
+                                {
+                                    capa = BooleanOperationsUtils.ExecuteBooleanOperation(capa, roto, BooleanOperationsType.Intersect) ?? roto;
+                                }
+                                catch (Exception)
+                                {
+                                    capa = roto;
+                                }
+                            }
+
+                            solidosAplanado.Add(capa);
                         }
                     }
 
@@ -154,13 +210,28 @@ internal static class MuroConMalla
                     aislar.Add(muro.Id);
 
                     // La caja de todo, para el isometrico, y desde donde se mira: la cara de la malla.
+                    // Con los CASTILLOS y las CADENAS que lo confinan: que el detalle se vea completo.
                     var bb = muro.get_BoundingBox(null);
+
+                    void Sumar(BoundingBoxXYZ c)
+                    {
+                        total ??= new BoundingBoxXYZ { Min = c.Min, Max = c.Max };
+                        total.Min = new XYZ(Math.Min(total.Min.X, c.Min.X), Math.Min(total.Min.Y, c.Min.Y), Math.Min(total.Min.Z, c.Min.Z));
+                        total.Max = new XYZ(Math.Max(total.Max.X, c.Max.X), Math.Max(total.Max.Y, c.Max.Y), Math.Max(total.Max.Z, c.Max.Z));
+                    }
 
                     if (bb is not null)
                     {
-                        total ??= new BoundingBoxXYZ { Min = bb.Min, Max = bb.Max };
-                        total.Min = new XYZ(Math.Min(total.Min.X, bb.Min.X), Math.Min(total.Min.Y, bb.Min.Y), Math.Min(total.Min.Z, bb.Min.Z));
-                        total.Max = new XYZ(Math.Max(total.Max.X, bb.Max.X), Math.Max(total.Max.Y, bb.Max.Y), Math.Max(total.Max.Z, bb.Max.Z));
+                        Sumar(bb);
+
+                        foreach (var c in Confinamiento(doc, bb))
+                        {
+                            if (!aislar.Contains(c.Id) && c.get_BoundingBox(null) is { } cb)
+                            {
+                                aislar.Add(c.Id);
+                                Sumar(cb);
+                            }
+                        }
                     }
 
                     mira ??= normal;
@@ -194,6 +265,102 @@ internal static class MuroConMalla
         }
 
         return (r, vista);
+    }
+
+    /// <summary>
+    /// Los castillos (pilares) y las cadenas y trabes (armazon) que tocan el muro: su caja cruza la del
+    /// muro, con 5 cm de holgura.
+    /// </summary>
+    private static List<Element> Confinamiento(Document doc, BoundingBoxXYZ muro)
+    {
+        var h = Unidades.AInternas(0.05);
+
+        bool Toca(BoundingBoxXYZ c) =>
+            c.Min.X <= muro.Max.X + h && c.Max.X >= muro.Min.X - h
+            && c.Min.Y <= muro.Max.Y + h && c.Max.Y >= muro.Min.Y - h
+            && c.Min.Z <= muro.Max.Z + h && c.Max.Z >= muro.Min.Z - h;
+
+        return new FilteredElementCollector(doc).WhereElementIsNotElementType()
+            .Where(e => e.Category?.BuiltInCategory is BuiltInCategory.OST_StructuralColumns or BuiltInCategory.OST_StructuralFraming)
+            .Where(e => e.get_BoundingBox(null) is { } c && Toca(c))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Los contornos de la cara del muro que mira hacia <paramref name="haciaFuera"/>, ya en (S, Z) del
+    /// muro: el de fuera y los de sus huecos. Vacio si no se encuentra.
+    /// </summary>
+    private static List<List<(double S, double Z)>> ContornosDeLaCara(
+        Wall muro, XYZ haciaFuera, Func<XYZ, (double S, double Z)> enElMuro)
+    {
+        var res = new List<List<(double S, double Z)>>();
+
+        try
+        {
+            var geo = muro.get_Geometry(new Options { ComputeReferences = false, DetailLevel = ViewDetailLevel.Fine });
+
+            if (geo is null)
+            {
+                return res;
+            }
+
+            PlanarFace? mejor = null;
+            var lejos = double.MinValue;
+
+            foreach (var o in geo)
+            {
+                if (o is not Solid solido || solido.Volume <= 1e-9)
+                {
+                    continue;
+                }
+
+                foreach (var f in solido.Faces)
+                {
+                    if (f is PlanarFace pf && pf.FaceNormal.DotProduct(haciaFuera) > 0.99)
+                    {
+                        var d = pf.Origin.DotProduct(haciaFuera);
+
+                        if (d > lejos)
+                        {
+                            lejos = d;
+                            mejor = pf;
+                        }
+                    }
+                }
+            }
+
+            if (mejor is null)
+            {
+                return res;
+            }
+
+            foreach (var lazo in mejor.GetEdgesAsCurveLoops())
+            {
+                var puntos = new List<(double S, double Z)>();
+
+                foreach (var c in lazo)
+                {
+                    var t = c.Tessellate();
+
+                    // El ultimo punto de cada curva es el primero de la siguiente.
+                    for (var i = 0; i < t.Count - 1; i++)
+                    {
+                        puntos.Add(enElMuro(t[i]));
+                    }
+                }
+
+                if (puntos.Count >= 3)
+                {
+                    res.Add(puntos);
+                }
+            }
+        }
+        catch (Exception)
+        {
+            res.Clear();
+        }
+
+        return res;
     }
 
     /// <summary>Una vista 3D solo del muro: caja de corte, Realista, detalle fino y lo demas oculto.</summary>
