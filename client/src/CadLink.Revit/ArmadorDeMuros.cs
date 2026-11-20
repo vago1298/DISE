@@ -90,6 +90,25 @@ internal static class ArmadorDeMuros
                     var largo = dir.GetLength();
                     dir = dir.Normalize();
 
+                    // EL CONTORNO EN EL PLANO MEDIO DEL MURO, MEDIDO DE SU SOLIDO. Con la linea de
+                    // ubicacion salia «Area Reinforcement is sketched completely outside of its host»
+                    // y no se veia ninguna varilla: la linea de ubicacion puede ir en una CARA del muro
+                    // (Finish Face, Core Face) o salirse de el despues de llevarlo al paño de las
+                    // columnas, y el croquis quedaba fuera. Del solido sale el centro del espesor y
+                    // de donde a donde va el muro DE VERDAD.
+                    var normal = XYZ.BasisZ.CrossProduct(dir).Normalize();
+                    var solido = Geometria.PuntosDelSolido(muro);
+
+                    if (solido.Count >= 4)
+                    {
+                        var s = solido.Select(q => (q - p0).DotProduct(dir)).ToList();
+                        var espesor = solido.Select(q => (q - p0).DotProduct(normal)).ToList();
+                        var medio = (espesor.Min() + espesor.Max()) / 2;
+
+                        p0 = p0 + (normal * medio) + (dir * s.Min());
+                        largo = s.Max() - s.Min();
+                    }
+
                     var esquinas = ArmadoDeMuros.Contorno(
                         Unidades.AMetros(largo), Unidades.AMetros(caja.Min.Z), Unidades.AMetros(caja.Max.Z), o.LibreM);
 

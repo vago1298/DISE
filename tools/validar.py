@@ -15849,6 +15849,10 @@ def v30_armado_por_tipo() -> None:
     check("el corte se acomoda a como Revit orienta la vista: cotas arriba y a la derecha, como AutoCAD",
           "PlanDespiece.ALaVista(plan, a, der, arr);" in leer(ruta("client/src/CadLink.Revit/Despiece.cs"))
           and "prueba.BaseDirection" in leer(ruta("client/src/CadLink.Revit/Despiece.cs")))
+    check("el Area Reinforcement del muro va en el plano medio de su solido, no en la linea de ubicacion",
+          "var normal = XYZ.BasisZ.CrossProduct(dir).Normalize();" in leer(ruta("client/src/CadLink.Revit/ArmadorDeMuros.cs"))
+          and "Geometria.PuntosDelSolido(muro)" in leer(ruta("client/src/CadLink.Revit/ArmadorDeMuros.cs")),
+          "«Area Reinforcement is sketched completely outside of its host» y no se veian las varillas")
     check("la jaula de la columna se orienta por su solido: su giro y cual lado es la base",
           "MarcoPieza.DeColumnaMedida(" in arm
           and "public static MarcoPieza DeColumnaMedida(" in leer(ruta("client/src/CadLink.Revit.Nucleo/PlanDeArmado.cs")),
