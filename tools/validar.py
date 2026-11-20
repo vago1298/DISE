@@ -15846,6 +15846,8 @@ def v30_armado_por_tipo() -> None:
           and 'Llamar(v, "SetSolidInView", vista);' in arm and ".SetSolidInView(" not in arm
           and leer(ruta("client/src/CadLink.Revit/Despiece.cs")).count("foreach (var t in f.Relleno())") >= 1,
           "se pidio volver a los cortes uno por uno, con el armado en 3D")
+    check("el corte se acomoda a como Revit orienta la vista: cotas arriba y a la derecha, como AutoCAD",
+          "PlanDespiece.ALaVista(plan, a," in leer(ruta("client/src/CadLink.Revit/Despiece.cs")))
     check("la jaula de la columna se orienta por su solido: su giro y cual lado es la base",
           "MarcoPieza.DeColumnaMedida(" in arm
           and "public static MarcoPieza DeColumnaMedida(" in leer(ruta("client/src/CadLink.Revit.Nucleo/PlanDeArmado.cs")),

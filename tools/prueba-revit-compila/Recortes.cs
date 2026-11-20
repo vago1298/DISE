@@ -256,6 +256,9 @@ public class View : Element
     /// <summary>Revit API: View.RightDirection, la derecha de la vista en el modelo.</summary>
     public XYZ RightDirection => new(1, 0, 0);
 
+    /// <summary>Revit API: View.UpDirection, el arriba de la vista en el modelo.</summary>
+    public XYZ UpDirection => new(0, 1, 0);
+
     /// <summary>El contorno de la hoja, en pies de papel.</summary>
     public BoundingBoxUV Outline => new();
 }

@@ -173,9 +173,17 @@ internal static class Despiece
             try
             {
                 var vista = Vista(doc, tipoDeCorte, plan, enUso);
+
+                // Como quedo la vista DE VERDAD: con eso las cotas van arriba y a la derecha, las
+                // llamadas a la izquierda y la etiqueta abajo, como en AutoCAD.
+                var (enVista, aVista) = PlanDespiece.ALaVista(plan, a,
+                    new V3(vista.RightDirection.X, vista.RightDirection.Y, vista.RightDirection.Z),
+                    new V3(vista.UpDirection.X, vista.UpDirection.Y, vista.UpDirection.Z));
+                plan = enVista;
+
                 Llamadas(doc, vista, plan, tipoDeTexto, r);
-                Etiqueta(doc, vista, pieza, plan, a, r);
-                Cotas(doc, vista, pieza, plan, a, r);
+                Etiqueta(doc, vista, pieza, plan, aVista, r);
+                Cotas(doc, vista, pieza, plan, aVista, r);
                 hechas.Add((vista, plan));
                 creadas.Add(vista);
             }

@@ -2756,6 +2756,21 @@ internal static partial class Programa
         Check("en mas de un renglon cuando no caben", lug.Select(p => Math.Round(p.Y, 3)).Distinct().Count() > 1
             || cajas.Max(c => c.X1) - cajas.Min(c => c.X0) <= 7.5 + 1e-9);
         Check("y ningun renglon pasa de 7.5 m (75 cm de papel a 1:10)", cajas.GroupBy(c => Math.Round(c.Y1, 3)).All(g => g.Max(c => c.X1) - g.Min(c => c.X0) <= 7.5 + 1e-9));
+        // La vista que Revit deja girada media vuelta: el plan se pasa a sus ejes y la seccion gira igual.
+        var k = new ArmadoJson { Id = "K-03", Tipo = "Columna", BaseCm = 15, AlturaCm = 25 };
+        k.Varillas.Add(new VarillaJson { Clave = "#4", DiamCm = 1.27, XCm = 12, YCm = 22 });
+        k.Varillas.Add(new VarillaJson { Clave = "#3", DiamCm = 0.95, XCm = 3, YCm = 3 });
+        var pk = PlanDespiece.Corte(k, MarcoPieza.DeColumna(new V3(0, 0, 0), new V3(1, 0, 0), new V3(0, 1, 0), 0, 3, 15, 25));
+        var (pv, kv) = PlanDespiece.ALaVista(pk, k, new V3(-1, 0, 0), new V3(0, -1, 0));
+        Check("girada media vuelta: los ejes del plan son los de la vista", pv.EjeX.X == -1 && pv.EjeY.Y == -1);
+        Check("y la varilla de arriba a la derecha queda abajo a la izquierda", kv.Varillas[0].XCm == 3 && kv.Varillas[0].YCm == 3);
+        Check("las cotas siguen arriba y a la derecha", pv.YCotaBase > 0 && pv.XCotaAltura > 0);
+        Check("la llamada del #4 va abajo, donde quedo su varilla",
+            pv.Llamadas.Single(l => l.Texto.Contains("#4")).Y < pv.Llamadas.Single(l => l.Texto.Contains("#3")).Y);
+        var (p90, k90) = PlanDespiece.ALaVista(pk, k, new V3(0, 1, 0), new V3(-1, 0, 0));
+        Check("girada un cuarto: base por peralte", k90.BaseCm == 25 && k90.AlturaCm == 15 && Math.Abs(p90.XCotaAltura - 0.185) < 1e-9);
+        var (igual, _) = PlanDespiece.ALaVista(pk, k, new V3(1, 0, 0), new V3(0, 1, 0));
+        Check("si la vista quedo como se pidio, nada cambia", ReferenceEquals(igual, pk));
         var fl = new FlechaDeCorte(0, 0, true).Relleno();
         Check("la flecha se rellena con lineas desde la punta", fl.Count >= 10 && fl.Take(fl.Count - 1).All(t => t.X1 == 0 && t.Y1 == 0));
 

@@ -48,7 +48,7 @@ public readonly record struct FlechaDeCorte(double X, double Y, bool DesdeAbajo)
     /// detalle, que se siguen viendo cuando una plantilla de vista apaga las regiones rellenas
     /// (Detail Items) y la flecha desaparecia.
     /// </summary>
-    public List<TramoDeCorte> Relleno(int lineas = 9)
+    public List<TramoDeCorte> Relleno(int lineas = 24)
     {
         var t = Triangulo();
         var res = new List<TramoDeCorte>();
@@ -293,6 +293,76 @@ public static class PlanDespiece
         }
 
         return res;
+    }
+
+    /// <summary>
+    /// El corte acomodado a como Revit DE VERDAD orienta la vista: su derecha y su arriba.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En los cortes de columna Revit puede dejar la vista girada media vuelta (o un cuarto) respecto
+    /// a lo pedido: las cotas salian abajo y a la izquierda, las llamadas a la derecha y la etiqueta
+    /// arriba, al reves que en AutoCAD. Como los textos siempre se leen derechos, no se notaba que la
+    /// vista estaba girada.
+    /// </para>
+    /// <para>
+    /// Aqui se cambia el plan a los ejes de la vista y la seccion se gira igual -las varillas y, si
+    /// hace falta, base por peralte-, para que las llamadas apunten a sus varillas y todo quede como en
+    /// AutoCAD: cotas arriba y a la derecha, llamadas a la izquierda y la etiqueta abajo.
+    /// </para>
+    /// </remarks>
+    public static (CorteDeSeccion Plan, ArmadoJson Armado) ALaVista(CorteDeSeccion plan, ArmadoJson a, V3 derecha, V3 arriba)
+    {
+        int S(double v) => Math.Abs(v) > 0.9 ? Math.Sign(v) : 0;
+
+        // La pantalla en ejes del plan: X' = rx*x + ry*y, Y' = ux*x + uy*y.
+        var (rx, ry) = (S(derecha.Punto(plan.EjeX)), S(derecha.Punto(plan.EjeY)));
+        var (ux, uy) = (S(arriba.Punto(plan.EjeX)), S(arriba.Punto(plan.EjeY)));
+
+        if (Math.Abs(rx) + Math.Abs(ry) != 1 || Math.Abs(ux) + Math.Abs(uy) != 1 || (rx == 1 && uy == 1))
+        {
+            return (plan, a);
+        }
+
+        var cambia = ry != 0;
+        var b = a.BaseCm;
+        var h = a.AlturaCm;
+        var (b2, h2) = cambia ? (h, b) : (b, h);
+
+        var girado = new ArmadoJson
+        {
+            Id = a.Id, Tipo = a.Tipo, BaseCm = b2, AlturaCm = h2, RecubrimientoCm = a.RecubrimientoCm,
+            ClaveEstribo = a.ClaveEstribo, DiamEstriboCm = a.DiamEstriboCm, Elemento = a.Elemento, Rotulo = a.Rotulo,
+            SeparacionesCm = a.SeparacionesCm, Bastones = a.Bastones, QuitarEstribosExtremos = a.QuitarEstribosExtremos,
+            MargenBastonesM = a.MargenBastonesM,
+            Varillas = a.Varillas.Select(v =>
+            {
+                var (x, y) = (v.XCm - (b / 2), v.YCm - (h / 2));
+                return new VarillaJson
+                {
+                    Clave = v.Clave, DiamCm = v.DiamCm, Lecho = v.Lecho,
+                    XCm = (rx * x) + (ry * y) + (b2 / 2),
+                    YCm = (ux * x) + (uy * y) + (h2 / 2)
+                };
+            }).ToList()
+        };
+
+        var bm = b2 / 100;
+        var hm = h2 / 100;
+
+        var nuevo = plan with
+        {
+            EjeX = derecha.Unitario(),
+            EjeY = arriba.Unitario(),
+            Min = new V3(-(bm / 2) - AireIzquierda, -(hm / 2) - AireAbajo, plan.Min.Z),
+            Max = new V3((bm / 2) + AireDerecha, (hm / 2) + AireArriba, plan.Max.Z),
+            Llamadas = Llamadas(girado),
+            PuntoDeEtiqueta = new V3(0, -(hm / 2) - AireEtiqueta, 0),
+            YCotaBase = (hm / 2) + 0.06,
+            XCotaAltura = (bm / 2) + 0.06
+        };
+
+        return (nuevo, girado);
     }
 
     /// <summary>
