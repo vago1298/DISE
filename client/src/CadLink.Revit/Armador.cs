@@ -582,7 +582,9 @@ internal static class Armador
             return null;
         }
 
-        return MarcoPieza.DeColumna(
+        // Orientada por su SOLIDO: su giro y cual lado es la base. Ver MarcoPieza.DeColumnaMedida.
+        return MarcoPieza.DeColumnaMedida(
+            Geometria.PuntosDelSolido(inst).Select(P).ToList(),
             P(lp.Point), P(inst.HandOrientation), P(inst.FacingOrientation),
             M(caja.Min.Z), M(caja.Max.Z), armado.BaseCm, armado.AlturaCm);
     }

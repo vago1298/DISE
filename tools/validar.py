@@ -15841,6 +15841,10 @@ def v30_armado_por_tipo() -> None:
           "private static TipoElemento? TipoParaRevit(" in leer(ruta("client/src/CadLink.App/MainWindow.ArmadoRevit.cs"))
           and leer(ruta("client/src/CadLink.App/MainWindow.ArmadoRevit.cs")).count("TipoParaRevit(s.Elemento, s.Id)") == 3,
           "sin ellos, en Armar por tipo los tipos K 15X15 no tenian seccion que elegir")
+    check("la jaula de la columna se orienta por su solido: su giro y cual lado es la base",
+          "MarcoPieza.DeColumnaMedida(" in arm
+          and "public static MarcoPieza DeColumnaMedida(" in leer(ruta("client/src/CadLink.Revit.Nucleo/PlanDeArmado.cs")),
+          "con el lado de la familia sola, el castillo K 15X25 salia con la jaula atravesada")
     check("cada pieza rehace SOLO el armado que aloja: armar la cadena no borra el de la contratrabe",
           "rb.GetHostId().Value" in arm and "var suyo = DeLaPieza(llave, inst.Id.Value);" in arm
           and "(!_sinAvisar || YaArmadas == 0)" in leer(ruta("client/src/CadLink.Revit.Nucleo/ArmadoPorTipo.cs")),

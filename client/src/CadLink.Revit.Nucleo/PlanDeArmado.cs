@@ -129,6 +129,55 @@ public sealed record MarcoPieza(V3 Origen, V3 Eje, V3 Ex, V3 Ey, double LargoM)
 
         return new MarcoPieza(origen, V3.Arriba, ex, ey, zTope - zBase);
     }
+
+    /// <summary>
+    /// La columna orientada por su SOLIDO: el giro de la pieza y cual de sus lados es la base.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Con solo el lado de la familia (HandOrientation) el armado salia girado 90° en las columnas
+    /// cuyo tipo de Revit tiene los lados al reves que la fila de CadLink: un castillo «K 15X25» de
+    /// Revit mide 25 a lo largo de su lado y la fila 15 x 25 pone la base de 15 ahi. La jaula quedaba
+    /// atravesada, con media seccion fuera del concreto.
+    /// </para>
+    /// <para>
+    /// Ahora se mide lo que ocupa el solido a lo largo de los dos lados de la pieza y la base de la
+    /// fila se pone en el que mejor le cuadra. El centro tambien sale del solido, no del punto de
+    /// insercion, que en algunas familias esta en una esquina. Sin puntos, se queda como antes.
+    /// </para>
+    /// </remarks>
+    public static MarcoPieza DeColumnaMedida(
+        IReadOnlyList<V3> puntos, V3 centro, V3 ladoX, V3 ladoY,
+        double zBase, double zTope, double baseCm, double alturaCm)
+    {
+        var ex = new V3(ladoX.X, ladoX.Y, 0).Unitario();
+        var ey = new V3(ladoY.X, ladoY.Y, 0).Unitario();
+
+        if (puntos.Count < 4)
+        {
+            return DeColumna(centro, ex, ey, zBase, zTope, baseCm, alturaCm);
+        }
+
+        var ux = puntos.Select(p => p.Punto(ex)).ToList();
+        var uy = puntos.Select(p => p.Punto(ey)).ToList();
+        var anchoX = (ux.Max() - ux.Min()) * 100;
+        var anchoY = (uy.Max() - uy.Min()) * 100;
+
+        // El centro de la planta del solido.
+        var c = (ex * ((ux.Max() + ux.Min()) / 2)) + (ey * ((uy.Max() + uy.Min()) / 2));
+        var centroSolido = new V3(c.X, c.Y, centro.Z);
+
+        var derecho = Math.Abs(baseCm - anchoX) + Math.Abs(alturaCm - anchoY);
+        var girado = Math.Abs(baseCm - anchoY) + Math.Abs(alturaCm - anchoX);
+
+        if (girado + 0.5 < derecho)
+        {
+            // La base va a lo largo de ey; ey nuevo = -ex, para que ex x ey siga apuntando arriba.
+            (ex, ey) = (ey, -ex);
+        }
+
+        return DeColumna(centroSolido, ex, ey, zBase, zTope, baseCm, alturaCm);
+    }
 }
 
 /// <summary>Que clase de varilla es, para elegir el estilo de Revit.</summary>

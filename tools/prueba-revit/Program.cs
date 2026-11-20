@@ -2716,6 +2716,28 @@ internal static partial class Programa
         Check("un tipo YA ARMADO no se marca solo: armar otro no le borra el suyo",
             !f3060.Armar && f3060.Diagnostico.Contains("se dejan como estan"));
 
+        // Un castillo girado 30° cuyo tipo mide 25 a lo largo de su lado y 15 al traves; la fila es 15 x 25.
+        var g = 30 * Math.PI / 180;
+        var lx = new V3(Math.Cos(g), Math.Sin(g), 0);
+        var ly = new V3(-Math.Sin(g), Math.Cos(g), 0);
+        var cen = new V3(2, 3, 0);
+        var pts = new List<V3>();
+        foreach (var (a, b) in new[] { (-0.125, -0.075), (0.125, -0.075), (0.125, 0.075), (-0.125, 0.075) })
+        {
+            foreach (var z in new[] { 0.0, 2.5 })
+            {
+                pts.Add(cen + (lx * a) + (ly * b) + new V3(0, 0, z));
+            }
+        }
+        var mc = MarcoPieza.DeColumnaMedida(pts, cen, lx, ly, 0, 2.5, 15, 25);
+        Check("la base de 15 de la fila va en el lado de 15 del castillo girado", Math.Abs(mc.Ex.Punto(ly)) > 0.999);
+        Check("y sigue girado con la pieza: el otro lado va a lo largo de los 25", Math.Abs(mc.Ey.Punto(lx)) > 0.999);
+        Check("con Ex x Ey hacia arriba", mc.Ex.Cruz(mc.Ey).Z > 0.999);
+        var esquinaOpuesta = mc.En(15, 25, 0);
+        Check("la jaula queda centrada en el solido", Math.Abs(((mc.Origen + esquinaOpuesta) * 0.5 - cen).Largo) < 1e-9);
+        var recto = MarcoPieza.DeColumnaMedida(pts, cen, lx, ly, 0, 2.5, 25, 15);
+        Check("si la fila ya cuadra, no se gira", Math.Abs(recto.Ex.Punto(lx)) > 0.999);
+
         var vacia = new VistaArmadoPorTipo(tipos, new List<ArmadoJson> { t01 });
         Check("sin columnas en el archivo, la fila de columna dice por que no se puede armar",
             vacia.Filas.Single(f => f.Tipo.Id == 3).Diagnostico.Contains("no trae ninguna columna, castillo"));
