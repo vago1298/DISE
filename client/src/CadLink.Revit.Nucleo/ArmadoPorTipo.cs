@@ -354,9 +354,7 @@ public sealed class FilaArmadoTipo : Avisador
                 var hay = Secciones.Count - 1;
 
                 partes.Add(hay == 0
-                    ? (Tipo.Clase == ClasePieza.Columna
-                        ? "el archivo no trae ninguna columna, castillo ni dado rectangular: en CadLink actualizado vuelve a pulsar «Armado para Revit…» y abre ese archivo"
-                        : "el archivo no trae ninguna trabe, contratrabe ni cadena rectangular: en CadLink actualizado vuelve a pulsar «Armado para Revit…» y abre ese archivo")
+                    ? "el archivo no trae ninguna seccion rectangular: en CadLink actualizado vuelve a pulsar «Armado para Revit…» y abre ese archivo"
                     : (SinSugerencia.Length > 0 ? SinSugerencia + ". " : string.Empty)
                       + $"Elige a mano en «Sección de CadLink» (hay {hay}) y se podra marcar Armar");
             }
@@ -631,11 +629,25 @@ public sealed class VistaArmadoPorTipo : Avisador
                      .ThenBy(t => t.Tipo, StringComparer.CurrentCultureIgnoreCase))
         {
             var compatibles = Armados.Where(a => Compatible(a, t.Clase)).ToList();
-            var f = new FilaArmadoTipo(t, compatibles);
 
-            // Lo mas parecido de una vez: por el nombre del tipo y, si no, por sus medidas.
-            f.Sugerir(EmparejarArmado.Buscar(
-                t.Tipo, t.Clase, t.AnchoM ?? 0, t.PeralteM ?? 0, compatibles));
+            // TODAS las secciones se ofrecen en cada fila: un cabezal o un dado se modela en Revit
+            // como pilar o como viga segun la oficina, y con solo las de su clase el cuadro ofrecia
+            // los castillos y nada mas. Las de la otra clase van despues, ya como de esta (vertical
+            // en un pilar, tendida en una viga).
+            var otras = Armados.Where(a => !Compatible(a, t.Clase)).Select(a => ComoDe(a, t.Clase));
+            var f = new FilaArmadoTipo(t, compatibles.Concat(otras).ToList());
+
+            // Lo mas parecido de una vez: por el nombre del tipo y, si no, por sus medidas. Primero
+            // entre las de su clase, y si no hay, entre todas.
+            var sugerida = EmparejarArmado.Buscar(t.Tipo, t.Clase, t.AnchoM ?? 0, t.PeralteM ?? 0, compatibles);
+
+            if (sugerida.Armado is null && compatibles.Count == 0)
+            {
+                sugerida = EmparejarArmado.Buscar(t.Tipo, t.Clase, t.AnchoM ?? 0, t.PeralteM ?? 0,
+                    Armados.Select(a => ComoDe(a, t.Clase)).ToList());
+            }
+
+            f.Sugerir(sugerida);
 
             f.PropertyChanged += (_, _) =>
             {
@@ -810,6 +822,14 @@ public sealed class VistaArmadoPorTipo : Avisador
         ClasePieza.Columna => a.Tipo is "Columna" or "Dado",
         _ => false
     };
+
+    /// <summary>Una copia de la seccion armada como pieza de esa clase: vertical o tendida.</summary>
+    private static ArmadoJson ComoDe(ArmadoJson a, ClasePieza clase)
+    {
+        var c = JsonSerializer.Deserialize<ArmadoJson>(JsonSerializer.Serialize(a)) ?? a;
+        c.Tipo = clase == ClasePieza.Columna ? "Columna" : "Trabe";
+        return c;
+    }
 }
 
 /// <summary>Una fila del cuadro «Corte de sección»: un tipo armado y el nombre de su corte.</summary>

@@ -2759,12 +2759,16 @@ internal static partial class Programa
         var fl = new FlechaDeCorte(0, 0, true).Relleno();
         Check("la flecha se rellena con lineas desde la punta", fl.Count >= 10 && fl.Take(fl.Count - 1).All(t => t.X1 == 0 && t.Y1 == 0));
 
-        var vacia = new VistaArmadoPorTipo(tipos, new List<ArmadoJson> { t01 });
-        Check("sin columnas en el archivo, la fila de columna dice por que no se puede armar",
-            vacia.Filas.Single(f => f.Tipo.Id == 3).Diagnostico.Contains("no trae ninguna columna, castillo"));
+        var vacia = new VistaArmadoPorTipo(tipos, new List<ArmadoJson>());
+        Check("sin secciones en el archivo, la fila dice por que no se puede armar",
+            vacia.Filas.Single(f => f.Tipo.Id == 3).Diagnostico.Contains("no trae ninguna seccion"));
         var fCol = vista.Filas.Single(f => f.Tipo.Id == 3);
         Check("la columna girada tambien se reconoce por medidas", fCol.Seccion == "C-01" && fCol.Coherente);
-        Check("a una columna no se le ofrecen trabes", !fCol.Secciones.Contains("T-01"));
+        Check("a una columna se le ofrecen TAMBIEN las trabes (cabezales, dados), despues de las suyas",
+            fCol.Secciones.Contains("T-01") && fCol.Secciones.IndexOf("C-01") < fCol.Secciones.IndexOf("T-01"));
+        fCol.Seccion = "T-01";
+        Check("y elegida en un pilar, se arma vertical", fCol.Armado is { EsHorizontal: false });
+        fCol.Seccion = "C-01";
 
         var fAcero = vista.Filas.Single(f => f.Tipo.Id == 4);
         fAcero.Seccion = "T-02";

@@ -371,12 +371,13 @@ public partial class MainWindow
         StatusText.Text = $"{armados.Count} seccion(es) listas para armar en Revit: {Path.GetFileName(dialogo.FileName)}";
 
         MessageBox.Show(this,
-            $"Se guardaron {armados.Count} seccion(es).\n\n"
+            $"Se guardaron {armados.Count} seccion(es): {string.Join(", ", armados.Select(a => a.Id).Take(30))}"
+            + (armados.Count > 30 ? "…" : string.Empty) + ".\n\n"
             + "En Revit: pestaña CadLink → «Armar por tipo», abre este archivo, elige la seccion de "
             + "cada tipo de columna y de trabe, y pulsa Armar. Se arman todas las piezas de cada "
             + "tipo de un jalon."
             + (saltadas.Count == 0 ? string.Empty
-                : "\n\nNo van (circulares, de otro elemento o repetidas): " + string.Join(", ", saltadas.Take(12))
+                : "\n\nNo van (circulares, sin ID de elemento conocido o repetidas; las formas especiales en L o T tampoco): " + string.Join(", ", saltadas.Take(12))
                   + (saltadas.Count > 12 ? "…" : string.Empty)),
             AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
     }
