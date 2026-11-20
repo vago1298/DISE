@@ -1094,7 +1094,19 @@ public sealed class ComandoMuroConMalla : IExternalCommand
             VentanaDetalle.Leer(espesor, 3) / 100,
             iso.IsChecked == true);
 
-        var (r, vista) = MuroConMalla.Poner(doc, muros, o);
+        ResultadoDetalles r;
+        View3D? vista;
+
+        try
+        {
+            (r, vista) = MuroConMalla.Poner(doc, muros, o);
+        }
+        catch (Exception ex)
+        {
+            // Que se vea el motivo, y no el «Command Failure» de Revit sin nada.
+            TaskDialog.Show("CadLink", "No se pudo poner la malla:\n\n" + ex.Message);
+            return Result.Failed;
+        }
 
         if (vista is not null)
         {

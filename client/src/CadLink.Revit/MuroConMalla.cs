@@ -28,9 +28,6 @@ internal static class MuroConMalla
     {
         var r = new ResultadoDetalles();
         View3D? vista = null;
-        var categoria = Solidos.Categoria(doc, BuiltInCategory.OST_GenericModel);
-        var acero = Solidos.Anclas(doc);
-        var mortero = Solidos.MaterialDe(doc, "CadLink - Aplanado", 186, 184, 176, "aplanado", "mortero", "plaster", "repello");
         var aislar = new List<ElementId>();
         BoundingBoxXYZ? total = null;
         XYZ? mira = null;
@@ -41,6 +38,12 @@ internal static class MuroConMalla
 
         try
         {
+            // DENTRO de la transaccion: si el material no existe se crea, y crear algo fuera de una
+            // transaccion es una excepcion que tumbaba el comando entero («Command Failure»).
+            var categoria = Solidos.Categoria(doc, BuiltInCategory.OST_GenericModel);
+            var acero = Solidos.Anclas(doc);
+            var mortero = Solidos.MaterialDe(doc, "CadLink - Aplanado", 186, 184, 176, "aplanado", "mortero", "plaster", "repello");
+
             foreach (var muro in muros)
             {
                 var nombre = $"muro {muro.Id.Value}";
