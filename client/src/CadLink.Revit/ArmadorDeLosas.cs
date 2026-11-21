@@ -45,6 +45,8 @@ internal static class ArmadorDeLosas
         var elegidas = losas.Select(l => l.Losa.Id.Value).ToHashSet();
 
         using var t = new Transaction(doc, "Armado de losas de CadLink");
+        ElementId categoria = ElementId.InvalidElementId;
+        ElementId material = ElementId.InvalidElementId;
         t.Start();
 
         var manejador = new SinCuadros();
@@ -55,6 +57,9 @@ internal static class ArmadorDeLosas
 
         try
         {
+            categoria = Solidos.Categoria(doc, BuiltInCategory.OST_Rebar, BuiltInCategory.OST_GenericModel);
+            material = Solidos.Anclas(doc);
+
             foreach (var (losa, armado) in losas)
             {
                 var nombre = $"losa {losa.Id.Value}";
@@ -67,12 +72,32 @@ internal static class ArmadorDeLosas
                         continue;
                     }
 
-                    if (RebarHostData.GetRebarHostData(losa) is not { } datos || !datos.IsValidHost())
+                    // ¿REVIT LA ACEPTA COMO ANFITRION? Primero se marca Structural por si acaso. Si aun asi
+                    // no -pasa con losas de entrepiso estructurales y de concreto: divididas en partes, de un
+                    // tipo cuya capa de estructura no es la que Revit toma, etc.- YA NO SE SALTA: el armado
+                    // se modela como solidos, que se ven en 3D y en los cortes, y se dice.
+                    var nativa = EsAnfitrion(losa);
+
+                    if (!nativa)
                     {
-                        r.Errores.Add($"«{nombre}»: No admite armado. Marca «Structural» en sus propiedades y revisa "
-                                      + "que su material sea de clase concreto.");
-                        continue;
+                        try
+                        {
+                            var p = losa.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL);
+
+                            if (p is not null && !p.IsReadOnly && p.AsInteger() == 0)
+                            {
+                                p.Set(1);
+                                doc.Regenerate();
+                                nativa = EsAnfitrion(losa);
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            // Se sigue con solidos.
+                        }
                     }
+
+                    var solidos = new List<GeometryObject>();
 
                     if (ArmadorDeZapatas.Planta(losa) is not { } m)
                     {
@@ -203,6 +228,31 @@ internal static class ArmadorDeLosas
                                 continue;
                             }
 
+                            if (!nativa)
+                            {
+                                // Como solidos: un cilindro por tramo y por cada posicion del reparto.
+                                for (var k = 0; k < cuantas; k++)
+                                {
+                                    var corre = dirV * Unidades.AInternas(2 * sep * k);
+
+                                    foreach (var c in curvas)
+                                    {
+                                        var a = c.GetEndPoint(0) + corre;
+                                        var b = c.GetEndPoint(1) + corre;
+                                        var largoC = a.DistanceTo(b);
+
+                                        if (largoC > 1e-6)
+                                        {
+                                            solidos.Add(Solidos.Cilindro(a, (b - a).Normalize(), largoC,
+                                                Unidades.AInternas(v.DiamM / 2), material));
+                                        }
+                                    }
+                                }
+
+                                hechas++;
+                                continue;
+                            }
+
                             try
                             {
                                 // POSICIONALES, como todas las llamadas a la Revit API del complemento.
@@ -238,10 +288,25 @@ internal static class ArmadorDeLosas
                         continue;
                     }
 
+                    var habia = Solidos.Borrar(doc, llave);
+
                     if (viejas.Count > 0)
                     {
                         doc.Delete(viejas);
+                    }
+
+                    if (viejas.Count + habia > 0)
+                    {
                         r.Reemplazadas++;
+                    }
+
+                    if (!nativa)
+                    {
+                        Solidos.Forma(doc, categoria, solidos, llave, "CadLink: armado de la losa (solidos)", string.Empty);
+                        r.Avisos.Add($"«{nombre}»: Revit no la acepta como anfitrion de armado aunque sea estructural; "
+                                     + "el armado va como SOLIDOS: se ve en 3D y en cortes, pero no se cuantifica. "
+                                     + "Suele pasar si la losa esta dividida en partes (Parts) o si su tipo no tiene la "
+                                     + "capa de estructura en el nucleo (Core Boundary).");
                     }
 
                     r.Avisos.Add($"«{nombre}»: losa de {(cimentacion ? "CIMENTACION" : "ENTREPISO")} ({armado.Origen}). "
@@ -303,6 +368,18 @@ internal static class ArmadorDeLosas
         }
 
         return m with { Alto = espesor, Esquina = new XYZ(m.Esquina.X, m.Esquina.Y, arriba - espesor) };
+    }
+
+    private static bool EsAnfitrion(Element losa)
+    {
+        try
+        {
+            return RebarHostData.GetRebarHostData(losa) is { } d && d.IsValidHost();
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>Las varillas que CadLink ya le habia puesto a ESTA losa.</summary>

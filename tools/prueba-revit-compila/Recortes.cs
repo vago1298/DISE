@@ -463,6 +463,9 @@ public enum BuiltInParameter
 
     // El espesor de un Floor (Thickness, de solo lectura). Revit API: BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM.
     FLOOR_ATTR_THICKNESS_PARAM,
+
+    // La casilla Structural de un Floor. Revit API: BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL.
+    FLOOR_PARAM_IS_STRUCTURAL,
     FAMILY_BASE_LEVEL_PARAM,
     FAMILY_BASE_LEVEL_OFFSET_PARAM,
     FAMILY_TOP_LEVEL_PARAM,

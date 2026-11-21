@@ -17323,7 +17323,8 @@ def v31_detalles_revit() -> None:
           and "ArmadoDeLosas.Vecino(yo, listaLosas, inicio)" in leer(ruta("client/src/CadLink.Revit/ArmadorDeLosas.cs"))
           and "archivo.Losas.Add(new ArmadoLosaJson" in leer(ruta("client/src/CadLink.App/MainWindow.DetallesRevit.cs"))
           and "ArmadoDeLosasEnRevit();" in leer(ruta("tools/prueba-revit/Program.cs"))
-          and "BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM" in leer(ruta("client/src/CadLink.Revit/ArmadorDeLosas.cs")),
+          and "BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM" in leer(ruta("client/src/CadLink.Revit/ArmadorDeLosas.cs"))
+          and "if (!nativa)" in leer(ruta("client/src/CadLink.Revit/ArmadorDeLosas.cs")),
           "se pidio el armado de losas EN REVIT, no solo el dibujo de AutoCAD")
     check("losas de entrepiso y cimentacion: pestaña, guardada en el .clk y dibujada con corridas, bayonetas y bastones a L/4",
           'Header="Losas"' in leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
