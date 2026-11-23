@@ -25,6 +25,15 @@ internal sealed record PlacaNativa(string Nombre, XYZ CentroAbajo, XYZ Ex, XYZ E
     List<AnclaNativa> Anclas, XYZ? Normal = null)
 {
     public XYZ N => Normal ?? XYZ.BasisZ;
+
+    /// <summary>La llave de CadLink de la pieza, para el respaldo en solidos.</summary>
+    public string Llave { get; init; } = string.Empty;
+
+    /// <summary>Los mismos aceros como solidos: si el acero de Revit falla, se ponen estos.</summary>
+    public List<(GeometryObject Solido, string Que)> Respaldo { get; init; } = new();
+
+    /// <summary>La contraplaca, que va con ella: si una falla, las dos van al respaldo.</summary>
+    public PlacaNativa? Contra { get; init; }
 }
 
 /// <summary>
@@ -51,28 +60,30 @@ internal static class AceroDeRevit
     public static bool Disponible => false;
 #endif
 
-    public static void Placas(Document doc, IReadOnlyList<PlacaNativa> placas, ResultadoDetalles r)
+    /// <returns>Las que NO se pudieron crear, para ponerlas como solidos.</returns>
+    public static List<PlacaNativa> Placas(Document doc, IReadOnlyList<PlacaNativa> placas, ResultadoDetalles r)
     {
         if (placas.Count == 0)
         {
-            return;
+            return new List<PlacaNativa>();
         }
 
 #if ACERO_REVIT
         try
         {
-            Crear(doc, placas, r);
+            return Crear(doc, placas, r);
         }
         catch (Exception e)
         {
             // Un FileNotFound aqui es que Steel Connections no esta cargado en Revit.
             r.Errores.Add("«acero de Revit»: No se pudieron crear las placas y anclas nativas: " + e.Message
                           + ". Revisa que el complemento Steel Connections este activo (Add-Ins).");
+            return placas.ToList();
         }
 #else
-        r.Errores.Add("«acero de Revit»: Este complemento se compilo sin Steel Connections, asi que no puede crear "
-                      + "placas y anclas nativas. Instala/activa Steel Connections for Revit y vuelve a correr "
-                      + "7-instalar-plugin-revit.bat.");
+        r.Avisos.Add("«acero de Revit»: Este complemento se compilo sin Steel Connections; las placas van como formas. "
+                     + "Instala/activa Steel Connections for Revit y vuelve a correr 7-instalar-plugin-revit.bat.");
+        return placas.ToList();
 #endif
     }
 
@@ -83,8 +94,9 @@ internal static class AceroDeRevit
 
     private static Vector3d V(XYZ v) => new(v.X, v.Y, v.Z);
 
-    private static void Crear(Document doc, IReadOnlyList<PlacaNativa> placas, ResultadoDetalles r)
+    private static List<PlacaNativa> Crear(Document doc, IReadOnlyList<PlacaNativa> placas, ResultadoDetalles r)
     {
+        var fallidas = new List<PlacaNativa>();
         using var t = new FabricationTransaction(doc, false, "Placas y anclas de acero de Revit (CadLink)");
 
         foreach (var p in placas)
@@ -98,15 +110,13 @@ internal static class AceroDeRevit
 
             try
             {
-                // La placa, como poligono en el plano de su eje medio y centrada en el (Portioning 0.5).
-                var medio = p.CentroAbajo + (p.N * (p.Espesor / 2));
-                var hx = p.Ex * (p.LadoX / 2);
-                var hy = p.Ey * (p.LadoY / 2);
-                var esquinas = new[] { medio - hx - hy, medio + hx - hy, medio + hx + hy, medio - hx + hy }.Select(P).ToArray();
+                var placa = Placa(p);
+                var conectar = new List<FilerObject> { placa };
 
-                var placa = new Plate(new AsPlane(P(medio), V(p.N)), esquinas, p.Espesor * Mm);
-                placa.Portioning = 0.5;
-                placa.WriteToDb();
+                if (p.Contra is { } c)
+                {
+                    conectar.Add(Placa(c));
+                }
 
                 var hechas = 0;
 
@@ -128,12 +138,26 @@ internal static class AceroDeRevit
                         try { if (a.LargoM > 0) { ancla.ScrewLength = a.LargoM * 1000; } } catch (Exception) { }
 
                         ancla.WriteToDb();
-                        ancla.Connect(new FilerObject[] { placa }, AtomicElement.eAssemblyLocation.kOnSite);
+                        ancla.Connect(conectar.ToArray(), AtomicElement.eAssemblyLocation.kOnSite);
                         hechas++;
                     }
                     catch (Exception e)
                     {
                         r.Errores.Add($"«{p.Nombre}»: un ancla de acero de Revit no se pudo crear: {e.Message}");
+                    }
+                }
+
+                // Si las anclas nativas no salieron, las de solidos (con su rondana y su tuerca): que la
+                // placa nunca se quede sin anclas.
+                if (hechas < p.Anclas.Count)
+                {
+                    var anclas = p.Respaldo.Where(x => x.Que.Contains("ancla", StringComparison.OrdinalIgnoreCase)
+                                                    || x.Que.Contains("rondana", StringComparison.OrdinalIgnoreCase)
+                                                    || x.Que.Contains("tuerca", StringComparison.OrdinalIgnoreCase)).ToList();
+
+                    if (anclas.Count > 0)
+                    {
+                        fallidas.Add(p with { Nombre = p.Nombre + " (anclas)", Respaldo = anclas });
                     }
                 }
 
@@ -143,10 +167,26 @@ internal static class AceroDeRevit
             catch (Exception e)
             {
                 r.Errores.Add($"«{p.Nombre}»: la placa de acero de Revit no se pudo crear: {e.Message}");
+                fallidas.Add(p);
             }
         }
 
         t.Commit();
+        return fallidas;
+    }
+
+    private static Plate Placa(PlacaNativa p)
+    {
+        // Como poligono en el plano de su eje medio y centrada en el (Portioning 0.5).
+        var medio = p.CentroAbajo + (p.N * (p.Espesor / 2));
+        var hx = p.Ex * (p.LadoX / 2);
+        var hy = p.Ey * (p.LadoY / 2);
+        var esquinas = new[] { medio - hx - hy, medio + hx - hy, medio + hx + hy, medio - hx + hy }.Select(P).ToArray();
+
+        var placa = new Plate(new AsPlane(P(medio), V(p.N)), esquinas, p.Espesor * Mm);
+        placa.Portioning = 0.5;
+        placa.WriteToDb();
+        return placa;
     }
 #endif
 

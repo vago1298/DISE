@@ -223,6 +223,9 @@ internal static partial class Detallador
                     {
                         // Placa y anclas nativas, despues de esta transaccion; aqui solo grout y filete.
                         CrearPlaca(doc, categoria, llave, placa, pz with { Anclas = new List<GeometryObject>(), Contraplaca = null }, "placa base", sinPlaca: true);
+                        var respaldo = new List<(GeometryObject Solido, string Que)> { (pz.Placa, $"placa base {placa.Marca} {TextoDeMedidas(placa)}") };
+                        respaldo.AddRange(pz.Anclas.Select(a => (a, $"anclas de la placa {placa.Marca}")));
+                        if (pz.Contraplaca is not null) { respaldo.Add((pz.Contraplaca, $"contraplaca de la placa {placa.Marca}")); }
                         nativas.Add(new PlacaNativa($"placa {placa.Marca} en {nombre}", centro, ex, ey,
                             Unidades.AInternas(placa.LadoXM), Unidades.AInternas(placa.LadoYM), caraSup - caraInf,
                             placa.Anclas
@@ -230,7 +233,7 @@ internal static partial class Detallador
                                 .Select(a => new AnclaNativa(
                                     new XYZ(centro.X, centro.Y, caraSup) + (ex * Unidades.AInternas(a.X)) + (ey * Unidades.AInternas(a.Y)),
                                     a.DiametroM, Math.Max(0, a.PuntaM - a.FondoM)))
-                                .ToList()));
+                                .ToList()) { Llave = llave, Respaldo = respaldo });
                     }
                     else
                     {
@@ -266,7 +269,7 @@ internal static partial class Detallador
         // FUERA de la transaccion del boton: la de Advance Steel no puede ir dentro de otra.
         if (o.AceroNativo)
         {
-            AceroDeRevit.Placas(doc, nativas, res);
+            Respaldo(doc, AceroDeRevit.Placas(doc, nativas, res), res);
         }
 
         return res;
@@ -1256,7 +1259,8 @@ internal static partial class Detallador
                         {
                             // Hasta donde llega el concreto detras de la placa: ahi va la contraplaca.
                             var fondo = FondoDetras(cajasMuros, marco);
-                            PlacaEmbebida(marco, contorno, lado, o, mat, piezas, r, donde, fondo, nativas);
+                            PlacaEmbebida(marco, contorno, lado, o, mat, piezas, r, donde, fondo, nativas,
+                                LlaveDetalle.De(ClaseDetalle.Soldadura, viga.Id.Value, extremo));
                         }
                         else if (enColumna && o.Conexion is TipoConexion.Momento or TipoConexion.Cortante)
                         {
@@ -1306,7 +1310,7 @@ internal static partial class Detallador
         // Las placas embebidas como acero de Revit, FUERA de la transaccion del boton.
         if (o.AceroNativo)
         {
-            AceroDeRevit.Placas(doc, nativas, res);
+            Respaldo(doc, AceroDeRevit.Placas(doc, nativas, res), res);
         }
 
         return res;
@@ -1356,7 +1360,7 @@ internal static partial class Detallador
     private static void PlacaEmbebida(
         MarcoExtremo m, CurveLoop contorno, double lado, OpcionesDetalle o, Materiales mat,
         List<(GeometryObject, string)> piezas, ResultadoDetalles r, string donde,
-        double? fondo = null, List<PlacaNativa>? nativas = null)
+        double? fondo = null, List<PlacaNativa>? nativas = null, string llave = "")
     {
         // CON LA PLACA DE LA HOJA, SUS ANCLAS: cuantas y donde dice el archivo de CadLink. Antes la
         // placa vertical repartia anclas propias y no respetaba las de la hoja.
@@ -1392,86 +1396,94 @@ internal static partial class Detallador
         var solidoPlaca = Solidos.Caja(m.Origen, m.U, m.V, m.A, AInternas(placa), mat.Acero);
         var holgura = Unidades.AInternas(0.002);
 
-        // LA CONTRAPLACA, EN AUTOMATICO AL ANCHO DEL ELEMENTO: en la cara de atras del muro, cabezal o
-        // castillo, y las anclas lo atraviesan entero hasta ella, con su tuerca por fuera. Antes no se
-        // ponia: la opcion no llegaba hasta aqui y las anclas se quedaban con su largo de la hoja.
-        var conContra = o.Contraplaca && fondo is double f0 && f0 > Unidades.AInternas(0.05);
+        // LA CONTRAPLACA, EN AUTOMATICO AL ANCHO DEL ELEMENTO: ahogada a paño en la cara de atras del muro,
+        // cabezal o castillo (como la placa en la de enfrente), y las anclas lo atraviesan entero hasta
+        // ella, con su rondana y su tuerca por fuera.
+        var conContra = o.Contraplaca && fondo is double f0 && f0 > t + Unidades.AInternas(0.03);
         var hondo = conContra ? fondo!.Value : 0;
         Solid? contra = null;
 
         if (conContra)
         {
             contra = Solidos.Caja(m.Origen, m.U, m.V, m.A,
-                AInternas(placa with { A0 = -(Unidades.AMetros(hondo) + espesorM), A1 = -Unidades.AMetros(hondo) }), mat.Acero);
+                AInternas(placa with { A0 = -Unidades.AMetros(hondo), A1 = -Unidades.AMetros(hondo) + espesorM }), mat.Acero);
         }
         else if (o.Contraplaca)
         {
-            r.Avisos.Add($"{donde}: No se pudo medir el ancho del concreto detras de la placa; va sin contraplaca.");
+            r.Avisos.Add($"{donde}: No se pudo medir el ancho del concreto detras de la placa"
+                         + (fondo is double f1 ? $" (sale {Cm(Unidades.AMetros(f1))} cm)" : string.Empty) + "; va sin contraplaca.");
         }
 
-        // COMO ACERO DE REVIT: la placa, la contraplaca y las anclas nativas; aqui solo queda la soldadura.
-        if (o.AceroNativo && AceroDeRevit.Disponible && nativas is not null)
-        {
-            XYZ En(double u, double v) => m.Origen + (m.U * Unidades.AInternas(u)) + (m.V * Unidades.AInternas(v));
-            var centroP = En((placa.U0 + placa.U1) / 2, (placa.V0 + placa.V1) / 2);
-            var lu = Unidades.AInternas(placa.U1 - placa.U0);
-            var lv = Unidades.AInternas(placa.V1 - placa.V0);
+        // TODO EL ACERO EN SOLIDOS, SIEMPRE. Si va como acero de Revit, esto es el RESPALDO: si Steel
+        // Connections falla, se pone esto y la placa no se queda sin salir (antes no salia nada).
+        var acero = new List<(GeometryObject Solido, string Que)>();
+        var largos = new List<double>();
 
-            nativas.Add(new PlacaNativa($"placa embebida en {donde}", centroP, m.U, m.V, lu, lv, t,
-                pernos.Select(p => new AnclaNativa(En(p.U, p.V) + (m.A * t), p.DiametroM,
-                    conContra ? Unidades.AMetros(hondo + (2 * t)) + (2 * p.DiametroM) : p.LargoM)).ToList(), m.A));
-
-            if (conContra)
-            {
-                nativas.Add(new PlacaNativa($"contraplaca en {donde}", centroP - (m.A * (hondo + t)), m.U, m.V, lu, lv, t,
-                    new List<AnclaNativa>(), m.A));
-            }
-
-            piezas.Add((Filete(contorno, m.A, lado, mat.Soldadura, r, donde),
-                $"filete de {Mm(o.SoldaduraM)} mm todo alrededor, a la placa embebida"));
-            return;
-        }
-
-        // LAS ANCLAS SE VEN: atraviesan la placa por su barreno, con la TUERCA por fuera y la rosca
-        // asomando, y se meten en el concreto lo que diga su largo. Antes empezaban en la cara de
-        // atras de la placa y quedaban enteras dentro del muro, sin nada a la vista.
         foreach (var perno in pernos)
         {
             var radio = Unidades.AInternas(perno.DiametroM / 2);
             var d = Unidades.AInternas(perno.DiametroM);
             var enCara = m.Origen + (m.U * Unidades.AInternas(perno.U)) + (m.V * Unidades.AInternas(perno.V));
             var alto = 0.8 * d;
-            var asoma = alto + Math.Max(0.5 * d, Unidades.AInternas(0.01));
+            var rondana = Math.Max(0.15 * d, Unidades.AInternas(0.003));
+            var asoma = rondana + alto + Math.Max(0.5 * d, Unidades.AInternas(0.01));
             var punta = enCara + (m.A * asoma);
 
             solidoPlaca = Solidos.Restar(solidoPlaca, Solidos.Cilindro(
                 enCara + (m.A * holgura), m.A.Negate(), t + (2 * holgura), radio + Unidades.AInternas(0.0015), mat.Acero));
 
-            // Con contraplaca, el largo es el ancho del elemento: atraviesa y asoma con su tuerca por atras.
-            var largoAncla = conContra ? hondo + t + asoma : Unidades.AInternas(perno.LargoM);
+            // Con contraplaca el largo es el ancho del elemento: atraviesa y asoma por atras con su tuerca.
+            var total = conContra ? asoma + hondo + asoma : asoma + t + Unidades.AInternas(perno.LargoM);
+            largos.Add(Unidades.AMetros(total));
 
-            piezas.Add((Solidos.Cilindro(punta, m.A.Negate(), asoma + t + largoAncla, radio, mat.Anclas),
+            acero.Add((Solidos.Cilindro(punta, m.A.Negate(), total, radio, mat.Anclas),
                 $"ancla de {Mm(perno.DiametroM)} mm de la placa embebida"));
+
+            // ANCLA REAL: rondana y tuerca por fuera de la placa.
+            acero.Add((Solidos.Cilindro(enCara, m.A, rondana, 1.1 * d, mat.Anclas), "rondana del ancla"));
+            acero.Add((Solidos.Tuerca(enCara + (m.A * rondana), m.A, m.U, 1.6 * d, alto, radio, mat.Anclas),
+                "tuerca del ancla de la placa embebida"));
 
             if (contra is not null)
             {
-                var atras = enCara - (m.A * (hondo + t));
-                contra = Solidos.Restar(contra, Solidos.Cilindro(atras + (m.A * holgura), m.A.Negate(), t + (2 * holgura),
+                var atras = enCara - (m.A * hondo);
+                contra = Solidos.Restar(contra, Solidos.Cilindro(atras - (m.A * holgura), m.A, t + (2 * holgura),
                     radio + Unidades.AInternas(0.0015), mat.Acero));
-                piezas.Add((Solidos.Tuerca(atras, m.A.Negate(), m.U, 1.6 * d, alto, radio, mat.Anclas),
+                acero.Add((Solidos.Cilindro(atras, m.A.Negate(), rondana, 1.1 * d, mat.Anclas), "rondana en la contraplaca"));
+                acero.Add((Solidos.Tuerca(atras - (m.A * rondana), m.A.Negate(), m.U, 1.6 * d, alto, radio, mat.Anclas),
                     "tuerca del ancla en la contraplaca"));
             }
-            piezas.Add((Solidos.Tuerca(enCara, m.A, m.U, 1.6 * d, alto, radio, mat.Anclas),
-                "tuerca del ancla de la placa embebida"));
         }
 
         if (contra is not null)
         {
-            piezas.Add((contra, $"contraplaca de {Cm(placa.U1 - placa.U0)}x{Cm(placa.V1 - placa.V0)} cm, {Mm(espesorM)} mm, en la cara de atras ({Cm(Unidades.AMetros(hondo))} cm de concreto)"));
+            acero.Add((contra, $"contraplaca de {Cm(placa.U1 - placa.U0)}x{Cm(placa.V1 - placa.V0)} cm, {Mm(espesorM)} mm, en la cara de atras ({Cm(Unidades.AMetros(hondo))} cm de concreto)"));
         }
 
-        piezas.Insert(0, (solidoPlaca,
+        acero.Insert(0, (solidoPlaca,
             $"placa embebida {deArchivo?.Marca ?? string.Empty} de {Cm(placa.U1 - placa.U0)}x{Cm(placa.V1 - placa.V0)} cm, {Mm(espesorM)} mm, {pernos.Count} anclas".Replace("  ", " ")));
+
+        if (o.AceroNativo && AceroDeRevit.Disponible && nativas is not null)
+        {
+            // Placa, contraplaca y anclas como ACERO DE REVIT, con los solidos de respaldo.
+            XYZ En(double u, double v) => m.Origen + (m.U * Unidades.AInternas(u)) + (m.V * Unidades.AInternas(v));
+            var centroP = En((placa.U0 + placa.U1) / 2, (placa.V0 + placa.V1) / 2);
+            var lu = Unidades.AInternas(placa.U1 - placa.U0);
+            var lv = Unidades.AInternas(placa.V1 - placa.V0);
+
+            nativas.Add(new PlacaNativa($"placa embebida en {donde}", centroP - (m.A * t), m.U, m.V, lu, lv, t,
+                pernos.Select((p, k) => new AnclaNativa(En(p.U, p.V), p.DiametroM, largos[k])).ToList(), m.A)
+            {
+                Llave = llave,
+                Respaldo = acero,
+                Contra = conContra ? new PlacaNativa($"contraplaca en {donde}", centroP - (m.A * hondo), m.U, m.V, lu, lv, t,
+                    new List<AnclaNativa>(), m.A) : null
+            });
+        }
+        else
+        {
+            piezas.AddRange(acero);
+        }
 
         piezas.Add((Filete(contorno, m.A, lado, mat.Soldadura, r, donde),
             $"filete de {Mm(o.SoldaduraM)} mm todo alrededor, a la placa embebida"));
@@ -1929,6 +1941,42 @@ internal static partial class Detallador
         }
 
         return mejor;
+    }
+
+    /// <summary>
+    /// Las placas que el acero de Revit no pudo crear, como SOLIDOS: que nunca se quede una sin salir.
+    /// </summary>
+    private static void Respaldo(Document doc, IReadOnlyList<PlacaNativa> fallidas, ResultadoDetalles r)
+    {
+        if (fallidas.Count == 0)
+        {
+            return;
+        }
+
+        using var t = new Transaction(doc, "Placas de CadLink (respaldo)");
+        t.Start();
+
+        try
+        {
+            var categoria = Solidos.Categoria(doc, BuiltInCategory.OST_StructConnections, BuiltInCategory.OST_GenericModel);
+
+            foreach (var p in fallidas)
+            {
+                foreach (var (solido, que) in p.Respaldo)
+                {
+                    Solidos.Forma(doc, categoria, new List<GeometryObject> { solido }, p.Llave, $"CadLink: {que}", string.Empty);
+                }
+
+                r.Avisos.Add($"«{p.Nombre}»: el acero de Revit no se pudo crear; se puso como forma (se ve, pero no se edita en Properties).");
+            }
+
+            t.Commit();
+        }
+        catch (Exception e)
+        {
+            t.RollBack();
+            r.Errores.Add("No se pudieron poner las placas de respaldo: " + e.Message);
+        }
     }
 
     /// <summary>

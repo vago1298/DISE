@@ -15858,6 +15858,10 @@ def v30_armado_por_tipo() -> None:
           and "LA VUELTA A LOS CASTILLOS" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs"))
           and "Wall.Create(doc, lados, tipo.Id, muro.LevelId, false)" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs")),
           "se pidio poner la malla en un muro cualquiera (tabique) y su isometrico solo")
+    check("placas: si el acero de Revit falla van como solidos de respaldo; ancla con rondana y tuerca",
+          "Respaldo(doc, AceroDeRevit.Placas(doc, nativas, res), res);" in leer(ruta("client/src/CadLink.Revit/Detallador.cs"))
+          and "rondana del ancla" in leer(ruta("client/src/CadLink.Revit/Detallador.cs")),
+          "la placa y la contraplaca no salian siempre")
     check("placa embebida: contraplaca automatica al ancho del elemento y la opcion llega desde el cuadro",
           "var fondo = FondoDetras(cajasMuros, marco);" in leer(ruta("client/src/CadLink.Revit/Detallador.cs"))
           and "Contraplaca = opciones.Contraplaca," in leer(ruta("client/src/CadLink.Revit/ComandoDetalles.cs"))
