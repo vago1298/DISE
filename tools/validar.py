@@ -15868,7 +15868,7 @@ def v30_armado_por_tipo() -> None:
           and "AceroNativo = opciones.AceroNativo" in leer(ruta("client/src/CadLink.Revit/ComandoDetalles.cs")),
           "con contraplaca marcada la placa embebida no la ponia")
     check("placas base: placa y anclas como ACERO DE REVIT (Steel Connections), fuera de la transaccion del boton",
-          "AceroDeRevit.Placas(doc, nativas, res);" in leer(ruta("client/src/CadLink.Revit/Detallador.cs"))
+          "AceroDeRevit.Placas(doc, nativas, res)" in leer(ruta("client/src/CadLink.Revit/Detallador.cs"))
           and "new FabricationTransaction(doc, false," in leer(ruta("client/src/CadLink.Revit/AceroDeRevit.cs"))
           and "ACERO_REVIT" in leer(ruta("client/src/CadLink.Revit/CadLink.Revit.csproj")),
           "se pidio modelarlas como en Revit para filtrarlas y editarlas despues")
