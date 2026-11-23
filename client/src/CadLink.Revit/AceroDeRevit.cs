@@ -161,8 +161,9 @@ internal static class AceroDeRevit
                     }
                 }
 
-                r.Avisos.Add($"«{p.Nombre}»: placa y {hechas} ancla(s) como ACERO DE REVIT (Structural Plates / Anchors): "
-                             + "editables en Properties. Si el ancla sale hacia arriba, seleccionala y voltea su direccion.");
+                r.Avisos.Add($"«{p.Nombre}»: placa" + (p.Contra is null ? "" : " y contraplaca")
+                             + " como ACERO DE REVIT (Structural Plates), editables en Properties y filtrables. "
+                             + "Las anclas van como solidos con su rondana y su tuerca, de lado a lado.");
             }
             catch (Exception e)
             {

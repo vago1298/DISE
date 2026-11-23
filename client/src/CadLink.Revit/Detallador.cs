@@ -222,18 +222,13 @@ internal static partial class Detallador
                     if (o.AceroNativo && AceroDeRevit.Disponible)
                     {
                         // Placa y anclas nativas, despues de esta transaccion; aqui solo grout y filete.
-                        CrearPlaca(doc, categoria, llave, placa, pz with { Anclas = new List<GeometryObject>(), Contraplaca = null }, "placa base", sinPlaca: true);
+                        // LAS ANCLAS VAN COMO SOLIDOS SIEMPRE, con su tuerca y rondana y del largo que deben:
+                        // las de Steel Connections por la API salian cortas y sin tuerca. Nativa, la placa.
+                        CrearPlaca(doc, categoria, llave, placa, pz, "placa base", sinPlaca: true);
                         var respaldo = new List<(GeometryObject Solido, string Que)> { (pz.Placa, $"placa base {placa.Marca} {TextoDeMedidas(placa)}") };
-                        respaldo.AddRange(pz.Anclas.Select(a => (a, $"anclas de la placa {placa.Marca}")));
-                        if (pz.Contraplaca is not null) { respaldo.Add((pz.Contraplaca, $"contraplaca de la placa {placa.Marca}")); }
                         nativas.Add(new PlacaNativa($"placa {placa.Marca} en {nombre}", centro, ex, ey,
                             Unidades.AInternas(placa.LadoXM), Unidades.AInternas(placa.LadoYM), caraSup - caraInf,
-                            placa.Anclas
-                                .Where(a => a.DiametroM > 0)
-                                .Select(a => new AnclaNativa(
-                                    new XYZ(centro.X, centro.Y, caraSup) + (ex * Unidades.AInternas(a.X)) + (ey * Unidades.AInternas(a.Y)),
-                                    a.DiametroM, Math.Max(0, a.PuntaM - a.FondoM)))
-                                .ToList()) { Llave = llave, Respaldo = respaldo });
+                            new List<AnclaNativa>()) { Llave = llave, Respaldo = respaldo });
                     }
                     else
                     {
@@ -1471,11 +1466,19 @@ internal static partial class Detallador
             var lu = Unidades.AInternas(placa.U1 - placa.U0);
             var lv = Unidades.AInternas(placa.V1 - placa.V0);
 
+            // Nativas la placa y la contraplaca; las ANCLAS como solidos, que atraviesan las dos y asoman
+            // con su rondana y su tuerca (las de Steel Connections salian cortas y sin tuerca).
+            bool EsAncla(string q) => q.StartsWith("ancla", StringComparison.Ordinal)
+                                      || q.StartsWith("rondana", StringComparison.Ordinal)
+                                      || q.StartsWith("tuerca", StringComparison.Ordinal);
+            piezas.AddRange(acero.Where(x => EsAncla(x.Que)));
+            _ = largos;
+
             nativas.Add(new PlacaNativa($"placa embebida en {donde}", centroP - (m.A * t), m.U, m.V, lu, lv, t,
-                pernos.Select((p, k) => new AnclaNativa(En(p.U, p.V), p.DiametroM, largos[k])).ToList(), m.A)
+                new List<AnclaNativa>(), m.A)
             {
                 Llave = llave,
-                Respaldo = acero,
+                Respaldo = acero.Where(x => !EsAncla(x.Que)).ToList(),
                 Contra = conContra ? new PlacaNativa($"contraplaca en {donde}", centroP - (m.A * hondo), m.U, m.V, lu, lv, t,
                     new List<AnclaNativa>(), m.A) : null
             });
