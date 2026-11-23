@@ -73,6 +73,12 @@ public sealed class OpcionesDetalle
     public bool PlacaEnMuro { get; set; } = true;
 
     /// <summary>
+    /// La placa y sus anclas como ACERO DE REVIT (Structural Plates / Anchors de Steel Connections):
+    /// editables y filtrables. El grout y la soldadura siguen como formas.
+    /// </summary>
+    public bool AceroNativo { get; set; }
+
+    /// <summary>
     /// Con la viga ENCIMA del concreto, probar primero la placa de apoyo horizontal. Apagado cuando
     /// la pone ya el boton de Placas base y solo faltan las verticales de los costados.
     /// </summary>
@@ -116,7 +122,9 @@ internal static partial class Detallador
     public static ResultadoDetalles Placas(
         Document doc, IReadOnlyList<FamilyInstance> columnas, PlacaBaseJson placa, OpcionesDetalle o)
     {
-        return EnTransaccion(doc, "Placas base de CadLink", r =>
+        var nativas = new List<PlacaNativa>();
+
+        var res = EnTransaccion(doc, "Placas base de CadLink", r =>
         {
             var acero = Solidos.Acero(doc);
             var anclas = Solidos.Anclas(doc);
@@ -211,7 +219,23 @@ internal static partial class Detallador
                         r.Reemplazadas++;
                     }
 
-                    CrearPlaca(doc, categoria, llave, placa, pz, "placa base");
+                    if (o.AceroNativo && AceroDeRevit.Disponible)
+                    {
+                        // Placa y anclas nativas, despues de esta transaccion; aqui solo grout y filete.
+                        CrearPlaca(doc, categoria, llave, placa, pz with { Anclas = new List<GeometryObject>(), Contraplaca = null }, "placa base", sinPlaca: true);
+                        nativas.Add(new PlacaNativa($"placa {placa.Marca} en {nombre}", centro, ex, ey,
+                            Unidades.AInternas(placa.LadoXM), Unidades.AInternas(placa.LadoYM), caraSup - caraInf,
+                            placa.Anclas
+                                .Where(a => a.DiametroM > 0)
+                                .Select(a => new AnclaNativa(
+                                    new XYZ(centro.X, centro.Y, caraSup) + (ex * Unidades.AInternas(a.X)) + (ey * Unidades.AInternas(a.Y)),
+                                    a.DiametroM, Math.Max(0, a.PuntaM - a.FondoM)))
+                                .ToList()));
+                    }
+                    else
+                    {
+                        CrearPlaca(doc, categoria, llave, placa, pz, "placa base");
+                    }
 
                     // ---- Sobre el apoyo: la columna arranca en la cara de la placa ----
                     var subir = caraSup - m.BaseZ;
@@ -238,6 +262,14 @@ internal static partial class Detallador
                 }
             }
         });
+
+        // FUERA de la transaccion del boton: la de Advance Steel no puede ir dentro de otra.
+        if (o.AceroNativo)
+        {
+            AceroDeRevit.Placas(doc, nativas, res);
+        }
+
+        return res;
     }
 
     // ======================================================================
@@ -662,13 +694,16 @@ internal static partial class Detallador
 
     /// <summary>Crea las formas de la placa: la placa, las anclas, el grout, la contraplaca y el filete.</summary>
     private static void CrearPlaca(
-        Document doc, ElementId categoria, string llave, PlacaBaseJson placa, PiezasPlaca pz, string que)
+        Document doc, ElementId categoria, string llave, PlacaBaseJson placa, PiezasPlaca pz, string que, bool sinPlaca = false)
     {
             var marca = placa.Marca;
             var texto = $"CadLink: {que} {placa.Marca}";
 
-            Solidos.Forma(doc, categoria, new List<GeometryObject> { pz.Placa }, llave,
-                $"{texto} {TextoDeMedidas(placa)}", marca);
+            if (!sinPlaca)
+            {
+                Solidos.Forma(doc, categoria, new List<GeometryObject> { pz.Placa }, llave,
+                    $"{texto} {TextoDeMedidas(placa)}", marca);
+            }
 
             // Las anclas y la contraplaca van como PARTE de la llave: se borran con la placa,
             // pero no cuentan para saber donde termina el dado.

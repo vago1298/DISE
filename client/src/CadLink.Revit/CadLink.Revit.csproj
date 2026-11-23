@@ -239,6 +239,22 @@
     </Reference>
   </ItemGroup>
 
+  <!-- EL ACERO DE REVIT (Steel Connections): placas y anclas nativas con la API de Advance Steel que trae
+       Revit. Solo si estan sus DLL; si no, compila igual sin esa parte (ACERO_REVIT apagado). No se
+       copian: las carga Revit con Steel Connections. Las rutas son las del SDK de Revit 2025. -->
+  <PropertyGroup>
+    <RutaAcero>$(RutaRevit)\AddIns\SteelConnections</RutaAcero>
+    <DefineConstants Condition="Exists('$(RutaAcero)\ASObjectsMgd.dll')">$(DefineConstants);ACERO_REVIT</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(RutaAcero)\ASObjectsMgd.dll')">
+    <Reference Include="ASObjectsMgd"><HintPath>$(RutaAcero)\ASObjectsMgd.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="ASGeometryMgd"><HintPath>$(RutaAcero)\ASGeometryMgd.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="ASCADLinkMgd"><HintPath>$(RutaAcero)\ASCADLinkMgd.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="DotNetRoots"><HintPath>$(RutaAcero)\DotNetRoots.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Autodesk.SteelConnectionsDB"><HintPath>$(RutaAcero)\Autodesk.SteelConnectionsDB.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
   <Target Name="AvisarSiFaltaRevit" BeforeTargets="Build"
           Condition="!Exists('$(RutaRevit)\RevitAPI.dll')">
     <!-- Un mensaje claro en vez de doscientos CS0246. Sin esto, el primer sintoma de que

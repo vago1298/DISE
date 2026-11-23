@@ -444,6 +444,16 @@ lo tape el concreto (*View Unobscured*), y en los cortes sin taparse. Las flecha
 rellenan con líneas de detalle, así que una plantilla de vista que apague los *Detail Items* ya no las
 borra. Si la plantilla apaga **Structural Rebar**, enciéndelo en ella para ver las varillas.
 
+## Placas base como acero de Revit
+
+En **Placas base** está la casilla **Placa y anclas como ACERO DE REVIT**. Con ella la placa y sus anclas
+se crean como los elementos de **Structure > Connection > Plate** y **Anchors** de Steel Connections
+(categorías *Structural Plates* y *Structural Anchors*): se seleccionan, se filtran, se editan en
+**Properties** y salen en tablas. El grout y la soldadura siguen como formas. Hace falta **Steel
+Connections for Revit**: el instalador lo detecta en `Revit 20xx\AddIns\SteelConnections` y, si no
+está, el complemento compila sin esta parte y lo dice. Son dos Ctrl+Z (la API de Advance Steel usa su
+propia transacción). Si ya hay una placa de acero de Revit en ese lugar no se pone otra.
+
 ## Muro con malla electrosoldada
 
 Botón **CadLink → Detalles → Muro con malla**. Elige uno o varios muros de **cualquier material**

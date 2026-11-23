@@ -450,6 +450,9 @@ public enum BuiltInCategory
 
     // Las placas, las zapatas y las soldaduras, como DirectShape.
     OST_StructConnections,
+
+    // Las placas de acero de Steel Connections (Structural Plates).
+    OST_StructConnectionPlates,
     OST_StructuralFoundation,
     OST_GenericModel,
     OST_Rebar,

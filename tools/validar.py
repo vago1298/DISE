@@ -15858,6 +15858,11 @@ def v30_armado_por_tipo() -> None:
           and "LA VUELTA A LOS CASTILLOS" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs"))
           and "Wall.Create(doc, lados, tipo.Id, muro.LevelId, false)" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs")),
           "se pidio poner la malla en un muro cualquiera (tabique) y su isometrico solo")
+    check("placas base: placa y anclas como ACERO DE REVIT (Steel Connections), fuera de la transaccion del boton",
+          "AceroDeRevit.Placas(doc, nativas, res);" in leer(ruta("client/src/CadLink.Revit/Detallador.cs"))
+          and "new FabricationTransaction(doc, false," in leer(ruta("client/src/CadLink.Revit/AceroDeRevit.cs"))
+          and "ACERO_REVIT" in leer(ruta("client/src/CadLink.Revit/CadLink.Revit.csproj")),
+          "se pidio modelarlas como en Revit para filtrarlas y editarlas despues")
     check("el Area Reinforcement del muro va en el plano medio de su solido, no en la linea de ubicacion",
           "var normal = XYZ.BasisZ.CrossProduct(dir).Normalize();" in leer(ruta("client/src/CadLink.Revit/ArmadorDeMuros.cs"))
           and "Geometria.PuntosDelSolido(muro)" in leer(ruta("client/src/CadLink.Revit/ArmadorDeMuros.cs")),

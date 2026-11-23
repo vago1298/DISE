@@ -128,6 +128,10 @@ public sealed class ComandoPlacasBase : IExternalCommand
         var contra = ventana.Casilla("(B) Con contraplaca al fondo de las anclas", false,
             "Una segunda placa ahogada en el dado, al fondo de las anclas, con su tuerca abajo. Con ella las anclas van rectas.");
         var girar = ventana.Casilla("Girar la placa 90° sobre la columna", false);
+        var nativo = ventana.Casilla("Placa y anclas como ACERO DE REVIT (editables y filtrables)", AceroDeRevit.Disponible,
+            "Structural Plates y Structural Anchors de Steel Connections, como Structure > Connection > Plate y Anchors: "
+            + "se editan en Properties, se filtran y salen en tablas. Hace falta Steel Connections for Revit. "
+            + "El grout y la soldadura siguen como formas. Son dos Ctrl+Z.");
         ventana.Guia("Guia", 255, 250, CroquisDeGuia.PlacaBase);
 
         if (!ventana.Mostrar(commandData!.Application?.MainWindowHandle, "Poner placas") || lista.SelectedIndex < 0)
@@ -151,6 +155,7 @@ public sealed class ComandoPlacasBase : IExternalCommand
             SubirColumna = subir.IsChecked == true,
             SoldarColumna = soldar.IsChecked == true,
             Contraplaca = contra.IsChecked == true,
+            AceroNativo = nativo.IsChecked == true,
             GroutM = VentanaDetalle.Leer(grout, GroutPorOmision(placa)) / 100
         };
 
