@@ -208,7 +208,11 @@ public sealed class ComandoPlacasBase : IExternalCommand
 
                     // La placa elegida de la hoja, con sus anclas, y su giro.
                     PlacaDeArchivo = placa,
-                    Girar = opciones.Girar
+                    Girar = opciones.Girar,
+
+                    // Lo que se marco en el cuadro: antes no llegaba y la contraplaca no se ponia.
+                    Contraplaca = opciones.Contraplaca,
+                    AceroNativo = opciones.AceroNativo
                 });
 
             // Que una viga no llegue a ningun costado no es un aviso: puede ir encima.

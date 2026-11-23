@@ -20,8 +20,12 @@ internal sealed record AnclaNativa(XYZ EnLaCara, double DiametroM, double LargoM
 /// Una placa para el acero de Revit (Structure > Connection: Plate, Anchors). En unidades internas: el
 /// centro de su cara de abajo, sus dos ejes, sus lados y su espesor.
 /// </summary>
+/// <param name="Normal">Hacia donde crece el espesor: arriba en una placa base, hacia la viga en una embebida.</param>
 internal sealed record PlacaNativa(string Nombre, XYZ CentroAbajo, XYZ Ex, XYZ Ey, double LadoX, double LadoY, double Espesor,
-    List<AnclaNativa> Anclas);
+    List<AnclaNativa> Anclas, XYZ? Normal = null)
+{
+    public XYZ N => Normal ?? XYZ.BasisZ;
+}
 
 /// <summary>
 /// Las placas y anclas como ELEMENTOS DE ACERO DE REVIT -los mismos de Structure > Connection > Plate y
@@ -86,7 +90,7 @@ internal static class AceroDeRevit
         foreach (var p in placas)
         {
             // No se encima con la que ya se puso: esa se edita en Properties o se borra a mano.
-            if (YaHay(doc, p.CentroAbajo + new XYZ(0, 0, p.Espesor / 2), p.Espesor))
+            if (YaHay(doc, p.CentroAbajo + (p.N * (p.Espesor / 2)), p.Espesor))
             {
                 r.Avisos.Add($"«{p.Nombre}»: ya tiene una placa de acero de Revit; no se puso otra. Editala en Properties o borrala y vuelve a ponerla.");
                 continue;
@@ -95,12 +99,12 @@ internal static class AceroDeRevit
             try
             {
                 // La placa, como poligono en el plano de su eje medio y centrada en el (Portioning 0.5).
-                var medio = p.CentroAbajo + new XYZ(0, 0, p.Espesor / 2);
+                var medio = p.CentroAbajo + (p.N * (p.Espesor / 2));
                 var hx = p.Ex * (p.LadoX / 2);
                 var hy = p.Ey * (p.LadoY / 2);
                 var esquinas = new[] { medio - hx - hy, medio + hx - hy, medio + hx + hy, medio - hx + hy }.Select(P).ToArray();
 
-                var placa = new Plate(new AsPlane(P(medio), new Vector3d(0, 0, 1)), esquinas, p.Espesor * Mm);
+                var placa = new Plate(new AsPlane(P(medio), V(p.N)), esquinas, p.Espesor * Mm);
                 placa.Portioning = 0.5;
                 placa.WriteToDb();
 

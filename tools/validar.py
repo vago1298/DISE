@@ -15858,6 +15858,11 @@ def v30_armado_por_tipo() -> None:
           and "LA VUELTA A LOS CASTILLOS" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs"))
           and "Wall.Create(doc, lados, tipo.Id, muro.LevelId, false)" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs")),
           "se pidio poner la malla en un muro cualquiera (tabique) y su isometrico solo")
+    check("placa embebida: contraplaca automatica al ancho del elemento y la opcion llega desde el cuadro",
+          "var fondo = FondoDetras(cajasMuros, marco);" in leer(ruta("client/src/CadLink.Revit/Detallador.cs"))
+          and "Contraplaca = opciones.Contraplaca," in leer(ruta("client/src/CadLink.Revit/ComandoDetalles.cs"))
+          and "AceroNativo = opciones.AceroNativo" in leer(ruta("client/src/CadLink.Revit/ComandoDetalles.cs")),
+          "con contraplaca marcada la placa embebida no la ponia")
     check("placas base: placa y anclas como ACERO DE REVIT (Steel Connections), fuera de la transaccion del boton",
           "AceroDeRevit.Placas(doc, nativas, res);" in leer(ruta("client/src/CadLink.Revit/Detallador.cs"))
           and "new FabricationTransaction(doc, false," in leer(ruta("client/src/CadLink.Revit/AceroDeRevit.cs"))
