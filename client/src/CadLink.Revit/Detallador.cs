@@ -636,7 +636,10 @@ internal static partial class Detallador
                 hacia = hacia.GetLength() < 1e-9
                     ? ((ex * a.PataX) + (ey * a.PataY)).GetLength() < 1e-9 ? ex : ((ex * a.PataX) + (ey * a.PataY)).Normalize()
                     : hacia.Normalize();
-                var pata = contraplaca is null ? Unidades.AInternas(a.PataM) : 0;
+                // Sin pata en la hoja, la de 12 diametros: el ancla nunca va sin gancho (solo con contraplaca).
+                var pata = contraplaca is null
+                    ? Unidades.AInternas(a.PataM > 0 ? a.PataM : 12 * a.DiametroM)
+                    : 0;
 
                 foreach (var pieza in Solidos.AnclaDoblada(
                              punta, caraInf + Unidades.AInternas(a.FondoM), hacia,
@@ -1431,8 +1434,28 @@ internal static partial class Detallador
             var total = conContra ? asoma + hondo + asoma : asoma + t + Unidades.AInternas(perno.LargoM);
             largos.Add(Unidades.AMetros(total));
 
-            acero.Add((Solidos.Cilindro(punta, m.A.Negate(), total, radio, mat.Anclas),
-                $"ancla de {Mm(perno.DiametroM)} mm de la placa embebida"));
+            if (conContra)
+            {
+                // Con contraplaca va RECTA: la contraplaca ancla, y asoma por atras con su tuerca.
+                acero.Add((Solidos.Cilindro(punta, m.A.Negate(), total, radio, mat.Anclas),
+                    $"ancla de {Mm(perno.DiametroM)} mm de la placa embebida"));
+            }
+            else
+            {
+                // CON SU GANCHO, como en la placa base sobre el dado: antes iba recta. La pata dobla en
+                // el plano de la placa HACIA EL CENTRO, para quedar dentro del concreto.
+                var cu = (placa.U0 + placa.U1) / 2;
+                var cv = (placa.V0 + placa.V1) / 2;
+                var hacia = (m.U * (cu - perno.U)) + (m.V * (cv - perno.V));
+                hacia = hacia.GetLength() < 1e-9 ? m.V.Negate() : hacia.Normalize();
+                var pata = Unidades.AInternas(perno.PataM > 0 ? perno.PataM : 12 * perno.DiametroM);
+
+                foreach (var pieza in Solidos.AnclaConGancho(punta, m.A.Negate(), total, hacia, pata,
+                             Unidades.AInternas(perno.RadioDobleM), radio, mat.Anclas))
+                {
+                    acero.Add((pieza, $"ancla de {Mm(perno.DiametroM)} mm de la placa embebida, con gancho"));
+                }
+            }
 
             // ANCLA REAL: rondana y tuerca por fuera de la placa.
             acero.Add((Solidos.Cilindro(enCara, m.A, rondana, 1.1 * d, mat.Anclas), "rondana del ancla"));

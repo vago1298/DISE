@@ -360,18 +360,30 @@ internal static class Solidos
     /// <param name="pata">Del eje del vastago a la punta de la pata.</param>
     /// <param name="radioCodo">Al eje de la barra. Cero = el que quepa.</param>
     public static List<Solid> AnclaDoblada(
-        XYZ arriba, double fondo, XYZ hacia, double pata, double radioCodo, double radio, ElementId material)
+        XYZ arriba, double fondo, XYZ hacia, double pata, double radioCodo, double radio, ElementId material) =>
+        AnclaConGancho(arriba, XYZ.BasisZ.Negate(), arriba.Z - fondo, hacia, pata, radioCodo, radio, material);
+
+    /// <summary>
+    /// Un ancla en CUALQUIER direccion: arranca en <paramref name="inicio"/>, corre
+    /// <paramref name="tramo"/> a lo largo de <paramref name="baja"/> (unitario, hacia dentro del concreto)
+    /// y dobla con su codo hacia <paramref name="hacia"/> (perpendicular a <paramref name="baja"/>) en una
+    /// pata de <paramref name="pata"/>. Es la de la placa base, tambien para la placa embebida en un muro,
+    /// cabezal o castillo, que antes iba recta.
+    /// </summary>
+    public static List<Solid> AnclaConGancho(
+        XYZ inicio, XYZ baja, double tramo, XYZ hacia, double pata, double radioCodo, double radio, ElementId material)
     {
         var d = 2 * radio;
-        var tramo = arriba.Z - fondo;
+        var arriba = inicio;
+        var sube = baja.Negate();
         var rc = radioCodo > 0 ? radioCodo : 1.5 * d;
         rc = Math.Min(rc, Math.Min(pata - (d / 2), tramo - d));
 
-        var abajo = new XYZ(arriba.X, arriba.Y, fondo);
+        var abajo = arriba + (baja * tramo);
 
         if (pata <= 0 || rc <= radio)
         {
-            var piezas = new List<Solid> { Cilindro(abajo, XYZ.BasisZ, tramo, radio, material) };
+            var piezas = new List<Solid> { Cilindro(abajo, sube, tramo, radio, material) };
 
             if (pata > 0)
             {
@@ -383,10 +395,10 @@ internal static class Solidos
 
         try
         {
-            var inicioCodo = abajo + (XYZ.BasisZ * rc);
+            var inicioCodo = abajo + (sube * rc);
             var finCodo = abajo + (hacia * rc);
-            var centro = abajo + (XYZ.BasisZ * rc) + (hacia * rc);
-            var medio = centro - (hacia * (rc * Math.Cos(Math.PI / 4))) - (XYZ.BasisZ * (rc * Math.Sin(Math.PI / 4)));
+            var centro = abajo + (sube * rc) + (hacia * rc);
+            var medio = centro - (hacia * (rc * Math.Cos(Math.PI / 4))) - (sube * (rc * Math.Sin(Math.PI / 4)));
 
             var recta = Line.CreateBound(arriba, inicioCodo);
             var camino = new CurveLoop();
@@ -400,7 +412,7 @@ internal static class Solidos
 
             var barra = GeometryCreationUtilities.CreateSweptGeometry(
                 camino, 0, recta.GetEndParameter(0),
-                new List<CurveLoop> { CirculoEn(arriba, radio, XYZ.BasisZ) },
+                new List<CurveLoop> { CirculoEn(arriba, radio, sube) },
                 new SolidOptions(material, ElementId.InvalidElementId));
 
             return new List<Solid> { barra };
@@ -409,7 +421,7 @@ internal static class Solidos
         {
             return new List<Solid>
             {
-                Cilindro(abajo, XYZ.BasisZ, tramo, radio, material),
+                Cilindro(abajo, sube, tramo, radio, material),
                 Cilindro(abajo, hacia, pata, radio, material)
             };
         }

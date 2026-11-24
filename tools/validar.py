@@ -15858,6 +15858,10 @@ def v30_armado_por_tipo() -> None:
           and "LA VUELTA A LOS CASTILLOS" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs"))
           and "Wall.Create(doc, lados, tipo.Id, muro.LevelId, false)" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs")),
           "se pidio poner la malla en un muro cualquiera (tabique) y su isometrico solo")
+    check("el ancla lleva su gancho tambien en la placa embebida (muro, cabezal, castillo, trabe), no solo en el dado",
+          "Solidos.AnclaConGancho(punta, m.A.Negate(), total, hacia, pata," in leer(ruta("client/src/CadLink.Revit/Detallador.cs"))
+          and "public static List<Solid> AnclaConGancho(" in leer(ruta("client/src/CadLink.Revit/Solidos.cs")),
+          "en la placa embebida el ancla iba recta")
     check("placas: si el acero de Revit falla van como solidos de respaldo; ancla con rondana y tuerca",
           "Respaldo(doc, AceroDeRevit.Placas(doc, nativas, res), res);" in leer(ruta("client/src/CadLink.Revit/Detallador.cs"))
           and "rondana del ancla" in leer(ruta("client/src/CadLink.Revit/Detallador.cs"))
