@@ -784,7 +784,9 @@ public readonly record struct TornilloLocal(double V, double A, double U0, doubl
 
 /// <summary>Un ancla de la placa embebida en el muro: sale de la cara de atras hacia dentro.</summary>
 /// <param name="PataM">La pata del gancho; cero = 12 diametros.</param>
-public readonly record struct PernoLocal(double U, double V, double DiametroM, double LargoM, double PataM = 0, double RadioDobleM = 0);
+/// <param name="DeArchivo">Las medidas son las del .json de CadLink (punta, fondo, pata, tuerca): se respetan tal cual.</param>
+public readonly record struct PernoLocal(double U, double V, double DiametroM, double LargoM, double PataM = 0, double RadioDobleM = 0,
+    bool DeArchivo = false, double PuntaM = 0, double FondoM = 0, double TuercaM = 0, double TuercaAltoM = 0);
 
 /// <summary>Las medidas de las conexiones, con los valores usuales por omision.</summary>
 public sealed class OpcionesConexion
@@ -1036,9 +1038,14 @@ public static class Conexion
                 girar ? a.Y : a.X,
                 girar ? a.X : a.Y,
                 a.DiametroM > 0 ? a.DiametroM : 0.019,
-                Math.Max(0.10, -a.FondoM),
+                Math.Max(0, -a.FondoM),
                 a.PataM,
-                a.RadioDobleM))
+                a.RadioDobleM,
+                DeArchivo: true,
+                PuntaM: a.PuntaM,
+                FondoM: a.FondoM,
+                TuercaM: a.TuercaM,
+                TuercaAltoM: a.TuercaAltoM))
             .ToList();
 
         return (placa, pernos);

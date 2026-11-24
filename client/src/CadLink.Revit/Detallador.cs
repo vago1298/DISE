@@ -636,10 +636,8 @@ internal static partial class Detallador
                 hacia = hacia.GetLength() < 1e-9
                     ? ((ex * a.PataX) + (ey * a.PataY)).GetLength() < 1e-9 ? ex : ((ex * a.PataX) + (ey * a.PataY)).Normalize()
                     : hacia.Normalize();
-                // Sin pata en la hoja, la de 12 diametros: el ancla nunca va sin gancho (solo con contraplaca).
-                var pata = contraplaca is null
-                    ? Unidades.AInternas(a.PataM > 0 ? a.PataM : 12 * a.DiametroM)
-                    : 0;
+                // La pata de la hoja, tal cual (cero = recta); con contraplaca, recta.
+                var pata = contraplaca is null ? Unidades.AInternas(a.PataM) : 0;
 
                 foreach (var pieza in Solidos.AnclaDoblada(
                              punta, caraInf + Unidades.AInternas(a.FondoM), hacia,
@@ -1422,16 +1420,25 @@ internal static partial class Detallador
             var radio = Unidades.AInternas(perno.DiametroM / 2);
             var d = Unidades.AInternas(perno.DiametroM);
             var enCara = m.Origen + (m.U * Unidades.AInternas(perno.U)) + (m.V * Unidades.AInternas(perno.V));
-            var alto = 0.8 * d;
-            var rondana = Math.Max(0.15 * d, Unidades.AInternas(0.003));
-            var asoma = rondana + alto + Math.Max(0.5 * d, Unidades.AInternas(0.01));
+            // LAS MEDIDAS DEL .JSON DE CADLINK, tal cual las del detalle de AutoCAD: la punta y el fondo
+            // se miden desde la cara de ATRAS de la placa (la que toca el concreto), la tuerca es la de la
+            // hoja y la pata la de la hoja (cero = recta). Sin archivo, las de siempre.
+            var json = perno.DeArchivo && perno.PuntaM - perno.FondoM > 0.001;
+            var tuercaLado = json && perno.TuercaM > 0 ? Unidades.AInternas(perno.TuercaM) : 1.6 * d;
+            var alto = json && perno.TuercaAltoM > 0 ? Unidades.AInternas(perno.TuercaAltoM) : 0.8 * d;
+            var rondana = json ? 0 : Math.Max(0.15 * d, Unidades.AInternas(0.003));
+            var asoma = json
+                ? Math.Max(alto, Unidades.AInternas(perno.PuntaM) - t)
+                : rondana + alto + Math.Max(0.5 * d, Unidades.AInternas(0.01));
             var punta = enCara + (m.A * asoma);
 
             solidoPlaca = Solidos.Restar(solidoPlaca, Solidos.Cilindro(
                 enCara + (m.A * holgura), m.A.Negate(), t + (2 * holgura), radio + Unidades.AInternas(0.0015), mat.Acero));
 
             // Con contraplaca el largo es el ancho del elemento: atraviesa y asoma por atras con su tuerca.
-            var total = conContra ? asoma + hondo + asoma : asoma + t + Unidades.AInternas(perno.LargoM);
+            var total = conContra ? asoma + hondo + asoma
+                : json ? asoma + t + Unidades.AInternas(-perno.FondoM)
+                : asoma + t + Unidades.AInternas(perno.LargoM);
             largos.Add(Unidades.AMetros(total));
 
             if (conContra)
@@ -1448,7 +1455,8 @@ internal static partial class Detallador
                 var cv = (placa.V0 + placa.V1) / 2;
                 var hacia = (m.U * (cu - perno.U)) + (m.V * (cv - perno.V));
                 hacia = hacia.GetLength() < 1e-9 ? m.V.Negate() : hacia.Normalize();
-                var pata = Unidades.AInternas(perno.PataM > 0 ? perno.PataM : 12 * perno.DiametroM);
+                // La pata de la hoja; sin archivo, 12 diametros.
+                var pata = Unidades.AInternas(perno.DeArchivo ? perno.PataM : 12 * perno.DiametroM);
 
                 foreach (var pieza in Solidos.AnclaConGancho(punta, m.A.Negate(), total, hacia, pata,
                              Unidades.AInternas(perno.RadioDobleM), radio, mat.Anclas))
@@ -1458,8 +1466,12 @@ internal static partial class Detallador
             }
 
             // ANCLA REAL: rondana y tuerca por fuera de la placa.
-            acero.Add((Solidos.Cilindro(enCara, m.A, rondana, 1.1 * d, mat.Anclas), "rondana del ancla"));
-            acero.Add((Solidos.Tuerca(enCara + (m.A * rondana), m.A, m.U, 1.6 * d, alto, radio, mat.Anclas),
+            if (rondana > 0)
+            {
+                acero.Add((Solidos.Cilindro(enCara, m.A, rondana, 1.1 * d, mat.Anclas), "rondana del ancla"));
+            }
+
+            acero.Add((Solidos.Tuerca(enCara + (m.A * rondana), m.A, m.U, tuercaLado, alto, radio, mat.Anclas),
                 "tuerca del ancla de la placa embebida"));
 
             if (contra is not null)
@@ -1467,8 +1479,12 @@ internal static partial class Detallador
                 var atras = enCara - (m.A * hondo);
                 contra = Solidos.Restar(contra, Solidos.Cilindro(atras - (m.A * holgura), m.A, t + (2 * holgura),
                     radio + Unidades.AInternas(0.0015), mat.Acero));
-                acero.Add((Solidos.Cilindro(atras, m.A.Negate(), rondana, 1.1 * d, mat.Anclas), "rondana en la contraplaca"));
-                acero.Add((Solidos.Tuerca(atras - (m.A * rondana), m.A.Negate(), m.U, 1.6 * d, alto, radio, mat.Anclas),
+                if (rondana > 0)
+                {
+                    acero.Add((Solidos.Cilindro(atras, m.A.Negate(), rondana, 1.1 * d, mat.Anclas), "rondana en la contraplaca"));
+                }
+
+                acero.Add((Solidos.Tuerca(atras - (m.A * rondana), m.A.Negate(), m.U, tuercaLado, alto, radio, mat.Anclas),
                     "tuerca del ancla en la contraplaca"));
             }
         }

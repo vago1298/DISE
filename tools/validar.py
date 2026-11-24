@@ -15858,6 +15858,9 @@ def v30_armado_por_tipo() -> None:
           and "LA VUELTA A LOS CASTILLOS" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs"))
           and "Wall.Create(doc, lados, tipo.Id, muro.LevelId, false)" in leer(ruta("client/src/CadLink.Revit/MuroConMalla.cs")),
           "se pidio poner la malla en un muro cualquiera (tabique) y su isometrico solo")
+    check("la placa embebida respeta las medidas del .json: punta, fondo, pata y tuerca de la hoja",
+          "var json = perno.DeArchivo && perno.PuntaM - perno.FondoM > 0.001;" in leer(ruta("client/src/CadLink.Revit/Detallador.cs"))
+          and "DeArchivo: true," in leer(ruta("client/src/CadLink.Revit.Nucleo/Detalles.cs")))
     check("el ancla lleva su gancho tambien en la placa embebida (muro, cabezal, castillo, trabe), no solo en el dado",
           "Solidos.AnclaConGancho(punta, m.A.Negate(), total, hacia, pata," in leer(ruta("client/src/CadLink.Revit/Detallador.cs"))
           and "public static List<Solid> AnclaConGancho(" in leer(ruta("client/src/CadLink.Revit/Solidos.cs")),
